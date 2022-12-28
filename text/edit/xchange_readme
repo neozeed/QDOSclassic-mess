@@ -1,0 +1,24 @@
+Short:    integrated Wordprocessor, spreadsheet, etc... (patched)
+Author:   Psion - updated by Erling Jacobsen
+Version:  3.90L
+Type:     xchg/prog
+
+
+PD XCHANGE is an integrated Wordprocessor, spreadsheet, database and
+charting program.
+
+PD XCHANGE requires space on RAM1_ and makes use of default directories
+(DATA_USE, PROG_USE etc).
+
+This is not the complete release of PD XCHANGE. Contact your QL PD
+supplier to receive a complete release that includes documentation and
+example TSL support.
+
+This version of PD XCHANGE has been patched by the program XCHPATCH to
+be compatible with 68040 and 68060 processors with COPYBACK enabled.
+
+
+ARCHIVE CONTENTS
+
+ XCHANGE        - the executable
+ XCHANGE_readme - this file

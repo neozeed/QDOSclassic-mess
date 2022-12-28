@@ -1,0 +1,72 @@
+*******************************************************************
+*  Q40_inc - Q40 hardware includes file
+*	  - last modified 22/09/99
+*
+*  Various Q40 specific hardware addresses
+*******************************************************************
+
+HARDTAG	EQU	'Q40 '
+
+MASTER_CHIP	EQU $FF000000
+
+INT_REG		EQU $00
+EXT_INT_REG	EQU $04
+KEY_INT_ENABLE	EQU $08
+SER_INT_ENABLE	EQU $0C
+SAMPLE_INT_ENABLE EQU $14
+VIDEOMODE	EQU $18
+KEY_CODE 	EQU $1C
+KEY_UNLOCK	EQU $20
+FRAME_INT_CLEAR	EQU $24
+SAMPLE_INT_CLEAR	EQU $28
+SAMPLE_RATE	EQU $2C
+LED		EQU $30
+ISARESET 	EQU $34
+
+DAC_A		EQU $FF008000
+DAC_B		EQU $FF008004
+
+LOWRAM		EQU $FF018000
+LOWROM		EQU $FF010000
+
+CLOCK_BASE	EQU $FF021FE0
+
+CLOCK_CTRL	EQU $00
+CLOCK_SEC	EQU $04
+CLOCK_MIN	EQU $08
+CLOCK_HOUR	EQU $0C
+CLOCK_DAY	EQU $10
+CLOCK_DATE	EQU $14
+CLOCK_MONTH	EQU $18
+CLOCK_YEAR	EQU $1C
+
+IO8BIT_BASE	EQU $FF400001
+IO16BIT_BASE	EQU $FF400000
+
+*******************************************************************
+* Q40 I/O ADDRESSING FOR ISA EXPANSION CARDS
+*
+* 8 bit I/O is addressed at
+* IO_BASE+IO_8BIT+[port]<<IO_PORT+[register]<<IO_REG
+*
+* 16 bit I/O is addressed at
+* IO_BASE+IO_16BIT+[port]<<IO_PORT+[register]<<IO_REG
+*
+* (see DEV/ASM/ISA/HW_inc)
+
+IO_BASE		EQU $FF400000
+IO_PORT		EQU 2
+IO_REG		EQU 2
+IO_8BIT		EQU 1
+IO_16BIT 	EQU 0
+
+SER1_BASE	EQU IO_BASE+($3f8<<IO_PORT)
+SER2_BASE	EQU IO_BASE+($2f8<<IO_PORT)
+SER3_BASE	EQU IO_BASE+($3e8<<IO_PORT)
+SER4_BASE	EQU IO_BASE+($2e8<<IO_PORT)
+
+FD_BASE		EQU IO_BASE+($3f0<<IO_PORT)
+
+HD_BASE		EQU IO_BASE+($1f0<<IO_PORT)
+
+*******************************************************************

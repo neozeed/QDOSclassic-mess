@@ -1,0 +1,3829 @@
+;/*beginfile BASIC5_asm
+; --------------------------------------------------------------
+; BASIC5_asm - BASIC bits
+;	    - last modified 27/08/95
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...some changes by Mark J Swift
+; --------------------------------------------------------------
+; create coded program / code line #
+L08474:
+	JSR	L04E4C(PC)	;*/undomodify BSR L04E4C
+	MOVEA.L	BV_RIP(A6),A1	;arith stack
+	JSR	CN_DTOI(PC)	;*/undomodify BSR CN_DTOI
+	BNE.S	L084A4
+	TST.W	0(A6,A1.L)
+	BLE.S	L084A4
+	TST.B	BV_UNRVL(A6)	;Need to unravel
+				;($ff) or not (0)
+	BEQ.S	L08496
+L0848E	ADDA.W	#$C,A7
+	MOVEQ	#1,D0
+	RTS
+L08496	MOVEQ	#4,D1
+	MOVEQ	#-$73,D4
+	MOVE.W	0(A6,A1.L),D5
+	JSR	L08E0A(PC)	;*/undomodify BSR L08E0A
+	ADDQ.L	#2,(A7)
+L084A4	RTS
+L084A6:
+	DC.L	$04050709,$0C012D01,$2B027E7E,$134E4F54
+L084B6:
+	LEA	L084A6(PC),A2
+	JSR	L08748(PC)	;*/undomodify BSR L08748
+	BRA.S	L084C8
+	MOVEQ	#-$7A,D4
+	JSR	L08DFA(PC)	;*/undomodify BSR L08DFA
+	ADDQ.L	#2,(A7)
+L084C8	RTS
+L084CA:
+	MOVEQ	#1,D3
+	BRA.S	L084D0
+L084CE:
+	MOVEQ	#0,D3
+L084D0	MOVEA.L	A0,A3
+	JSR	L08706(PC)	;*/undomodify BSR L08706
+	BRA.S	L084F8
+	MOVE.L	A0,D5
+	SUB.L	A3,D5
+	CMPI.W	#$00FF,D5
+	BGT.S	L084F8
+	MOVE.L	A0,-(A7)
+	JSR	L08622(PC)	;*/undomodify BSR L08622
+				;check name in buffer and
+				;get address of name list
+	BRA.S	L084F6		;error
+	MOVEA.L	(A7)+,A0
+	MOVEQ	#-$78,D4
+	JSR	L08E0A(PC)	;*/undomodify BSR L08E0A
+	ADDQ.L	#2,(A7)
+	RTS
+L084F6	MOVEA.L	(A7)+,A0
+L084F8	RTS
+L084FA:
+	DC.W	$1617,$191B,$1D1F,$2224,$2729,$2C2F,$3134,$373A
+	DC.W	$3C3E,$4145,$494D
+	DC.B	$51
+	DC.B	$01,'+'
+	DC.B	$01,'-'
+	DC.B	$01,'*'
+	DC.B	$01,'/'
+	DC.B	$02,'>='
+	DC.B	$01,'>'
+	DC.B	$02,'=='
+	DC.B	$01,'='
+	DC.B	$02,'<>'
+	DC.B	$02,'<='
+	DC.B	$01,'<'
+	DC.B	$02,'||'
+	DC.B	$02,'&&'
+	DC.B	$02,'^^'
+	DC.B	$01,'^'
+	DC.B	$01,'&'
+	DC.B	$12,'OR'
+	DC.B	$13,'AND'
+	DC.B	$13,'XOR'
+	DC.B	$13,'MOD'
+	DC.B	$13,'DIV'
+	DC.B	$15,'INSTR'
+	DC.B	$00
+L08552:
+	LEA	L084FA(PC),A2
+	JSR	L08748(PC)	;*/undomodify BSR L08748
+	BRA.S	L08564
+	MOVEQ	#-$7B,D4
+	JSR	L08DFA(PC)	;*/undomodify BSR L08DFA
+	ADDQ.L	#2,(A7)
+L08564	RTS
+L08566	; table of 5 separators
+	DC.B	$05,$06,$08,$0A
+	DC.W	$0C0E
+	DC.B	$01,',',$01,';',$01,'\'
+	DC.B	$01,'!',$12,'TO'
+	DC.B	$00
+L08578:
+	LEA	L08566(PC),A2
+	JSR	L08748(PC)	;*/undomodify BSR L08748
+	BRA.S	L0858A		;error
+	MOVEQ	#-$72,D4
+	JSR	L08DFA(PC)	;*/undomodify BSR L08DFA
+	ADDQ.L	#2,(A7)
+L0858A	RTS
+L0858C	MOVEQ	#0,D1
+	MOVEQ	#0,D5
+L08590	ADDQ.W	#1,D5
+	MOVE.B	0(A6,A0.L),D1
+	ADDQ.W	#1,A0
+	CMPI.B	#$20,D1
+	BEQ.S	L08590
+	SUBQ.W	#1,A0
+	SUBQ.W	#1,D5
+	BEQ.S	L085AA
+	MOVEQ	#-$80,D4
+	JSR	L08DFA(PC)	;*/undomodify BSR L08DFA
+L085AA	RTS
+L085AC:
+	MOVE.B	0(A6,A0.L),D2
+	CMPI.B	#$22,D2
+	BEQ.S	L085BC
+	CMPI.B	#$27,D2
+	BNE.S	L085DE
+L085BC	LEA	1(A0),A2
+	MOVEQ	#-1,D5
+	MOVEQ	#$0A,D3
+L085C4	ADDQ.W	#1,A0
+	ADDQ.W	#1,D5
+	MOVE.B	0(A6,A0.L),D1
+	CMP.B	D3,D1
+	BEQ.S	L085DE
+	CMP.B	D2,D1
+	BNE.S	L085C4
+	ADDQ.W	#1,A0
+	MOVEQ	#-$75,D4
+	JSR	L08E38(PC)	;*/undomodify BSR L08E38
+	ADDQ.L	#2,(A7)
+L085DE	RTS
+L085E0:
+	JSR	L0872C(PC)	;*/undomodify BSR L0872C
+	BNE.S	L085F2
+	MOVEA.L	BV_TKP(A6),A3	;token list running pointer
+	CMPI.B	#$80,-$02(A6,A3.L)
+	BNE.S	L0860A
+L085F2	MOVEA.L	A0,A2
+	MOVE.L	BV_BFP(A6),D5	;buffer running pointer
+	SUBQ.L	#1,D5
+	MOVEA.L	D5,A0
+	SUB.L	A2,D5
+	BEQ.S	L08608
+	MOVEQ	#-$74,D4
+	MOVEQ	#0,D2
+	JSR	L08E38(PC)	;*/undomodify BSR L08E38
+L08608	ADDQ.L	#2,(A7)
+L0860A	RTS
+L0860C:
+	JSR	L04E4C(PC)	;*/undomodify BSR L04E4C
+	MOVEA.L	BV_RIP(A6),A1	;arith stack
+	JSR	CN_DTOF(PC)	;*/undomodify BSR CN_DTOF
+	BNE.S	L08620
+	JSR	L08E12(PC)	;*/undomodify BSR L08E12
+	ADDQ.L	#2,(A7)
+L08620	RTS
+; --------------------------------------------------------------
+; A3 contains pointer to Buffer with name , D5 contains length
+; of name.
+; A2 contains pointer to table to compare with this routine
+; checks the name in buffer, and put it into the name list.
+; return address of name table in A2
+; --------------------------------------------------------------
+L08622:
+	MOVE.L	A2,-(A7) 	;save address of table to
+				;compare with
+	MOVE.B	D5,D2		;length of name -> D2
+	MOVE.B	D2,D1		;once more the length of
+				;the name
+	MOVEQ	#5,D3		;bit to clear for capital
+				;letters
+	MOVEA.L	BV_NTBAS(A6),A2	;base of name table
+	MOVEA.L	A3,A1		;pointer to buffer with
+				;name -> A1
+L08630	CMPA.L	BV_NTP(A6),A2	;top of name table
+	BGE.S	L08684		;if end of name table
+	TST.L	0(A6,A2.L)	;what is this
+	BEQ.S	L0864C		;can not be the same name
+	MOVEA.L	BV_NLBAS(A6),A4	;name list
+	ADDA.W	2(A6,A2.L),A4	;add pointer to name in
+				;table
+	MOVE.B	0(A6,A4.L),D5	;get length of name in
+				;table
+	CMP.B	D2,D5		;compare it with the length
+				;of the name in buffer
+	BEQ.S	L08650		;length is the same, so
+				;test the rest
+L0864C	ADDQ.W	#8,A2		;try next name pointer
+	BRA.S	L08630
+L08650	; compare name in buffer (A3/A1) with name in name
+	; table (A2)
+	TST.B	D2		;have we checked all bytes
+				;in the buffer ?
+	BEQ.S	L08672		;end of name in buffer
+	MOVE.B	0(A6,A3.L),D4	;next byte of name in
+				;buffer -> D4
+	ADDQ.W	#1,A3		;increment pointer in
+				;buffer
+	BCLR	D3,D4		;capital letters only
+	TST.B	D5		;have we checked all bytes
+				;in the name list ?
+	BEQ.S	L0867C		;end of name in list => not
+				;the same name
+	ADDQ.W	#1,A4		;increment pointer in name
+				;list
+	MOVE.B	0(A6,A4.L),D6	;next byte of name in list
+				;-> D6
+	BCLR	D3,D6		;cabital letters only
+	CMP.B	D4,D6		;are the bytes of buffer
+				;and name list equal
+	BNE.S	L0867C		;not the same name
+	SUBQ.B	#1,D2		;decrement number of bytes
+				;in buffer
+	SUBQ.B	#1,D5		;decrement number of bytes
+				;in name list
+	BRA.S	L08650		;continue comparision
+L08672:
+	TST.B	D5		;is the the name in the
+				;name list complete ?
+	BNE.S	L0867C		;no => the name are not
+				;identical
+FOUND_x:
+	MOVE.L	A2,D5		;pointer to name table
+				;entry -> D5 !!!!
+	ADDQ.W	#4,A7		;clean up stack
+	BRA.S	L086FA		;return with success
+L0867C:
+	MOVEA.L	A1,A3		;restore pointer to name in
+				;buffer
+	MOVE.B	D1,D2		;restore length of name in
+				;buffer
+	ADDQ.W	#8,A2		;try next name table entry
+	BRA.S	L08630		;continue searching
+; name not found in name list , so try list supplyed in (A7)
+L08684:
+	MOVEQ	#0,D6
+	MOVEA.L	A3,A0		;pointer to name in buffer
+	MOVEA.L	(A7)+,A2 	;pointer to second list
+	JSR	L08966(PC)	;*/undomodify BSR L08966
+				;try to find name there
+	BRA.S	L08692		;name not found
+	BRA.S	L08704		;name found
+L08692:
+	TST.B	BV_UNRVL(A6)	;Need to unravel
+				;($ff) or not (0)
+	BEQ.S	L0869E
+	ADDQ.W	#8,A7
+	JMP	L0848E(PC)	;*/undomodify BRA L0848E
+L0869E	; write new name into name list, start entry into name
+	; table
+	MOVEQ	#0,D4
+	MOVE.B	D2,D4
+	JSR	L04DE8(PC)	;*/undomodify BSR L04DE8
+				;reserve memory for name
+				;table entry
+	MOVE.L	D4,D2
+	MOVE.L	#-1,4(A6,A2.L)	;initialize address of
+				;routine
+	MOVEA.L	BV_NLP(A6),A4	;name list running pointer
+	MOVE.L	A4,D3
+	SUB.L	BV_NLBAS(A6),D3	;name list
+	MOVE.W	D3,2(A6,A2.L)	;store pointer to name list
+	ADD.L	A3,D2
+	MOVE.B	-1(A6,D2.L),D3
+	MOVEQ	#0,D1
+	SUBI.B	#'%',D3		;integer ?
+	BLT.S	L086D2		;$ string
+	BGT.S	L086D0		;nothing -> floatimg point
+	ADDQ.W	#1,D1		;% integer
+L086D0	ADDQ.W	#1,D1
+L086D2	ADDQ.W	#1,D1
+	MOVE.W	D1,0(A6,A2.L)	;store type
+	MOVE.L	A2,D5		;Store name table pointer
+	MOVEQ	#1,D1
+	ADD.W	D4,D1
+	JSR	L04E72(PC)	;*/undomodify BSR L04E72
+	MOVE.B	D4,0(A6,A4.L)	;length of name
+L086E6	ADDQ.W	#1,A4		;copy name to name list
+	MOVE.B	0(A6,A3.L),0(A6,A4.L)
+	ADDQ.W	#1,A3
+	SUBQ.B	#1,D4
+	BNE.S	L086E6		;continue copy
+	ADDQ.W	#1,A4
+	MOVE.L	A4,BV_NLP(A6)	;name list running pointer
+L086FA	MOVEA.L	D5,A2		;store pointer to name
+				;table entry
+	SUB.L	BV_NTBAS(A6),D5	;name table
+	LSR.L	#3,D5		;calculate number of entry
+				;-> D5
+	ADDQ.L	#2,(A7)		;return with success
+L08704	RTS
+; ------------------------------------------------
+L08706	BSR.S	L0872C
+	BNE.S	L0872A
+	CMPI.B	#1,D2
+	BNE.S	L0872A
+L08710	ADDQ.W	#1,A0
+	BSR.S	L0872C
+	BEQ.S	L08710
+	CMPI.B	#$24,D2
+	BEQ.S	L08722
+	CMPI.B	#$25,D2
+	BNE.S	L08728
+L08722	TST.B	D3
+	BNE.S	L0872A
+	ADDQ.W	#1,A0
+L08728	ADDQ.L	#2,(A7)
+L0872A	RTS
+L0872C	MOVEQ	#0,D1
+	MOVE.B	0(A6,A0.L),D1
+	BLT.S	L08746
+	LEA	L03C28(PC),A1	;table defines type of
+				;ASCII code
+	MOVE.B	0(A1,D1.W),D2
+	CMPI.B	#1,D2
+	BEQ.S	L08746
+	CMPI.B	#2,D2
+L08746	RTS
+L08748	MOVE.L	A0,-(A7)
+	MOVEQ	#0,D5
+L0874C	MOVEA.L	(A7),A0
+	BSR.S	L08794
+L08750	ADDQ.W	#1,D5
+	MOVEA.L	A2,A1
+	CMP.B	(A1),D5
+	BGT.S	L08790
+	MOVEQ	#0,D1
+	MOVE.B	0(A1,D5.W),D1
+	ADDA.W	D1,A1
+	MOVE.B	(A1)+,D1
+	CMP.B	(A1)+,D0
+	BNE.S	L08750
+	MOVE.B	D1,D0
+	SWAP	D1
+	MOVE.B	D0,D1
+	ANDI.B	#$0F,D1
+L08770	SUBQ.B	#1,D1
+	BLE.S	L0877E
+	ADDQ.W	#1,A0
+	BSR.S	L08794
+	CMP.B	(A1)+,D0
+	BEQ.S	L08770
+	BRA.S	L0874C
+L0877E:
+	SWAP	D1
+	LSR.B	#4,D1
+	ADDQ.W	#1,A0
+	BEQ.S	L0878C
+	JSR	L0872C(PC)	;*/undomodify BSR.S L0872C
+				;*/undomodify nop
+	BEQ.S	L0874C
+L0878C:
+	ADDQ.L	#2,4(A7)
+L08790:
+	ADDQ.W	#4,A7
+	RTS
+L08794	MOVEQ	#0,D0
+	MOVE.B	0(A6,A0.L),D0
+	BLT.S	L087AC
+	LEA	L03C28(PC),A3	;table defines type of
+				;ASCII code
+	CMPI.B	#1,0(A3,D0.W)
+	BNE.S	L087AC
+	BCLR	#5,D0
+L087AC	RTS
+L087AE:
+	DC.W	L084CE-L087C4
+	DC.W	L0860C-L087C4
+	DC.W	L0860C-L087C4
+	DC.W	L04FFC-L087C4	;*/undomend DC.W L087AC-...
+	DC.W	L08552-L087C4
+	DC.W	L084B6-L087C4
+	DC.W	L08578-L087C4
+	DC.W	L085AC-L087C4
+	DC.W	L085E0-L087C4
+	DC.W	L08474-L087C4
+	DC.W	L084CA-L087C4
+L087C4	LSR.B	#1,D6
+L087C6	JSR	L0858C(PC)	;*/undomodify BSR L0858C
+	ADD.B	D6,D6
+	MOVE.W	L087AE-2(PC,D6.W),D6
+	JMP	L087C4(PC,D6.W)
+; Basic syntax analyser
+ANA_SYNX:
+	MOVEQ	#0,D7
+	MOVEQ	#0,D6
+	MOVE.L	(A2)+,-(A7)	;push instruction table
+				;(END,FOR,DEFine,...)
+	MOVE.L	(A2),-(A7)	;push command syntax table
+	MOVEA.L	(A7),A5		;Command syntax table -> A5
+	MOVE.W	(A5),D6		;get first word (offset)
+	ADDA.W	D6,A5		;add offset to address
+	MOVEQ	#0,D4
+	JSR	PUSHD4TG(PC)	;*/undomodify BSR PUSHD4TG
+				;push D4 (=0) on temporary
+				;stack
+	MOVEA.L	(A6),A0		;get text line buffer base
+	BRA.S	L0880E
+L087EC	SUBI.B	#$80,D6
+	LSR.B	#1,D6
+	BNE.S	L087FE
+	SUBQ.W	#1,A5
+	JSR	L08A7A(PC)	;*/undomodify BSR L08A7A
+	BRA	L088CE
+L087FE	MOVE.L	A5,D4
+	JSR	PUSHD4TG(PC)	;*/undomodify BSR PUSHD4TG
+	ADD.B	D6,D6
+	MOVEA.L	(A7),A5
+	MOVE.W	-2(A5,D6.W),D6
+	ADDA.W	D6,A5
+L0880E	JSR	L08A7E(PC)	;*/undomodify BSR L08A7E
+				;push #0 and A0(=text line)
+				;on backtrack stack
+L08812	MOVEQ	#0,D6
+	MOVE.B	(A5)+,D6 	;next byte commando syntax
+	BEQ.S	L0887A
+	BMI.S	L087EC
+	BCLR	#6,D6
+	BEQ.S	L0882C
+	MOVEA.L	4(A7),A2 	;get instruction syntax
+				;table (END,FOR,DEFine,...)
+	JSR	L08966(PC)	;*/undomodify BSR L08966
+	BRA.S	L08846		;error
+	BRA.S	L08864
+L0882C	BCLR	#5,D6
+	BEQ.S	L0883A
+	JSR	L08B34(PC)	;*/undomodify BSR L08B34
+	BRA.S	L08846		;error
+	BRA.S	L08864
+L0883A:
+	MOVEA.L	4(A7),A2 	;get instruction syntax
+				;table
+	JSR	L087C4(PC)	;*/undomodify BSR.S L087C4
+				;*/undomodify nop
+	BRA.S	L08846		;error
+	BRA.S	L08864
+L08846:
+	MOVEA.L	BV_BTP(A6),A2	;backtrack stack
+				;during parsing
+L0884A	MOVEA.L	0(A6,A2.L),A3
+	MOVEA.L	4(A6,A2.L),A0
+	MOVE.L	8(A6,A2.L),D3
+	ADDA.W	#$0C,A2
+	BLT.S	L0884A
+	ADDQ.W	#1,A5
+	MOVE.L	A3,BV_TKP(A6)	;token list running pointer
+	BRA.S	L08812		;go on analysing with next
+				;item
+L08864	JSR	L08A7A(PC)	;*/undomodify BSR L08A7A
+L08868	MOVEQ	#0,D6
+	MOVE.B	(A5),D6
+	BEQ.S	L088CE
+	BMI.S	L08874
+	ADDA.W	D6,A5
+	BRA.S	L08812
+L08874	NEG.B	D6
+	SUBA.W	D6,A5
+	BRA.S	L08812
+L0887A	MOVEA.L	BV_BTP(A6),A4	;backtrack stack
+				;during parsing
+	CMPA.L	BV_BTBAS(A6),A4	;backtrack running pointer
+	BGT.S	L088B2
+	MOVEA.L	0(A6,A4.L),A3
+	MOVEA.L	4(A6,A4.L),A0
+	MOVEA.L	8(A6,A4.L),A5
+	ADDA.W	#$0C,A4
+	MOVE.L	A4,BV_BTP(A6)	;backtrack stack
+				;during parsing
+	MOVE.L	A5,D3
+	BGT.S	L088A6
+	BEQ.S	L088B8
+	MOVE.L	A0,D4
+	JSR	PUSHD4TG(PC)	;*/undomodify BSR PUSHD4TG
+	BRA.S	L0887A
+L088A6	BTST	D7,-1(A5)
+	BEQ.S	L08846
+	MOVE.L	-$10(A6,A4.L),D3
+	BMI.S	L08846
+L088B2	ADDQ.W	#8,A7
+	MOVEQ	#-1,D0		;Not complete error
+	RTS
+L088B8	MOVEA.L	BV_TGP(A6),A4	;temporary graph stack
+				;during parsing
+	MOVEA.L	0(A6,A4.L),A5
+	ADDQ.W	#4,A4
+	MOVE.L	A4,BV_TGP(A6)	;temporary graph stack
+				;during parsing
+	MOVE.L	A5,D3
+	BEQ.S	L088B2
+	BRA	L08846
+L088CE	JSR	L04E52(PC)	;*/undomodify BSR L04E52
+				;reserve 12 byte on
+				;arith stack
+	MOVEA.L	BV_BTP(A6),A4	;backtrack stack
+				;during parsing
+	MOVEA.L	BV_TGP(A6),A2	;temporary graph stack
+				;during parsing
+	SUBQ.W	#8,A4
+	MOVE.L	#-1,4(A6,A4.L)
+	MOVE.L	0(A6,A2.L),0(A6,A4.L)
+	MOVEA.L	0(A6,A4.L),A5
+	SUBQ.W	#4,A4
+	MOVE.L	BV_TKP(A6),0(A6,A4.L) ;token list running ptr
+	ADDQ.W	#4,A2
+	MOVE.L	A2,BV_TGP(A6)	;temporary graph stack
+				;during parsing
+	MOVE.L	A4,BV_BTP(A6)	;backtrack stack
+				;during parsing
+	MOVE.L	A5,D3
+	BNE	L08868
+	ADDQ.W	#8,A7
+	MOVEQ	#0,D0
+	RTS
+INI_STCK ; Imitialize BASIC stacks
+	MOVE.L	BV_BTBAS(A6),BV_BTP(A6) ;backtrack running ptr
+	MOVE.L	BV_TGBAS(A6),BV_TGP(A6) ;graph stack running ptr
+	MOVE.L	BV_TKBAS(A6),BV_TKP(A6) ;token list
+	MOVEQ	#$7E,D1
+	JSR	L04E6E(PC)	;*/undomodify BSR L04E6E
+	MOVEQ	#$20,D1
+	JSR	BV_CHRIX(PC)	;*/undomodify BSR BV_CHRIX
+	MOVE.L	BV_RIP(A6),BV_TGBAS(A6) ;arith stack
+	SUBI.L	#$20,BV_TGBAS(A6) ;graph stack running ptr
+	MOVE.L	BV_TGBAS(A6),BV_TGP(A6) ;graph stack running ptr
+	MOVEQ	#$50,D1
+	JSR	L04E5A(PC)	;*/undomodify BSR L04E5A
+	MOVE.L	BV_TGP(A6),BV_BTBAS(A6) ;temporary graph stack
+				;during parsing
+	SUBI.L	#$50,BV_BTBAS(A6) ;backtrack running pointer
+	MOVE.L	BV_BTBAS(A6),BV_BTP(A6) ;backtrack running ptr
+	MOVEQ	#0,D0
+	JSR	L04E32(PC)	;*/undomodify BSR L04E32
+				;allocate memory
+	MOVE.W	#$0200,D1
+	JMP	L04E54(PC)	;*/undomodify BRA L04E54
+L08966:
+	MOVEM.L	D0-D5/A1-A5,-(A7)
+	MOVEA.L	A2,A3
+	MOVEA.L	A0,A1
+	MOVEQ	#0,D3
+	MOVEQ	#0,D4
+	MOVEQ	#0,D5
+	MOVEQ	#0,D0
+	LSR.B	#1,D6
+	BEQ.S	L08980
+	JSR	L0858C(PC)	;*/undomodify BSR L0858C
+	BRA.S	L08986
+L08980	ST	D0
+	SWAP	D0
+	MOVEQ	#1,D6
+L08986	MOVEQ	#0,D1
+	CMP.B	(A2),D6
+	BGT	L08A48
+	MOVE.B	0(A2,D6.W),D1
+	ADDA.L	D1,A2
+	MOVE.B	(A2)+,D1
+	ROR.L	#4,D1
+	MOVE.B	D1,D4
+	SWAP	D1
+	ROL.W	#4,D1
+	MOVE.B	D1,D3
+L089A0	SUBQ.B	#1,D4
+	BLT.S	L089FC
+	MOVE.B	(A2)+,D2
+	CMPI.B	#$60,D2
+	BGT.S	L089B2
+	ST	D0
+	SF	D5
+	BRA.S	L089BC
+L089B2	SF	D0
+	TST.B	D5
+	BNE.S	L089A0
+	SUBI.B	#$20,D2
+L089BC	MOVE.B	0(A6,A0.L),D1
+	ADDQ.W	#1,A0
+	CMPI.B	#$60,D1
+	BLE.S	L089CC
+	SUBI.B	#$20,D1
+L089CC	CMP.B	D2,D1
+	BEQ.S	L089A0
+	TST.B	D0
+	BNE.S	L089DA
+	ST	D5
+	SUBQ.W	#1,A0
+	BRA.S	L089A0
+L089DA	SWAP	D0
+	TST.B	D0
+	BEQ.S	L08A48
+	SWAP	D5
+	TST.B	D5
+	SWAP	D5
+	BEQ.S	L089EC
+	TST.B	D3
+	BNE.S	L089F4
+L089EC	ADDQ.W	#1,D6
+	MOVEA.L	A1,A0
+	MOVEA.L	A3,A2
+	BRA.S	L08986
+L089F4	MOVEA.L	A4,A0
+	SUBQ.B	#1,D3
+	ADDA.L	D4,A2
+	BRA.S	L08A30
+L089FC	SWAP	D0
+	TST.B	D0
+	BEQ.S	L08A38
+	MOVE.B	0(A6,A0.L),D1
+	BLT.S	L08A48
+	LEA	L03C28(PC),A5	;table defines type of
+				;ASCII code
+	CMPI.B	#$01,0(A5,D1.W)
+	BEQ.S	L08A1E
+	CMPI.B	#$02,0(A5,D1.W)
+	BEQ.S	L08A48
+	BRA.S	L08A40
+L08A1E	SWAP	D5
+	TST.B	D5
+	BNE.S	L08A48
+	TST.B	D3
+	BEQ.S	L08A48
+	ST	D5
+	SWAP	D5
+	SUBQ.B	#1,D3
+	MOVEA.L	A0,A4
+L08A30	MOVE.B	(A2)+,D4
+	LSR.B	#4,D4
+	BRA	L089A0
+L08A38	MOVEQ	#-$7F,D4
+	MOVE.B	D6,D5
+	JSR	L08DFA(PC)	;*/undomodify BSR L08DFA
+L08A40	MOVEM.L	(A7)+,D0-D5/A1-A5
+	ADDQ.L	#2,(A7)
+	RTS
+L08A48	MOVEM.L	(A7)+,D0-D5/A1-A5
+	RTS
+COMP_ERR ; error when compiling
+	MOVE.L	BV_TKBAS(A6),BV_TKP(A6) ;token list
+	MOVEA.L	(A6),A0
+	JSR	L08474(PC)	;*/undomodify BSR L08474
+	BRA.S	L08A76		;error
+	MOVEQ	#-$7F,D4 	;error
+	MOVEQ	#$1F,D5
+	JSR	L08DFA(PC)	;*/undomodify BSR L08DFA
+	JSR	L085F2(PC)	;*/undomodify BSR L085F2
+				;success
+	BRA.S	L08A76
+	MOVEQ	#-$7C,D4
+	MOVEQ	#$0A,D5
+	JSR	L08DFA(PC)	;*/undomodify BSR L08DFA
+	MOVEQ	#0,D0
+	RTS
+L08A76	MOVEQ	#-21,D0		;Bad line error
+	RTS
+L08A7A	MOVE.L	A5,D4
+	BRA.S	L08A80
+L08A7E	MOVEQ	#0,D4
+L08A80	JSR	L04E52(PC)	;*/undomodify BSR L04E52
+				;reserve 12 byte on
+				;arith stack
+	MOVEA.L	BV_BTP(A6),A4	;backtrack stack
+				;during parsing
+	SUBA.W	#$0C,A4
+	MOVE.L	D4,8(A6,A4.L)	;push D4 on Backtrack stack
+	MOVE.L	A0,4(A6,A4.L)	;push A0 on Backtrack stack
+	MOVE.L	BV_TKP(A6),0(A6,A4.L) ;token list running ptr
+	MOVE.L	A4,BV_BTP(A6)	;backtrack stack
+				;during parsing
+	RTS
+PUSHD4TG:
+	JSR	L04E58(PC)	;*/undomodify BSR L04E58
+				;reserve 4 bytes on
+				;arith stack
+	MOVEA.L	BV_TGP(A6),A4	;temporary graph stack
+				;during parsing
+	SUBQ.W	#4,A4
+	MOVE.L	D4,0(A6,A4.L)	;put D4 on stack
+	MOVE.L	A4,BV_TGP(A6)	;temporary graph stack
+				;during parsing
+	RTS
+; --------------------------------------------------------------
+; Format precompiled BASIC line. The line has to be tokenized
+; and starts from 8(A6) and ends at $C(A6)
+; --------------------------------------------------------------
+FMT_LINE:
+	MOVEA.L	8(A6),A0 	;token list
+L08AB8	CMPA.L	BV_TKP(A6),A0	;token list running pointer
+	BGE.S	L08ADA		;end of list ?
+	CMPI.B	#$81,0(A6,A0.L)	;Search for non keyword
+				;token in token list
+	BNE.S	L08ACC
+	ADDQ.W	#2,A0
+	BSR.S	GO_SPACE
+	BRA.S	L08AB8
+L08ACC	CMPI.W	#$8409,0(A6,A0.L) ;symbol 9 = ?
+	ADDQ.W	#2,A0
+	BNE.S	L08AB8
+	BSR.S	L08B10		;remove item from token
+				;list
+	BRA.S	L08AB8
+L08ADA	MOVEA.L	BV_TKBAS(A6),A0	;token list
+	CMPI.B	#$80,0(A6,A0.L)	;space token
+	BNE.S	L08AEA
+	ADDQ.W	#2,A0
+	BSR.S	L08B10		;remove space from token
+				;list
+L08AEA	CMPI.W	#$8D00,0(A6,A0.L) ;line # ?
+	BNE.S	L08B0E		;return
+	ADDQ.W	#4,A0
+GO_SPACE ; remove waste spaces
+	CMPI.B	#$80,0(A6,A0.L)	;space token ?
+	BNE.S	L08B0E		;no -> return
+	MOVE.B	1(A6,A0.L),D1
+	ADDQ.W	#2,A0		;next token
+	SUBQ.B	#1,D1
+	BGT.S	L08B0A
+	BSR.S	L08B10		;remove space from token
+				;list
+	BRA.S	L08B0E
+L08B0A	MOVE.B	D1,-1(A6,A0.L)	;really neccessary
+				;??????????? <----
+L08B0E	RTS
+; remove last item from token list
+L08B10	LEA	-2(A0),A2	;old value of token list
+				;pointer before inc.
+L08B14	MOVE.W	0(A6,A0.L),-2(A6,A0.L)
+	ADDQ.W	#2,A0
+	CMPA.L	BV_TKP(A6),A0	;token list running pointer
+	BLT.S	L08B14
+	SUBQ.L	#2,BV_TKP(A6)	;token list running pointer
+	MOVEA.L	A2,A0
+	RTS
+; NOW SEPERATORS =:#,(){} SPACE AND CR
+; THIS WAS INTERPRETED AS CODE !!! CORRECTED
+L08B2A	DC.L	$3D3A232C
+	DC.L	$28297B7D
+	DC.W	$200A
+L08B34	LSR.B	#1,D6
+L08B36	MOVE.B	0(A6,A0.L),D1
+	CMP.B	L08B2A-1(PC,D6.W),D1
+	BEQ.S	L08B4C
+	CMPI.B	#$20,D1
+	BNE.S	L08B58
+	JSR	L0858C(PC)	;*/undomodify BSR L0858C
+	BRA.S	L08B36
+L08B4C	ADDQ.W	#1,A0
+	MOVEQ	#-$7C,D4
+	MOVE.B	D6,D5
+	JSR	L08DFA(PC)	;*/undomodify BSR L08DFA
+	ADDQ.L	#2,(A7)
+L08B58	RTS
+; --------------------------------------------------------------
+;*/beginoverlay
+;*/beginfilling
+;*/removecode TB_LIST
+;TB_LIST:
+;	 DC.L	 L08D2B-ORG0
+;	 DC.L	 COM_SYNX-ORG0
+
+NOP08B62:
+	DCB.w	($8B62-(NOP08B62-ORGN))/2,$4E71
+;*/endfilling
+;*/endoverlay
+; --------------------------------------------------------------
+COM_SYNX ; Command syntax table
+	DC.L	$0022004E,$00AE0060
+	DC.L	$006600BC,$00C400E3,$00FA0163,$01780185
+	DC.L	$019901A2,$01B001BD,$01BE1401,$840F8A12
+	DC.L	$861E8809,$68F98C05,$90039201,$25F13500
+	DC.L	$00780625,$EA350000,$33E525E3,$35000035
+	DC.L	$0025018E,$DA004E02,$00500452,$02003202
+	DC.L	$00020200,$80940000,$44084812,$4C164608
+	DC.L	$00320200,$17160033,$02009800,$00320200
+	DC.L	$0200005C,$0A320200,$02190023,$0C008033
+	DC.L	$02009808,$00270900,$960D0080,$28F50098
+	DC.L	$0C00809A,$00007A09,$8028EE00,$8028E700
+	DC.L	$33020098,$F4004A02,$00320200,$6A041600
+	DC.L	$0033FC00,$660A6408,$6C0C6A11,$22150032
+	DC.L	$02000200,$00803202,$00980000,$32020002
+	DC.L	$EC006E00,$96020028,$FC800042,$0200480D
+	DC.L	$440B4600,$4A004C00,$4E020080,$32020002
+	DC.L	$00006216,$704D7219,$74217C2B,$7E29542A
+	DC.L	$6A337649,$9E4D0251
+	DC.W	$0080
+L08C74	DC.L	$32020098,$00003202,$009C0200,$28FC8000
+	DC.L	$32020002,$049C0200,$28FA8000,$12000056
+	DC.L	$04580200,$32020098,$00003202,$00980200
+	DC.L	$54020056,$04580200,$33020098,$020028FC
+	DC.L	$80003202,$009E0200,$22020098,$0000A000
+	DC.L	$002B0200,$02042B07,$0028FA2D,$00000202
+	DC.L	$0028FC2D,$F7009802,$00560380,$00320200
+	DC.B	$98,$00,$00
+; --------------------------------------------------------------
+;*/beginoverlay
+;*/removecode EXP_SYNX
+;*/beginfilling
+EXP_SYNX ; Expression syntax table
+	DC.B	$0C,$01,$2A,$08,$10
+	DC.L	$0C040C02,$08009802
+	DC.L	$002C0400,$2A05800A,$EB00A202,$002CF600
+	DC.L	$0202002A,$02009802,$0028FC2C,$00000202
+	DC.L	$00802A02,$00A20200,$2CF80080,$0EFE2601
+	DC.L	$9802000E
+	DC.B	$F7,$80,$00
+
+;	 DC.B	 $00
+;NOP08D2A:
+;	 DCB.w	 ($8D2A-(NOP08D2A-ORGN))/2,$4E71
+;	 DC.B	 $00
+;*/endfilling
+;*/endoverlay
+; --------------------------------------------------------------
+L08D2B	; Base of instruction list
+	DC.B	$1F
+	DC.L	$2024282B
+	DC.W	$3239
+	DC.L	$3E454F58
+	DC.L	$5B5E6267
+	DC.L	$6D71777F
+	DC.L	$84898E91
+	DC.L	$98A2A7AB
+	DC.L	$B1B5BABF
+	DC.W	$C636
+	DC.B	'END',$30,'FOR'
+	DC.B	$20,'IF',$60,'REPeat'
+	DC.B	$60,'SELect',$40,'WHEN'
+	DC.B	$62,'DEFine',$90,'PROCedure'
+	DC.B	$80,'FuNction',$22,'GO TO'
+	DC.B	$30,'SUB',$41,'WHEN',$50,'ERRor'
+	DC.B	$30,'END',$50,'ERRor',$70,'RESTORE'
+L08DAA	DC.B	$40,'NEXT',$40,'EXIT',$40,'ELSE'
+	DC.B	$20,'ON',$60,'RETurn'
+	DC.B	$90,'REMAINDER',$40,'DATA'
+	DC.B	$30,'DIM',$50,'LOCal'
+	DC.B	$30,'LET',$40,'THEN',$40,'STEP'
+	DC.B	$60,'REMark',$70,'MISTake',$00
+L08DFA	MOVEQ	#2,D1
+	BSR.S	L08E68
+	MOVE.B	D4,0(A6,A3.L)
+	MOVE.B	D5,1(A6,A3.L)
+	ADDQ.W	#2,A3
+	BRA.S	L08E5E
+L08E0A	MOVEQ	#$04,D1
+	MOVEQ	#0,D2
+	BSR.S	L08E76
+L08E10	BRA.S	L08E5E
+L08E12	MOVEQ	#$06,D1
+L08E14	MOVE.L	A1,BV_RIP(A6)	;arith stack
+	BSR.S	L08E68
+	MOVEA.L	$0058(A6),A1	;arith stack
+	ADDQ.L	#6,BV_RIP(A6)	;arith stack
+	MOVE.W	0(A6,A1.L),D2
+	ADDI.W	#$F000,D2
+	MOVE.W	D2,0(A6,A3.L)
+	MOVE.L	2(A6,A1.L),2(A6,A3.L)
+	ADDQ.W	#6,A3
+	BRA.S	L08E5E
+L08E38	MOVEQ	#1,D1
+	ADD.W	D5,D1
+	BVS.S	L08E64
+L08E3E	ADDQ.W	#4,D1
+	BSR.S	L08E76
+	BEQ.S	L08E5E
+	MOVE.W	D5,D1
+L08E46	MOVE.B	0(A6,A2.L),0(A6,A3.L)
+	ADDQ.W	#1,A3
+	ADDQ.W	#1,A2
+	SUBQ.W	#1,D1
+	BNE.S	L08E46
+	BTST	D7,D5
+	BEQ.S	L08E5E
+	MOVE.B	D7,0(A6,A3.L)
+	ADDQ.W	#1,A3
+L08E5E	MOVE.L	A3,BV_TKP(A6)	;token list running pointer
+L08E62	RTS
+L08E64	ADDQ.W	#4,A7
+	RTS
+L08E68	MOVE.B	D2,-(A7)
+	JSR	L04E6E(PC)	;*/undomodify BSR L04E6E
+	MOVE.B	(A7)+,D2
+	MOVEA.L	BV_TKP(A6),A3	;token list running pointer
+	RTS
+L08E76	BSR.S	L08E68
+	MOVE.B	D4,0(A6,A3.L)
+	MOVE.B	D2,1(A6,A3.L)
+	MOVE.W	D5,2(A6,A3.L)
+	ADDQ.W	#4,A3
+	RTS
+STO_LINE ; Store compiled line
+	MOVEA.L	BV_TKBAS(A6),A1	;token list
+	CMPI.B	#$8D,0(A6,A1.L)
+	BNE	L08F82
+	MOVE.W	2(A6,A1.L),D2
+	MOVE.L	BV_TKP(A6),D1	;token list running pointer
+	SUB.L	A1,D1
+	SUBQ.W	#6,D1
+	SEQ	D0
+	ADDQ.W	#6,D1
+	MOVEQ	#0,D6
+	MOVEQ	#0,D5
+	MOVEA.L	BV_PFBAS(A6),A0	;program file
+	MOVEQ	#0,D3
+	BRA.S	L08EB6
+L08EB2	MOVE.W	$02(A6,A0.L),D3
+L08EB6	ADD.W	D5,D6
+	ADDA.L	D6,A0
+	MOVE.W	0(A6,A0.L),D5
+	ADDQ.W	#2,A0
+	CMPA.L	BV_PFP(A6),A0	;program running pointer
+	BLT.S	INS_LINE
+	ADDQ.B	#1,D0
+	BGT.S	L08F44
+	SUBQ.W	#2,A0
+	BRA.S	L08EFE
+INS_LINE ; insert new line in prog
+	CMP.W	2(A6,A0.L),D2
+	BGT.S	L08EB2
+	BEQ.S	L08F00
+	SUBQ.W	#2,A0
+	TST.B	D0
+	BNE.S	L08EFE
+	ADDQ.W	#2,D1
+	BSR	L08F84
+	BSR.S	L08F3A
+	SUBQ.W	#2,D1
+	MOVE.W	D1,D5
+	SUB.W	D6,D5
+	MOVE.W	D5,0(A6,A0.L)
+	MOVEQ	#$01,D0
+L08EF0	BSR	L08F92
+	ADD.W	0(A6,A0.L),D6
+	SUB.W	D1,D6
+	MOVE.W	D6,0(A6,A0.L)
+L08EFE	BRA.S	L08F5C
+L08F00	; replace existing line in prog
+	TST.B	D0
+	BEQ.S	L08F06
+	MOVEQ	#-$02,D1
+L08F06	ADD.W	D6,D5
+	LEA	-$0002(A0),A3
+	ADDA.L	D5,A0
+	CMPA.L	BV_PFP(A6),A0	;program running pointer
+	BGE.S	L08F3C
+	SUB.W	D5,D1
+	BLT.S	L08F1A
+	BSR.S	L08F84
+L08F1A	BSR.S	L08F3A
+	MOVEA.L	A3,A0
+	ADD.W	D5,D1
+	BGT.S	L08F2E
+	ADD.W	0(A6,A0.L),D5
+	SUB.W	D6,D5
+	MOVE.W	D5,0(A6,A0.L)
+	BRA.S	L08F5C
+L08F2E	MOVE.W	D1,D4
+	SUB.W	D6,D4
+	MOVE.W	D4,0(A6,A0.L)
+	MOVE.W	D5,D6
+	BRA.S	L08EF0
+L08F3A	BRA.S	L08FA6
+L08F3C	LEA	2(A3),A0
+	MOVE.L	A3,BV_PFP(A6)	;program running pointer
+L08F44	SUBQ.W	#2,A0
+	TST.B	D0
+	BLT.S	L08F5C
+	ADDQ.W	#2,D1
+	BSR.S	L08F84
+	SUBQ.W	#2,D1
+	SUB.W	D6,D1
+	MOVE.W	D1,0(A6,A0.L)
+	BSR.S	L08F92
+	MOVE.L	A0,BV_PFP(A6)	;program running pointer
+L08F5C	TST.B	$00B9(A6)
+	BEQ.S	L08F80
+	SF	BV_AUTO(A6)	;Whether AUTO/EDIT
+				;is on ($FF) or off (0)
+	BGT.S	L08F70
+	MOVE.W	D3,BV_EDLIN(A6)	;Line # to edit next
+	BNE.S	L08F7C
+	BRA.S	L08F80
+L08F70	CMPA.L	BV_PFP(A6),A0	;program running pointer
+	BGE.S	L08F7C
+	MOVE.W	$04(A6,A0.L),BV_EDLIN(A6) ;Line # to
+				     ;edit next
+L08F7C	ST	BV_AUTO(A6)	;Whether AUTO/EDIT
+				;is on ($FF) or off (0)
+L08F80	ADDQ.L	#2,(A7)
+L08F82	RTS
+L08F84	MOVEM.L	D0-D3/A0-A3,-(A7)
+	JSR	L04E82(PC)	;*/undomodify BSR L04E82
+	MOVEM.L	(A7)+,D0-D3/A0-A3
+	RTS
+L08F92	ADDQ.W	#2,A0
+	MOVE.W	0(A6,A1.L),0(A6,A0.L)
+	ADDQ.W	#2,A1
+	CMPA.L	BV_TKP(A6),A1	;token list running pointer
+	BLT.S	L08F92
+	ADDQ.W	#2,A0
+	RTS
+L08FA6	MOVEM.L	D0-D3/A0-A3,-(A7)
+	EXT.L	D1
+	TST.L	D1
+	BEQ.S	L08FE0
+	MOVEA.L	BV_PFP(A6),A1	;program running pointer
+	BLT.S	L08FCA
+	LEA	0(A1,D1.W),A2
+L08FBA	SUBQ.W	#2,A1
+	SUBQ.W	#2,A2
+	MOVE.W	0(A6,A1.L),0(A6,A2.L)
+	CMPA.L	A0,A1
+	BGT.S	L08FBA
+	BRA.S	L08FDC
+L08FCA	LEA	0(A0,D1.W),A2
+L08FCE	MOVE.W	0(A6,A0.L),0(A6,A2.L)
+	ADDQ.W	#2,A0
+	ADDQ.W	#2,A2
+	CMPA.L	A1,A0
+	BLT.S	L08FCE
+L08FDC	ADD.L	D1,BV_PFP(A6)	;program running pointer
+L08FE0	MOVEM.L	(A7)+,D0-D3/A0-A3
+	RTS
+L08FE6	ST	BV_PRINT(A6)	;Print from prtok ($ff)
+				;or leave in buffer
+	MOVEA.L	BV_LNBAS(A6),A1	;line # table
+	MOVE.L	BV_LNP(A6),D0	;line # running ptr
+	SUB.L	A1,D0
+	BNE.S	L09000
+	MOVE.W	D2,D4
+	BEQ.S	L09060
+	MOVE.W	D2,D6
+	BRA.S	L09044
+L08FFE	MOVE.W	D4,D2
+L09000	MOVE.W	0(A6,A1.L),D4
+	TST.W	D2
+	BEQ.S	L08FFE
+	MOVE.W	BV_LSBAS(A6),D6	;Bottom line in window
+	CMP.W	BV_LSBEF(A6),D2	;Invisible top line
+	BLT.S	L09060
+	CMP.W	D4,D2
+	BLT.S	L09032
+	CMP.W	BV_LSAFT(A6),D2	;Invisible bottom line
+	BGT.S	L09060
+	CMP.W	D6,D2
+	BGT.S	L0902A
+	TST.B	D5
+	BGE.S	L09044
+	MOVE.W	BV_LSAFT(A6),D6	;Invisible bottom line
+	BRA.S	L09044
+L0902A	TST.B	D5
+	BLT.S	L09060
+	MOVE.W	D2,D6
+	BRA.S	L09044
+L09032	TST.B	D5
+	BLT.S	L09060
+	MOVE.W	D2,D4
+	MOVE.W	BV_MAXLN(A6),D0	;Max. number of window lines
+	SUB.W	BV_TOTLN(A6),D0	;Number of window line so far
+	BGT.S	L09044
+	SUBQ.W	#1,D6
+L09044	MOVE.W	D2,BV_LSFIL(A6)	;fill window when
+				;relisting up to here
+	MOVEQ	#$10,D0		;SD.POS position cursor at
+				;row, column (char)
+	MOVEQ	#0,D2
+	MOVEQ	#0,D1
+	BSR.S	L0905C
+	MOVEQ	#0,D7
+	JSR	TKN_LIST(PC)	;*/undomodify BSR TKN_LIST
+	MOVEQ	#$24,D0		;clears right hand end of
+				;cursor line
+	BSR.S	L0905C
+	MOVEQ	#$22,D0		;Clears bottom of window
+L0905C	MOVEQ	#-1,D3
+	TRAP	#3
+L09060	RTS
+L09062:
+	DC.L	$02020404,$02020204,$040204FB,$FB040200
+L09072:
+	MOVEQ	#0,D0
+	MOVEQ	#6,D1
+	MOVE.B	0(A6,A4.L),D0
+	BEQ.S	L09098
+	SUBI.B	#$80,D0
+	CMPI.B	#$70,D0
+	BGE.S	L09096
+	MOVE.B	L09062(PC,D0.W),D1
+	BGE.S	L09096
+	NEG.B	D1
+	ADD.W	2(A6,A4.L),D1
+	BCLR	#0,D1
+L09096	ADDA.L	D1,A4
+L09098	MOVE.B	0(A6,A4.L),D0
+	MOVE.W	0(A6,A4.L),D1
+	RTS
+L090A2	MOVE.L	A1,-(A7)
+	MOVEA.L	BV_CHBAS(A6),A1	;channel name
+	ADDA.W	#$50,A1
+	MOVE.L	0(A6,A1.L),D0
+	SUB.L	A0,D0
+	MOVEA.L	(A7)+,A1
+	RTS
+L090B6:
+	MOVE.L	A5,-(A7)
+	MOVEA.L	A0,A5
+	BSR.S	L090A2
+	SEQ	$9B(A6)		;whether checking list
+				;($FF) or not (0)
+	BNE.S	L09108
+	MOVEQ	#$0B,D0		;get window size and cursor
+				;position
+	LEA	$A2(A6),A1	;length of window line
+	MOVEQ	#-1,D3
+	TRAP	#3
+	MOVE.L	BV_LNBAS(A6),BV_LNP(A6)   ;line # table ->
+				;running pointer
+	CLR.W	BV_TOTLN(A6)	;number of window lines so far
+	MOVEQ	#$64,D1
+				;*/undoinsert MOVEQ #$44,D2
+	JSR	L04E7E(PC)	;*/undomodify BSR L04E7E
+				;*/undomodify BSR L04E84
+	MOVE.W	BV_LINUM(A6),BV_LSBEF(A6) ;Current line # ->
+				;invisible top line
+	MOVE.W	#$7FFF,BV_LSAFT(A6) ;Invisible bottom line
+	BRA.S	L09108
+L090EA:
+	DC.W	L092F8-L090EA
+	DC.W	L09314-L090EA
+	DC.W	L09292-L090EA
+	DC.W	L09292-L090EA
+	DC.W	L09338-L090EA
+	DC.W	L0930E-L090EA
+	DC.W	L0931A-L090EA
+	DC.W	L09292-L090EA
+	DC.W	L0929C-L090EA
+	DC.W	L09292-L090EA
+	DC.W	L09292-L090EA
+	DC.W	L092E2-L090EA
+	DC.W	L092EC-L090EA
+	DC.W	L09238-L090EA
+	DC.W	L09308-L090EA
+L09108	MOVE.L	(A2),-(A7)
+	ADDQ.W	#2,A4
+	MOVEQ	#0,D4
+	MOVE.B	#$8D,D4
+L09112	MOVE.L	(A6),4(A6)	;Buffer base -> buffer
+				;running pointer
+L09116	CMPA.L	BV_PFP(A6),A4	;program running pointer
+	BLT.S	L09130
+	TST.B	BV_PRINT(A6)	;Print from prtok ($ff)
+				;or leave in buffer
+	BNE	L09202
+	TST.B	BV_AUTO(A6)	;Whether AUTO/EDIT
+				;is on ($FF) or off (0)
+	BEQ	L09202
+	BSR	L09250
+L09130	MOVEQ	#$10,D1
+	BSR	L092C0
+	MOVEA.L	(A7),A1
+	SUBI.B	#$80,D4
+	CMPI.B	#$70,D4
+	BGE	L091F2
+	ADD.B	D4,D4
+	MOVE.W	L090EA(PC,D4.W),D4
+	JSR	L090EA(PC,D4.W)
+	CMPI.B	#$8D,D4
+	BNE	L091F4
+	TST.B	BV_PRINT(A6)	;Print from prtok ($ff)
+				;or leave in buffer
+	BEQ	L091FE
+	TST.B	BV_LSANY(A6)	;Whether checking
+				;list ($ff) or not (0)
+	BEQ.S	L091B8
+	MOVEA.L	(A6),A1
+	MOVE.L	BV_BFP(A6),D2	;buffer running pointer
+	SUB.L	A1,D2
+	MOVEA.L	BV_LNP(A6),A2	;line # running ptr
+	MOVE.W	BV_LSBAS(A6),0(A6,A2.L) ;Bottom line in window
+	SUBQ.W	#2,D2
+	DIVU	BV_LENLN(A6),D2	;Length of window line
+	ADDQ.W	#1,D2
+	MOVE.W	D2,2(A6,A2.L)
+	ADD.W	BV_TOTLN(A6),D2	;Number of window line so far
+L09186	CMP.W	BV_MAXLN(A6),D2	;Max. number of window lines
+	BLE.S	L091AC
+	MOVE.W	BV_LSFIL(A6),D0
+	BEQ.S	L09198
+	CMP.W	BV_LSBAS(A6),D0	;Bottom line in window
+	BLT.S	L091E4
+L09198	MOVEA.L	BV_LNBAS(A6),A2	;line # table
+	SUB.W	2(A6,A2.L),D2
+	MOVE.W	0(A6,A2.L),BV_LSBEF(A6) ;Invisible top line
+	ADDQ.L	#4,BV_LNBAS(A6)	;line # table
+	BRA.S	L09186
+L091AC	MOVE.W	D2,BV_TOTLN(A6)	;Number of window line so far
+	ADDQ.L	#4,BV_LNP(A6)	;line # running ptr
+	JSR	L04F9E(PC)	;*/undomodify BSR L04F9E
+L091B8:
+	MOVEQ	#IO.SSTRG,D0	;send a string of bytes
+	MOVEA.L	(A6),A1		;string to be send
+	MOVE.L	4(A6),D2 	;number of bytes
+	SUB.L	A1,D2
+	MOVEA.L	A5,A0
+	MOVEQ	#-1,D3
+	TRAP	#4
+	TRAP	#3
+	TST.L	D0
+	BNE.S	L09204
+; --------------------------------------------------------------
+*/beginoverlay
+	ifd	NoTas
+				;*/remove MOVE.L D1,D2
+				;*/note could be dangerous?
+	MOVEQ	#$24,D0		;SD.CLRRT clears right hand
+				;end of cursor line
+	TRAP	#3
+	BSET	#7,BV_BRK(A6)	;*/mend TAS BV_BRK(A6)
+				;There has been a
+				;break (0) or not ($80)
+	endc
+;
+	ifnd	NoTas
+;
+	MOVE.L	D1,D2
+	MOVEQ	#$24,D0
+	TRAP	#3
+	TAS	BV_BRK(A6)
+;
+	endc
+*/endoverlay
+; --------------------------------------------------------------
+	BNE	L09112
+	MOVE.W	BV_LSBAS(A6),BV_LSAFT(A6) ;windows last line
+	BRA.S	L09202
+L091E4:
+	MOVE.W	BV_LSBAS(A6),BV_LSAFT(A6) ;windows last line
+	MOVE.W	-$04(A6,A2.L),BV_LSBAS(A6)
+	BRA.S	L09202
+L091F2	BSR.S	L09216
+L091F4	JSR	L09072(PC)	;*/undomodify BSR L09072
+	MOVE.W	D0,D4
+	BRA	L09116
+L091FE	SUBQ.L	#1,4(A6)
+L09202	MOVEQ	#0,D0
+L09204	ADDQ.W	#4,A7
+	MOVEA.L	A5,A0
+	MOVEA.L	(A7)+,A5
+	RTS
+L0920C	JSR	L04E4C(PC)	;*/undomodify BSR L04E4C
+	MOVEA.L	$0058(A6),A1	;arith stack
+	RTS
+L09216	BSR.S	L0920C
+	MOVE.W	0(A6,A4.L),D2
+	SUBI.W	#$F000,D2
+	SUBQ.W	#6,A1
+	MOVE.W	D2,0(A6,A1.L)
+	MOVE.L	2(A6,A4.L),2(A6,A1.L)
+	MOVEA.L	4(A6),A0
+	JSR	CN_FTOD(PC)	;*/undomodify BSR CN_FTOD
+	BRA	L09364
+L09238:
+	BSR.S	L0920C
+	MOVE.W	$02(A6,A4.L),D1
+	TST.B	BV_PRINT(A6)	;Print from prtok ($ff)
+				;or leave in buffer
+	BNE.S	L0925C
+	TST.B	BV_AUTO(A6)	;Whether AUTO/EDIT
+				;is on ($FF) or off (0)
+	BEQ.S	L0925C
+	CMP.W	BV_EDLIN(A6),D1	;line # to edit next
+	BEQ.S	L0925C
+L09250	BSR.S	L0920C
+	MOVE.W	BV_EDLIN(A6),D1	;line # to edit next
+	BSR.S	L09276
+L09258	ADDQ.W	#4,A7
+	BRA.S	L09202
+L0925C	TST.B	BV_LSANY(A6)	;Whether checking
+				;list ($ff) or not (0)
+	BEQ.S	L09288
+	CMP.W	D6,D1
+	BLE.S	L09272
+	TST.W	BV_LSFIL(A6)
+	BNE.S	L09272
+	MOVE.W	D1,BV_LSAFT(A6)	;Invisible bottom line
+	BRA.S	L09258
+L09272	MOVE.W	D1,BV_LSBAS(A6)	;Bottom line in window
+L09276	SUBQ.W	#2,A1
+	MOVE.W	D1,0(A6,A1.L)
+	MOVEA.L	BV_BFP(A6),A0	;buffer running pointer
+	JSR	CN_ITOD(PC)	;*/undomodify BSR CN_ITOD
+	BRA	L09316
+L09288	CMP.W	D6,D1
+	BGT.S	L09258
+	BRA.S	L09276
+L0928E	DC.W	$3F3F,$3F3F
+L09292:
+	MOVEQ	#4,D1
+	LEA	L0928E(PC),A1
+	BRA	L0935A
+L0929C:
+	MOVE.W	2(A6,A4.L),D2
+	LSL.L	#3,D2
+	MOVEA.L	BV_NTBAS(A6),A1	;name table
+	ADDA.W	D2,A1
+	MOVE.W	2(A6,A1.L),D2
+	BLT.S	L09292
+	MOVEA.L	BV_NLBAS(A6),A1	;name list
+	ADDA.W	D2,A1
+	MOVEQ	#0,D1
+	MOVE.B	0(A6,A1.L),D1
+	ADDQ.W	#1,A1
+	BRA	L09354
+L092C0	SUBA.L	BV_PFBAS(A6),A4	;program file
+	SUBA.L	BV_PFBAS(A6),A1	;program file
+	MOVEM.L	D1/A1/A4,-(A7)
+	JSR	L04E6A(PC)	;*/undomodify BSR L04E6A
+	MOVEA.L	4(A6),A0
+	MOVEM.L	(A7)+,D1/A1/A4
+	ADDA.L	BV_PFBAS(A6),A1	;program file
+	ADDA.L	BV_PFBAS(A6),A4	;program file
+	RTS
+L092E2:
+	BSR.S	L092E6
+	BSR.S	L092EC
+L092E6	MOVE.B	$01(A6,A4.L),D2
+	BRA.S	L0934C
+L092EC:
+	MOVE.W	$02(A6,A4.L),D1
+	BEQ.S	L09306
+	LEA	4(A4),A1
+	BRA.S	L09354
+L092F8:
+	MOVE.B	$1(A6,A4.L),D1
+	BSR.S	L092C0
+L092FE	MOVEQ	#$20,D2
+	BSR.S	L0934C
+	SUBQ.B	#1,D1
+	BGT.S	L092FE
+L09306	RTS
+L09308:
+	LEA	L0936C(PC),A1
+	BRA.S	L0931E
+L0930E:
+	LEA	L0938E(PC),A1
+	BRA.S	L0931E
+L09314:
+	BSR.S	L0931E
+L09316	MOVEQ	#$20,D2
+	BRA.S	L0934C
+L0931A:
+	LEA	L0937E(PC),A1
+L0931E	MOVE.B	1(A6,A4.L),D1
+	MOVE.B	0(A1,D1.W),D1
+	ADDA.L	D1,A1
+	MOVE.B	(A1)+,D1
+	LSR.L	#4,D1
+	BRA.S	L0935A
+L0932E	; separators =:#,(){} space CR
+	DC.W	$3D3A,$232C,$2829,$7B7D,$200A
+L09338:
+	MOVE.B	$1(A6,A4.L),D1
+	MOVE.B	L0932E-1(PC,D1.W),D2
+	MOVEQ	#0,D4
+	SUB.B	D2,D1
+	BNE.S	L0934C
+	ADDQ.W	#4,A4
+	MOVE.B	#$8D,D4
+L0934C	MOVE.B	D2,0(A6,A0.L)
+	ADDQ.W	#1,A0
+	BRA.S	L09364
+L09354	BSR	L092C0
+	ADDA.L	A6,A1
+L0935A	MOVE.B	(A1)+,0(A6,A0.L)
+	ADDQ.W	#1,A0
+	SUBQ.W	#1,D1
+	BGT.S	L0935A
+L09364	MOVE.L	A0,4(A6)
+	MOVEQ	#0,D0
+	RTS
+; ASCII-CODE FOR SEPARATORS
+; THERE ARE 5 -EACH BYTE SHOWS DISPLACEMENT
+L0936C:
+	DC.B	$05,$06,$08,$0A,$0C,$0E
+; HERE THEY ARE - 10 MEANS LENGTH 1
+	DC.B	$10,','
+	DC.B	$10,';',$10,'\'
+	DC.B	$10,'!',$20,'TO',$00
+; NEXT LIST OF 4 OPERATORS
+L0937E:
+	DC.B	$04,$05,$07,$09,$0C
+	DC.B	$10,'-',$10,'+'
+	DC.B	$20,'~~',$30,'NOT'
+* NEXT LIST OF $16 OPERATORS
+L0938E:
+	DC.W	$1617,$191B,$1D1F,$2224,$2729,$2C2F,$3134,$373A
+	DC.W	$3C3E,$4145,$494D
+	DC.B	$51
+	DC.B	$10,'+'
+	DC.B	$10,'-'
+	DC.B	$10,'*'
+	DC.B	$10,'/'
+	DC.B	$20,'>='
+	DC.B	$10,'>'
+	DC.B	$20,'=='
+	DC.B	$10,'='
+	DC.B	$20,'<>'
+	DC.B	$20,'<='
+	DC.B	$10,'<'
+	DC.B	$20,'||'
+	DC.B	$20,'&&'
+	DC.B	$20,'^^'
+	DC.B	$10,'^'
+	DC.B	$10,'&'
+	DC.B	$20,'OR'
+	DC.B	$30,'AND'
+	DC.B	$30,'XOR'
+	DC.B	$30,'MOD'
+	DC.B	$30,'DIV'
+	DC.B	$50,'INSTR'
+	DC.B	0
+L093E6	; create entry in name-table and store value
+	ANDI.B	#$F,1(A6,A2.L)
+	TST.L	4(A6,A2.L)
+	BGE.S	L093F6
+	MOVEQ	#-12,D0		;Bad Name error
+	RTS
+L093F6	JSR	L04E5E(PC)	;*/undomodify BSR L04E5E
+	MOVEA.L	BV_NTP(A6),A3	;name table running pointer
+	ADDQ.L	#8,BV_NTP(A6)	;name table
+				;running pointer
+	MOVE.W	0(A6,A2.L),0(A6,A3.L)
+	MOVE.W	D4,2(A6,A3.L)
+	MOVEA.L	4(A6,A2.L),A2
+	ADDA.L	BV_VVBAS(A6),A2	;variable values
+	MOVE.W	4(A6,A2.L),D1
+	LSL.L	#2,D1
+	ADDQ.W	#6,D1
+	JSR	L07338(PC)	;*/undomodify BSR L07338
+L09420	MOVE.W	0(A6,A2.L),0(A6,A0.L)
+	ADDQ.W	#2,A2
+	ADDQ.W	#2,A0
+	SUBQ.W	#2,D1
+	BGT.S	L09420
+L0942E	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8401,D1
+	BEQ.S	L09456
+	CMPI.W	#$8405,D1
+	BNE	L094C2
+	ADDQ.W	#2,A4
+	MOVEA.L	A4,A0
+	LEA	8(A3),A5
+	JSR	L06272(PC)	;*/undomodify BSR L06272
+	LEA	-8(A5),A3
+	MOVEA.L	A0,A4
+	BNE.S	L0948E
+	BRA.S	L0942E
+L09456	ADDQ.W	#2,A4
+	CMPI.B	#$02,0(A6,A3.L)
+	BEQ.S	L09478
+	CMPI.B	#$01,$01(A6,A3.L)
+	BGT.S	L094C6
+	MOVEA.L	$04(A6,A3.L),A2
+	ADDA.L	BV_VVBAS(A6),A2	;variable values
+	CMPI.W	#$0001,$04(A6,A2.L)
+	BGT.S	L094C6
+L09478	MOVEA.L	A4,A0
+	MOVE.B	$01(A6,A3.L),D0
+	MOVE.L	A3,-(A7)
+	JSR	L05A84(PC)	;*/undomodify BSR L05A84
+	MOVEA.L	(A7)+,A3
+	MOVEA.L	A0,A4
+	BNE.S	L0948E
+	JSR	BP_LET(PC)	;*/undomodify BSR BP_LET
+L0948E	CMPI.B	#$03,0(A6,A3.L)
+	BNE.S	L094AA
+	MOVEA.L	$04(A6,A3.L),A2
+	ADDA.L	BV_VVBAS(A6),A2	;variable values
+	MOVE.L	D0,-(A7)
+	MOVE.L	A3,-(A7)
+	JSR	L09A3C(PC)	;*/undomodify BSR L09A3C
+	MOVEA.L	(A7)+,A3
+	MOVE.L	(A7)+,D0
+L094AA	CLR.L	0(A6,A3.L)
+	CLR.L	$04(A6,A3.L)
+	ADDQ.W	#8,A3
+	CMPA.L	BV_NTP(A6),A3	;name table running pointer
+	BNE.S	L094BE
+	SUBQ.L	#8,BV_NTP(A6)	;name table running pointer
+L094BE	TST.L	D0
+	RTS
+L094C2	MOVEQ	#-$11,D0
+	BRA.S	L0948E
+L094C6	MOVEQ	#-$13,D0
+	BRA.S	L0948E
+L094CA:
+				;*/undoinsert MOVEQ #$16,D1
+				;*/undoinsert MOVEQ #$3C,D2
+				;*/undomodify BSR L04E84
+	JSR	L04E64(PC)	;*/undomodify BSR L04E64
+	MOVEA.L	BV_RTP(A6),A5	;return table running ptr
+	TST.B	D5
+	BEQ.S	L09504
+	MOVE.L	D4,D3
+	MOVEA.L	BV_NTP(A6),A3	;name table running pointer
+	MOVE.L	A3,0(A6,A5.L)
+	MOVE.L	A3,$04(A6,A5.L)
+	MOVE.L	A3,$08(A6,A5.L)
+	MOVE.W	$04(A6,A2.L),D4
+	BNE.S	L094F2
+	MOVEQ	#-$07,D0
+	RTS
+L094F2	MOVE.W	D4,$0C(A6,A5.L)
+	MOVE.B	$01(A6,A2.L),$0E(A6,A5.L)
+	SF	$0F(A6,A5.L)
+	ADDA.W	#$0010,A5
+L09504	MOVE.B	D5,0(A6,A5.L)
+	MOVE.B	BV_STMNT(A6),$01(A6,A5.L) ;current stmnt on line
+	MOVE.W	BV_LINUM(A6),$02(A6,A5.L) ;current line #
+	MOVE.L	BV_INLIN(A6),$04(A6,A5.L) ;Processing inline clause
+	ADDQ.W	#8,A5
+	MOVE.L	A5,BV_RTP(A6)	;return table running ptr
+	TST.B	D5
+	BEQ.S	L09580
+	CMPI.B	#$03,D5
+	BEQ.S	L09578
+	MOVEA.L	A4,A0
+	JSR	L0614A(PC)	;*/undomodify BSR L0614A
+	MOVEA.L	BV_RTP(A6),A5	;return table running ptr
+	MOVE.L	BV_NTP(A6),-$14(A6,A5.L) ;name table running ptr
+	MOVE.L	BV_NTP(A6),-$10(A6,A5.L) ;name table running ptr
+	TST.L	D0
+	BNE.S	L09552
+	MOVE.W	0(A6,A0.L),D1
+	CMPI.B	#$02,D5
+	BEQ.S	L09562
+	BSR.S	L0959E
+	BEQ.S	L09576
+L09552	BSR	L097C8
+	SUBI.L	#$00000018,BV_RTP(A6) ;return table running ptr
+	MOVEQ	#-$0F,D0
+	RTS
+L09562	CMPI.W	#$8406,D1
+	BNE.S	L09552
+	ADDQ.W	#2,A0
+	SUBA.L	BV_TKBAS(A6),A0	;token list
+	MOVE.L	A0,$0008(A7)
+	ADDA.L	BV_TKBAS(A6),A0	;token list
+L09576	MOVEA.L	A0,A4
+L09578	ST	-$09(A6,A5.L)
+	MOVEA.L	-$18(A6,A5.L),A3
+L09580	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	BEQ.S	L095A2
+	BSR.S	L0958E
+	BEQ.S	L095A2
+	MOVEQ	#-$07,D0
+	BRA.S	L095B4
+L0958E	MOVEA.L	BV_PFBAS(A6),A4	;program file
+	SF	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	CLR.W	BV_LENGTH(A6)	;current length
+	JMP	L0A966(PC)	;*/undomodify BRA L0A966
+L0959E	BRA	L09686
+L095A2	TST.B	D5
+	BEQ	L0A078
+	BSR	L09760
+	BSR	L09692
+L095B0	BSR.S	L0960C
+	BEQ.S	L095DC
+L095B4	MOVEA.L	BV_RTP(A6),A5	;return table running ptr
+	MOVE.L	BV_NTP(A6),-$10(A6,A5.L)	;name table
+					;running pointer
+	MOVE.L	BV_NTBAS(A6),D1	;name table
+	SUB.L	D1,-$18(A6,A5.L)
+	SUB.L	D1,-$14(A6,A5.L)
+	SUB.L	D1,-$10(A6,A5.L)
+	TST.L	D0
+	BNE.S	L095DA
+	ADDQ.W	#4,A7
+	JMP	L0A8C0(PC)	;*/undomodify BRA L0A8C0
+	MOVEQ	#0,D0
+L095DA	RTS
+L095DC	ADDQ.W	#2,A4
+	BSR.S	L0965C
+	CMPI.B	#$88,D0
+	BNE.S	L095FE
+	BSR.S	L09660
+	BSR.S	L0965C
+	CMPI.W	#$8405,D1
+	BNE.S	L095FE
+	ADDQ.B	#1,0(A6,A2.L)
+	SUBQ.W	#4,A4
+	JSR	L098E8(PC)	;*/undomodify BSR L098E8
+	BNE.S	L095B4
+	BSR.S	L0965C
+L095FE	CMPI.W	#$8404,D1
+	BEQ.S	L095DC
+	BSR.S	L0959E
+	BEQ.S	L095B0
+	MOVEQ	#-21,D0		;Bad line error
+	BRA.S	L095B4
+L0960C	JSR	L0A60E(PC)	;*/undomodify BSR L0A60E
+	BNE.S	L09628
+	BSR.S	L0965C
+	MOVEQ	#0,D0
+	CMPI.W	#$811E,D1
+	BEQ.S	L0960C
+	CMPI.W	#$8118,D1
+	BEQ.S	L0960C
+	CMPI.W	#$811A,D1
+	RTS
+L09628	MOVEQ	#-10,D0		;End of file error
+	RTS
+; <---------- ??????????
+L0962C	MOVEQ	#0,D0
+	MOVE.W	2(A6,A4.L),D0
+	LSL.L	#3,D0
+	MOVEA.L	BV_NTBAS(A6),A2	;name table
+	ADDA.L	D0,A2
+	MOVE.W	0(A6,A2.L),D0
+	MOVE.W	0(A6,A3.L),0(A6,A2.L)
+	MOVE.W	D0,0(A6,A3.L)
+	MOVE.L	4(A6,A2.L),D0
+	MOVE.L	4(A6,A3.L),4(A6,A2.L)
+	MOVE.L	D0,4(A6,A3.L)
+	ADDQ.W	#8,A3
+	ADDQ.W	#4,A4
+	RTS
+L0965C	JMP	L0A56C(PC)	;*/undomodify BRA L0A56C
+L09660	MOVEA.L	BV_NTP(A6),A3	;name table running ptr
+	MOVE.B	#$02,0(A6,A3.L)
+	MOVE.W	#$FFFF,$02(A6,A3.L)
+	MOVE.L	#$FFFFFFFF,$04(A6,A3.L)
+	BSR.S	L0962C
+	MOVE.B	-$07(A6,A3.L),$01(A6,A2.L)
+	MOVE.L	A3,BV_NTP(A6)	;name table running pointer
+	RTS
+L09686	CMPI.W	#$840A,D1
+	BEQ.S	L09690
+	CMPI.W	#$8402,D1
+L09690	RTS
+L09692	BSR.S	L0965C
+	ADDQ.W	#2,A4
+	BSR.S	L0965C
+	ADDQ.W	#2,A4
+	BSR.S	L0965C
+	TST.W	D3
+	BLT.S	L096A6
+	CMP.W	$02(A6,A4.L),D3
+	BNE.S	L096B4
+L096A6	ADDQ.W	#4,A4
+	BSR.S	L0965C
+	CMPI.W	#$8405,D1
+	BEQ.S	L096C0
+	BSR.S	L09686
+	BEQ.S	L096BA
+L096B4	ADDQ.W	#4,A7
+L096B6	MOVEQ	#-7,D0		;Not found error
+	RTS
+L096BA	MOVEA.L	-$14(A6,A5.L),A3
+	RTS
+L096C0	ADDQ.W	#2,A4
+L096C2	BSR.S	L0965C
+	CMPI.B	#$88,D0
+	BNE.S	L096DE
+	CMPA.L	-$14(A6,A5.L),A3
+	BLT.S	L096D8
+	BSR.S	L09660
+	MOVE.L	A3,-$14(A6,A5.L)
+	BRA.S	L096C2
+L096D8	BSR	L0962C
+	BRA.S	L096C2
+L096DE	CMPI.W	#$8406,D1
+	BNE.S	L096C0
+L096E4	RTS
+DO_RETURn ; execute RETURN
+	MOVEA.L	BV_RTP(A6),A5	;return table running ptr
+	CMPA.L	BV_RTBAS(A6),A5	;return table
+	BLE.S	L096B6
+	MOVE.B	-$08(A6,A5.L),D5
+	BEQ.S	L09718
+	MOVE.B	D5,D0
+	SUBQ.B	#2,D0
+	BLT.S	L09714
+	MOVE.B	-$0A(A6,A5.L),D0
+	MOVEA.L	A4,A0
+	JSR	L05A84(PC)	;*/undomodify BSR L05A84
+	MOVEA.L	A0,A4
+	BLT.S	L096E4
+	BEQ.S	L09710
+	MOVEQ	#-$11,D0
+	RTS
+L09710	MOVEA.L	BV_RTP(A6),A5	;return table running ptr
+L09714	BSR.S	L09768
+	BNE.S	L096E4
+L09718	MOVE.L	-$04(A6,A5.L),BV_INLIN(A6) ;Processing inline clause
+	MOVE.W	-$06(A6,A5.L),D4
+	BSR.S	L09760
+	MOVE.L	-$04(A6,A5.L),BV_INLIN(A6) ;Processing inline clause
+	MOVE.B	-$07(A6,A5.L),D4
+	JSR	L0A00A(PC)	;*/undomodify BSR L0A00A
+	SUBQ.W	#8,A5
+	TST.B	D5
+	BEQ.S	L0973C
+	SUBA.W	#$0010,A5
+L0973C	SF	$0090(A6)	;Need to unravel
+				;($ff) or not (0)
+	MOVE.L	A5,BV_RTP(A6)	;return table running ptr
+	MOVEQ	#0,D0
+	SUBQ.B	#2,D5
+	BLT.S	L0975C
+	MOVEA.L	BV_NTP(A6),A5	;name table running pointer
+	MOVE.B	#$01,-$08(A6,A5.L)
+	ADDQ.W	#8,A7
+	MOVEA.L	(A7)+,A0
+	ADDA.L	BV_TKBAS(A6),A0	;token list
+L0975C	TST.L	D0
+	RTS
+L09760	JSR	L09FA2(PC)	;*/undomodify BSR L09FA2
+	JMP	L0A966(PC)	;*/undomodify BRA L0A966
+L09768	MOVE.L	BV_NTBAS(A6),D0	;name table
+	ADD.L	D0,-$18(A6,A5.L)
+	ADD.L	D0,-$14(A6,A5.L)
+	ADD.L	D0,-$10(A6,A5.L)
+	CMPA.L	BV_PFBAS(A6),A4	;program file
+	BLE.S	L09784
+	CMPA.L	BV_PFP(A6),A4	;program running pointer
+	BLT.S	L09788
+L09784	BSR	L0958E
+L09788	TST.B	-9(A6,A5.L)
+	BEQ.S	L097C8
+	MOVE.W	-$0C(A6,A5.L),D4
+	MOVEA.L	-$14(A6,A5.L),A3
+	BSR.S	L09760
+L09798	BSR	L0960C
+	BNE.S	L097B0
+L0979E	MOVE.W	#$8800,D4
+	JSR	L0A5E0(PC)	;*/undomodify BSR L0A5E0
+	BNE.S	L09798
+	BSR	L0962C
+	SUBQ.W	#4,A4
+	BRA.S	L0979E
+L097B0	MOVE.W	-$0C(A6,A5.L),D4
+	MOVEA.L	-$18(A6,A5.L),A3
+	TST.B	D0
+	BEQ.S	L097C0
+	BSR	L0958E
+L097C0	BSR.S	L09760
+	MOVEQ	#-$01,D3
+	BSR	L09692
+L097C8	MOVEA.L	-$18(A6,A5.L),A3
+	MOVEA.L	-$10(A6,A5.L),A5
+	JSR	STO_VARValue(PC)	;*/undomodify BSR STO_VARValue
+	BNE.S	L0975C
+	MOVEA.L	BV_RTP(A6),A5	;return table running ptr
+	RTS
+L097DC	BSR.S	L097E0
+	RTS
+L097E0	MOVEA.L	BV_CHBAS(A6),A0	;channel name
+	MOVEA.L	0(A6,A0.L),A0
+	MOVE.L	D0,-(A7)
+	MOVEQ	#-$1B,D0
+	JSR	UT_ERR(PC)	;*/undomodify BSR UT_ERR
+	MOVE.L	(A7)+,D0
+L097F2	MOVEA.L	BV_RTP(A6),A5	;return table running ptr
+	CMPA.L	BV_RTBAS(A6),A5	;return table
+	BLE.S	L09828
+	MOVE.B	-$08(A6,A5.L),D5
+	BEQ.S	L0980A
+	BSR	L09768
+	SUBA.W	#$0010,A5
+L0980A	SUBQ.W	#8,A5
+	MOVE.L	A5,BV_RTP(A6)	;return table running ptr
+	SUBQ.B	#2,D5
+	BLT.S	L097F2
+	MOVEA.L	BV_NTP(A6),A5	;name table running pointer
+	SUBQ.W	#8,A5
+L0981A	MOVEQ	#0,D2
+	JSR	L05CBC(PC)	;*/undomodify BSR L05CBC
+	BNE.S	L0981A
+	MOVE.L	A5,BV_NTP(A6)	;name table running pointer
+	BRA.S	L097F2
+L09828	SF	BV_UNRVL(A6)	;Need to unravel
+				;($ff) or not (0)
+	MOVEA.L	(A7)+,A3
+	MOVEA.L	(A7)+,A5
+	TRAP	#0
+	MOVEA.L	BV_SSBAS(A6),A1	;system stack running ptr
+	ADDA.L	A6,A1
+	SUBQ.W	#4,A1
+	MOVE.L	A1,USP
+	andi.w	#%1101111111111111,SR ;*/modify  MOVE.W   #0,SR
+	MOVE.L	A5,-(A7)
+	MOVE.L	A3,-(A7)
+	ST	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	TST.B	$00B8(A6)	;
+	BNE	L0A6EE
+	RTS
+L09852	MOVE.L	A4,-(A7)
+	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BLT.S	L09872
+L0985A	ADDQ.W	#2,A4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	MOVE.L	A4,-(A7)
+	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	CMPA.L	(A7)+,A4
+	BNE.S	L09870
+	TST.B	D0
+	BGE.S	L0985A
+	BRA.S	L09872
+L09870	MOVEQ	#0,D0
+L09872	MOVEA.L	(A7)+,A4
+	RTS
+L09876	MOVEQ	#0,D6
+	MOVE.L	A4,D3
+L0987A	MOVE.W	0(A6,A4.L),D1
+	CMPI.W	#$810A,D1
+	BEQ.S	L098A0
+	JSR	L09686(PC)	;*/undomodify BSR L09686
+	BEQ.S	L098A2
+	CMPI.W	#$8401,D1
+	BNE.S	L0989A
+	TST.B	D6
+	BNE.S	L0989A
+	ADDQ.W	#2,A4
+	MOVE.L	A4,D3
+	MOVEQ	#$01,D6
+L0989A	JSR	L09072(PC)	;*/undomodify BSR L09072
+	BRA.S	L0987A
+L098A0	MOVEQ	#-1,D0
+L098A2	MOVEA.L	D3,A4
+	RTS
+L098A6	;execute DEFine
+	MOVEQ	#7,D2
+L098A8	JSR	L0A60E(PC)	;*/undomodify BSR L0A60E
+	BNE.S	L098C2
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8101,D1
+	BNE.S	L098A8
+	ADDQ.W	#2,A4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMP.B	D2,D1
+	BNE.S	L098A8
+L098C2	MOVEQ	#0,D0
+	RTS
+L098C6	;execute DIM
+	MOVEM.L	D4-D6/A5,-(A7)
+	SUBQ.W	#2,A4
+L098CC	ADDQ.W	#2,A4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	BSR.S	L098E8
+	BNE.S	L098E2
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8404,D1
+	BEQ.S	L098CC
+	MOVEQ	#0,D0
+L098E2	MOVEM.L	(A7)+,D4-D6/A5
+	RTS
+L098E8	MOVEQ	#0,D4
+	MOVE.W	$02(A6,A4.L),D4
+	ADDQ.W	#4,A4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	ADDQ.W	#2,A4
+	MOVEQ	#0,D5
+	MOVEA.L	(A6),A5
+	MOVEA.L	A4,A0
+L098FC	MOVE.L	A5,-(A7)
+	JSR	L05A82(PC)	;*/undomodify BSR L05A82
+	MOVEA.L	(A7)+,A5
+	MOVEA.L	A0,A4
+	BNE.S	L09980
+	ADDQ.L	#1,D5
+	MOVE.W	0(A6,A1.L),0(A6,A5.L)
+	BLT.S	L0997A
+	ADDQ.W	#4,A5
+	ADDQ.L	#2,BV_RIP(A6)	;arith stack
+	ADDQ.W	#2,A0
+	CMPI.W	#$8404,-$02(A6,A0.L)
+	BEQ.S	L098FC
+	CMPI.W	#$8406,-$02(A6,A0.L)
+	BNE.S	L0997E
+	LSL.L	#3,D4
+	MOVEA.L	BV_NTBAS(A6),A3	;name table
+	ADDA.L	D4,A3
+	CMPI.B	#3,0(A6,A3.L)	;array ?
+	BNE.S	L09982
+	MOVE.B	1(A6,A3.L),D6	;get variablle type
+	CMPI.B	#1,D6		;string ?
+	BNE.S	L09958
+	MOVE.W	-4(A6,A5.L),D1
+	ADDQ.W	#1,D1
+	BCLR	#0,D1
+	MOVE.W	D1,-4(A6,A5.L)
+	BLE.S	L0997A
+	MOVEQ	#2,D1
+	BRA.S	L0995A
+L09958	MOVEQ	#1,D1
+L0995A	MOVE.L	D5,D0
+	MOVEQ	#1,D2
+L0995E	SUBQ.W	#4,A5
+	MOVE.W	D2,2(A6,A5.L)
+	SUBQ.L	#1,D0
+	BEQ.S	L09986
+	MOVE.L	D1,D3
+	MOVEQ	#1,D1
+	ADD.W	0(A6,A5.L),D3
+	MULU	D3,D2
+	MOVE.L	D2,D3
+	SWAP	D3
+	TST.W	D3
+	BEQ.S	L0995E
+L0997A	MOVEQ	#-4,D0		;out of range
+	RTS
+L0997E	MOVEQ	#-17,D0		;error in expression
+L09980	RTS
+L09982	MOVEQ	#-12,D0		;Bad name
+	RTS
+L09986	MOVEA.L	A0,A4
+	MOVE.L	4(A6,A3.L),D4
+	BLT.S	L09990
+	BSR.S	L099FE
+L09990	MOVE.L	D5,D1
+	LSL.L	#2,D1
+	ADDQ.L	#6,D1
+	MOVE.L	A3,-(A7)
+	JSR	L04DF6(PC)	;*/undomodify BSR L04DF6
+	MOVEA.L	(A7)+,A3
+	MOVE.L	A0,D1
+	SUB.L	BV_VVBAS(A6),D1	;variable values
+	MOVE.L	D1,$04(A6,A3.L)
+	MOVE.L	A0,-(A7)
+	MOVE.W	D5,$04(A6,A0.L)
+	ADDQ.W	#6,A0
+L099B0	MOVE.L	0(A6,A5.L),0(A6,A0.L)
+	ADDQ.W	#4,A5
+	ADDQ.W	#4,A0
+	SUBQ.L	#1,D5
+	BGT.S	L099B0
+	MOVEA.L	(A6),A5
+	MOVEQ	#$01,D1
+	ADD.W	0(A6,A5.L),D1
+	MULU	$02(A6,A5.L),D1
+	SUBQ.B	#2,D6
+	BLT.S	L099DC
+	BEQ.S	L099D4
+	ADD.L	D1,D1
+	BRA.S	L099DC
+L099D4	ADD.L	D1,D1
+	MOVE.L	D1,D0
+	ADD.L	D1,D1
+	ADD.L	D0,D1
+L099DC	MOVE.L	A3,-(A7)
+	JSR	L04DF6(PC)	;*/undomodify BSR L04DF6
+	MOVEA.L	(A7)+,A3
+	MOVE.L	A0,D2
+	SUB.L	BV_VVBAS(A6),D2	;variable values
+	MOVEA.L	(A7)+,A2
+	MOVE.L	D2,0(A6,A2.L)
+L099F0	CLR.W	0(A6,A0.L)
+	ADDQ.W	#2,A0
+	SUBQ.L	#2,D1
+	BGT.S	L099F0
+	MOVEQ	#0,D0
+	RTS
+L099FE	MOVEA.L	BV_VVBAS(A6),A2	;variable values
+	ADDA.L	D4,A2
+	MOVEQ	#$01,D2
+	ADD.W	$06(A6,A2.L),D2
+	MULU	$08(A6,A2.L),D2
+	MOVE.B	D6,D1
+	SUBQ.B	#2,D1
+	BLT.S	L09A22
+	BEQ.S	L09A1A
+	ADD.L	D2,D2
+	BRA.S	L09A22
+L09A1A	ADD.L	D2,D2
+	MOVE.L	D2,D1
+	ADD.L	D2,D2
+	ADD.L	D1,D2
+L09A22	MOVE.L	D2,D1
+	MOVEA.L	BV_VVBAS(A6),A0	;variable values
+	ADDA.L	0(A6,A2.L),A0
+	MOVE.L	A3,-(A7)
+	MOVE.L	A2,-(A7)
+	JSR	L04FE8(PC)	;*/undomodify BSR L04FE8
+	MOVEA.L	(A7)+,A2
+	BSR.S	L09A3C
+	MOVEA.L	(A7)+,A3
+	RTS
+L09A3C	MOVEQ	#0,D1
+	MOVE.W	$04(A6,A2.L),D1
+	LSL.L	#2,D1
+	ADDQ.L	#6,D1
+	MOVEA.L	A2,A0
+	JMP	L04FE8(PC)	;*/undomodify BRA L04FE8
+L09A4C	; execute ELSE
+	MOVEQ	#0,D4
+L09A4E	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BGE.S	L09A5A
+	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BNE.S	L09AA4
+L09A5A	JSR	L0A60E(PC)	;*/undomodify BSR L0A60E
+	BNE.S	L09AA4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.B	#$81,D0
+	BNE.S	L09A4E
+	ADDQ.W	#2,A4
+	CMPI.B	#$03,D1
+	BNE.S	L09A8C
+	JSR	L09852(PC)	;*/undomodify BSR L09852
+	BLT.S	L09A88
+	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BNE.S	L09A88
+L09A7E	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BLT.S	L09A5A
+	ADDQ.W	#2,A4
+	BRA.S	L09A7E
+L09A88	ADDQ.W	#1,D4
+	BRA.S	L09A4E
+L09A8C	CMPI.B	#$01,D1
+	BNE.S	L09A4E
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8103,D1
+	BNE.S	L09A4E
+	TST.B	D4
+	BEQ.S	L09AA4
+	SUBQ.W	#1,D4
+	BRA.S	L09A4E
+L09AA4	MOVEQ	#0,D0
+	RTS
+L09AA8	; execute END
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8107,D1
+	BEQ	DO_RETURn
+	CMPI.W	#$8106,D1
+	BEQ.S	L09AE6
+	MOVEQ	#6,D5
+	CMPI.W	#$8104,D1
+	BEQ.S	L09ACA
+	MOVEQ	#7,D5
+	CMPI.W	#$8102,D1
+	BNE.S	L09B28
+L09ACA	ADDQ.W	#2,A4
+	JSR	L0A09E(PC)	;*/undomodify BSR L0A09E
+	BNE.S	L09B2A
+	CMP.B	D5,D1
+	BNE.S	L09B2E
+	MOVE.W	BV_LINUM(A6),$08(A6,A2.L) ;current line #
+	MOVE.B	BV_STMNT(A6),$0B(A6,A2.L) ;current stmnt on line
+	JMP	L0A37A(PC)	;*/undomodify BRA L0A37A
+L09AE6	TST.B	$00C0(A6)	;
+	BNE	BAS_CONTinue
+L09AEE	MOVE.W	BV_LINUM(A6),D4	;current line #
+	MOVEQ	#-1,D3
+	JSR	L0ACC2(PC)	;*/undomodify BSR L0ACC2
+	BNE.S	L09B28
+L09AFA	MOVE.W	$08(A6,A2.L),D4
+	SEQ	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	MOVE.B	$0A(A6,A2.L),-(A7)
+	MOVE.B	$0B(A6,A2.L),BV_INLIN(A6) ;Processing inline clause
+	MOVE.W	$0C(A6,A2.L),BV_INDEX(A6) ;Name tab row of last lp
+	ST	$08(A6,A2.L)
+	JSR	L09FA2(PC)	;*/undomodify BSR L09FA2
+	BNE.S	L09B2C
+	JSR	L0A96A(PC)	;*/undomodify BSR L0A96A
+	BNE.S	L09B2C
+	MOVE.B	(A7)+,D4
+	JSR	L0A00A(PC)	;*/undomodify BSR L0A00A
+L09B28	MOVEQ	#0,D0
+L09B2A	RTS
+L09B2C	ADDQ.W	#2,A7
+L09B2E	MOVEQ	#-$07,D0
+	RTS
+L09B32	MOVEQ	#0,D0
+	MOVE.W	0(A6,A4.L),D1
+	CMPI.W	#$8402,D1
+	BEQ.S	L09B5C
+	CMPI.W	#$840A,D1
+	BEQ.S	L09B5A
+	MOVEQ	#$01,D0
+	CMPI.W	#$811C,D1
+	BEQ.S	L09B5C
+	MOVEQ	#$02,D0
+	CMPI.W	#$8114,D1
+	BEQ.S	L09B5C
+	JSR	L09072(PC)	;*/undomodify BSR L09072
+	BRA.S	L09B32
+L09B5A	MOVEQ	#-$01,D0
+L09B5C	RTS
+L09B5E	MOVE.W	BV_LINUM(A6),BV_CNLNO(A6) ;current line #
+	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	BEQ.S	L09B70
+	MOVE.W	#$FFFF,BV_CNLNO(A6) ;Line to CONTINUE from
+L09B70	MOVE.B	BV_STMNT(A6),BV_CNSTM(A6) ;current stmnt on line
+	MOVE.B	BV_INLIN(A6),BV_CNINL(A6) ;Processing inline clause
+	MOVE.W	BV_INDEX(A6),BV_CNIND(A6) ;Name tab row of last lp
+	MOVE.L	BV_RTP(A6),D1	;return table running ptr
+	SUB.L	BV_RTBAS(A6),D1	;return table
+	SNE	$0090(A6)	;Need to unravel
+				;($ff) or not (0)
+	RTS
+L09B90	MOVEQ	#-$01,D0
+L09B92	TST.B	$00C0(A6)
+	BNE.S	L09BB6
+	BSR.S	L09B5E
+	BRA.S	L09BD4
+L09B9C	; error handling
+	ST	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	CMPI.L	#-21,D0		;bad line
+	BEQ.S	L09B92
+L09BA8	CMPI.L	#-1,D0		;not complete
+	BEQ.S	L09B92
+	TST.B	$C0(A6)
+	BEQ.S	L09BC0
+L09BB6	BSR.S	L09BD4
+	MOVEQ	#-26,D0
+	JSR	UT_ERR(PC)	;*/undomodify BSR UT_ERR
+	BRA.S	L09C18
+L09BC0	BSR.S	L09B5E
+	MOVE.W	BV_LINUM(A6),$00C6(A6) ;current line #
+	MOVE.L	D0,$00C2(A6)	;
+	BGE.S	L09C18
+	MOVE.W	$00BC(A6),D4	;
+	BNE.S	L09C1C
+L09BD4	MOVEA.L	BV_CHBAS(A6),A0	;channel name
+	MOVEA.L	0(A6,A0.L),A0
+L09BDC	MOVE.W	#$FFFF,BV_NXLIN(A6) ;line # to start after
+	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	BNE.S	L09C14
+	MOVE.L	D0,-(A7)
+	MOVEQ	#-$16,D0
+	JSR	UT_ERR(PC)	;*/undomodify BSR UT_ERR
+	MOVEA.L	A0,A5
+	MOVEA.W	#$0068,A1
+	MOVEA.L	(A6),A0
+	JSR	CN_ITOD(PC)	;*/undomodify BSR CN_ITOD
+	MOVE.B	#$20,0(A6,A0.L)
+	ADDQ.W	#1,D1
+	MOVEA.L	(A6),A1		;string to be send
+	MOVE.W	D1,D2		;number of bytes to be send
+	MOVEA.L	A5,A0		;channel ID
+	MOVEQ	#7,D0		;IO.SSTRG send a string of
+				;bytes
+	MOVEQ	#-1,D3
+	TRAP	#4
+	TRAP	#3
+	MOVE.L	(A7)+,D0
+L09C14	JSR	UT_ERR(PC)	;*/undomodify BSR UT_ERR
+L09C18	MOVEQ	#-1,D0		;not complete
+	RTS
+L09C1C	ST	$C0(A6)		;not defined in advanced
+				;user guide !!!!!
+	MOVE.L	D0,-(A7)
+	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	BEQ.S	L09C2E
+	JSR	L0958E(PC)	;*/undomodify BSR L0958E
+	BNE.S	L09C56
+L09C2E	JSR	L09FA2(PC)	;*/undomodify BSR L09FA2
+	JSR	L0A966(PC)	;*/undomodify BSR L0A966
+	BNE.S	L09C56
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8106,D1
+	BNE.S	L09C56
+	ADDQ.W	#4,A7
+	MOVE.B	$00BF(A6),BV_INLIN(A6)
+	MOVE.B	$00BE(A6),D4
+	JSR	L0A00A(PC)	;*/undomodify BSR L0A00A
+	JMP	L0A90C(PC)	;*/undomodify BRA L0A90C
+L09C56	CLR.W	$BC(A6)
+	SF	$C0(A6)
+	MOVE.L	(A7)+,D0
+	BRA	L09BD4
+L09C64	; execute EXIT
+	JSR	L0A09E(PC)	;*/undomodify BSR L0A09E
+	BNE	L09CFC
+	MOVE.W	8(A6,A2.L),D4
+	BEQ.S	L09C88
+	JSR	L09FA2(PC)	;*/undomodify BSR L09FA2
+	BNE.S	L09C86
+	JSR	L0A966(PC)	;*/undomodify BSR L0A966
+	BNE.S	L09C86
+	MOVE.B	$0B(A6,A2.L),D4
+	JSR	L0A00A(PC)	;*/undomodify BSR L0A00A
+L09C86	BRA.S	L09CFA
+L09C88	MOVE.W	-$02(A6,A4.L),D4
+	MOVEQ	#$07,D5
+	SUB.B	D1,D5
+L09C90	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BLT.S	L09C9E
+	ADDQ.W	#2,A4
+	ADDQ.B	#1,BV_STMNT(A6)	;current stmnt on line
+	BRA.S	L09CC0
+L09C9E	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BEQ.S	L09CB2
+	SF	BV_INLIN(A6)	;Processing inline clause
+	MOVE.W	BV_LINUM(A6),D0	;current line #
+	CMP.W	$06(A6,A2.L),D0
+	BEQ.S	L09CFA
+L09CB2	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	BNE.S	L09CFA
+	ADDQ.W	#2,A4
+	JSR	L0A966(PC)	;*/undomodify BSR L0A966
+	BNE.S	L09CFA
+L09CC0	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8101,D1
+	BNE.S	L09C90
+	ADDQ.W	#2,A4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	TST.B	D5
+	BEQ.S	L09CDC
+	CMPI.W	#$8104,D1
+	BNE.S	L09C90
+	BRA.S	L09CE2
+L09CDC	CMPI.W	#$8102,D1
+	BNE.S	L09C90
+L09CE2	ADDQ.W	#2,A4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMP.W	$02(A6,A4.L),D4
+	BNE.S	L09C90
+	MOVE.W	BV_LINUM(A6),$08(A6,A2.L) ;current line #
+	MOVE.B	BV_STMNT(A6),$0B(A6,A2.L) ;current stmnt on line
+L09CFA	MOVEQ	#0,D0
+L09CFC	RTS
+L09CFE	MOVEQ	#0,D5
+L09D00	BSR.S	L09D46
+	BNE.S	L09D56
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.B	#$81,D0
+	BNE.S	L09D00
+	ADDQ.W	#2,A4
+	CMPI.B	#$01,D1
+	BNE.S	L09D26
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8105,D1
+	BNE.S	L09D00
+	SUBQ.W	#1,D5
+	BLT.S	L09D56
+	BRA.S	L09D00
+L09D26	CMPI.B	#$05,D1
+	BNE.S	L09D00
+	JSR	L09852(PC)	;*/undomodify BSR L09852
+	BLT.S	L09D38
+	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BEQ.S	L09D3C
+L09D38	ADDQ.W	#1,D5
+	BRA.S	L09D00
+L09D3C	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BLT.S	L09D00
+	ADDQ.W	#2,A4
+	BRA.S	L09D3C
+L09D46	JSR	L0A60E(PC)	;*/undomodify BSR L0A60E
+	BNE.S	L09D64
+	TST.B	D0
+	BEQ.S	L09D56
+	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BNE.S	L09D5A
+L09D56	MOVEQ	#0,D0
+	RTS
+L09D5A	SUBQ.W	#8,A4
+	MOVE.W	$02(A6,A4.L),D0
+	SUB.W	D0,BV_LENGTH(A6)	;current length
+L09D64	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BGT.S	L09D6E
+	SF	BV_INLIN(A6)	;Processing inline clause
+L09D6E	MOVEQ	#$01,D0
+	RTS
+L09D72	MOVEQ	#0,D5
+L09D74:
+	JSR	L09D46(PC)	;*/undomodify BSR.S L09D46
+				;*/undomodify nop
+	BNE.S	L09DEC
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8401,D1
+	BNE.S	L09D8C
+	ADDQ.W	#2,A4
+	TST.B	D5
+	BEQ.S	L09DEE
+	BRA.S	L09D74
+L09D8C:
+	CMPI.B	#$81,D0
+	BNE.S	L09D74
+	CMPI.B	#$15,D1
+	BNE.S	L09DB6
+	TST.B	D5
+	BNE.S	L09D74
+	JSR	L09876(PC)	;*/undomodify BSR L09876
+	BLT.S	L09D74
+	MOVEA.L	A4,A3
+L09DA4	SUBQ.W	#2,A3
+	CMPI.W	#$8800,0(A6,A3.L)
+	BNE.S	L09DA4
+	CMP.W	$02(A6,A3.L),D4
+	BNE.S	L09D74
+	BRA.S	L09DEE
+L09DB6	CMPI.B	#$05,D1
+	BNE.S	L09DD6
+	JSR	L09852(PC)	;*/undomodify BSR L09852
+	BLT.S	L09DC8
+	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BEQ.S	L09DCC
+L09DC8	ADDQ.W	#1,D5
+	BRA.S	L09D74
+L09DCC	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BLT.S	L09D74
+	ADDQ.W	#2,A4
+	BRA.S	L09DCC
+L09DD6	CMPI.B	#$01,D1
+	BNE.S	L09D74
+	ADDQ.W	#2,A4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8105,D1
+	BNE.S	L09D74
+	SUBQ.W	#1,D5
+	BGE.S	L09D74
+L09DEC	RTS
+L09DEE	MOVEQ	#0,D0
+	RTS
+L09DF2	; execute FOR
+	MOVEA.L	A4,A5
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	MOVEQ	#0,D4
+	MOVE.W	2(A6,A4.L),D4
+	ADDQ.W	#4,A4
+	JSR	L09852(PC)	;*/undomodify BSR L09852
+	BLT.S	L09E10
+	MOVE.B	#1,BV_INLIN(A6)	;Processing inline clause
+	MOVE.W	D4,BV_INDEX(A6)	;Name tab row of last lp
+L09E10	JSR	L09F96(PC)	;*/undomodify BSR L09F96
+	MOVE.B	1(A6,A2.L),D2
+	SUBQ.B	#2,D2
+	BNE.S	L09E30		;bad name
+	MOVE.B	0(A6,A2.L),D2
+	MOVEQ	#6,D1
+	SUBQ.B	#2,D2
+	BEQ.S	L09E34
+	MOVEQ	#$0C,D1
+	SUBQ.B	#4,D2
+	BEQ.S	L09E34
+	SUBQ.B	#1,D2
+	BEQ.S	L09E5C
+L09E30	MOVEQ	#-12,D0		;Bad name error
+	RTS
+L09E34	MOVE.L	A2,-(A7)
+	MOVE.L	4(A6,A2.L),D2
+	BLT.S	L09E46
+	MOVEA.L	BV_VVBAS(A6),A0	;variable values
+	ADDA.L	D2,A0
+	JSR	L04FE8(PC)	;*/undomodify BSR L04FE8
+L09E46	MOVEQ	#$1A,D1
+	JSR	L04DF6(PC)	;*/undomodify BSR L04DF6
+	SUBA.L	BV_VVBAS(A6),A0	;variable values
+	MOVEA.L	(A7)+,A2
+	MOVE.B	#$07,0(A6,A2.L)	;set FOR LOOP index Flag
+	MOVE.L	A0,4(A6,A2.L)
+L09E5C:
+	JSR	L0A2FE(PC)	;*/undomodify BSR L0A2FE
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	MOVE.L	A4,D0
+	SUB.L	A5,D0
+	MOVE.L	D7,$0C(A6,A2.L)
+	MOVE.L	D7,$10(A6,A2.L)
+	MOVE.L	D7,$14(A6,A2.L)
+	MOVE.W	D0,$18(A6,A2.L)
+	JSR	L09E88(PC)	;*/undomodify BSR.S L09E88
+				;*/undomodify nop
+	BGT.S	L09E80
+	RTS
+L09E80:
+	MOVEQ	#0,D5
+	JMP	L09C90(PC)	;*/undomodify BRA L09C90
+L09E86	DC.B	$01
+L09E87	DC.B	$40
+L09E88	MOVE.L	A4,-(A7)
+	MOVE.W	0(A6,A4.L),D1
+	JSR	L09686(PC)	;*/undomodify BSR L09686
+	BNE.S	L09E98
+	MOVEQ	#$01,D0
+	BRA.S	L09EA6
+L09E98	CMPI.W	#$8401,D1
+	BEQ.S	L09EAA
+	CMPI.W	#$8404,D1
+	BEQ.S	L09EAA
+	MOVEQ	#-4,D0		;out of ange error
+L09EA6	ADDQ.W	#4,A7
+	RTS
+L09EAA	ADDQ.W	#2,A4
+	MOVEA.L	A4,A0
+	MOVE.L	D4,D6
+	JSR	L05A7E(PC)	;*/undomodify BSR L05A7E
+	MOVEA.L	A0,A4
+	BNE.S	L09EA6
+	BSR	L09F7E
+	MOVE.W	0(A6,A1.L),0(A6,A2.L)
+	MOVE.L	2(A6,A1.L),2(A6,A2.L)
+	ADDQ.L	#6,BV_RIP(A6)	;arith stack
+	CMPI.W	#$810B,0(A6,A4.L)
+	BEQ.S	L09EF4
+	MOVE.W	0(A6,A2.L),$0C(A6,A2.L)
+	MOVE.L	2(A6,A2.L),$0E(A6,A2.L)
+	MOVE.W	D7,$12(A6,A2.L)
+	MOVE.L	D7,$14(A6,A2.L)
+	MOVE.L	A4,D0
+	SUB.L	(A7)+,D0
+	ADD.W	D0,$18(A6,A2.L)
+	BRA	L09F76
+L09EF4	ADDQ.W	#2,A4
+	MOVEA.L	A4,A0
+	JSR	L05A7E(PC)	;*/undomodify BSR L05A7E
+	MOVEA.L	A0,A4
+L09EFE	BNE.S	L09EA6
+	bsr.s	L09F7E
+	MOVE.W	0(A6,A1.L),$0C(A6,A2.L)
+	MOVE.L	$02(A6,A1.L),$0E(A6,A2.L)
+	ADDQ.L	#6,BV_RIP(A6)	;arith stack
+	CMPI.W	#$811D,0(A6,A4.L)
+	BEQ.S	L09F32
+	MOVE.B	#8,$12(A6,A2.L)
+	MOVE.B	L09E86(PC),$13(A6,A2.L) ;must have to do with
+				      ;STEP
+	MOVE.L	D7,$14(A6,A2.L)
+	MOVE.B	L09E87(PC),$14(A6,A2.L) ;must have to do with
+				      ;step
+	BRA.S	L09F50
+L09F32	ADDQ.W	#2,A4
+	MOVEA.L	A4,A0
+	JSR	L05A7E(PC)	;*/undomodify BSR L05A7E
+	MOVEA.L	A0,A4
+	BNE.S	L09EFE
+	BSR.S	L09F7E
+	MOVE.W	0(A6,A1.L),$12(A6,A2.L)
+	MOVE.L	$02(A6,A1.L),$14(A6,A2.L)
+	ADDQ.L	#6,BV_RIP(A6)	;arith stack
+L09F50	MOVE.L	A4,D0
+	SUB.L	(A7)+,D0
+	ADD.W	D0,$18(A6,A2.L)
+	JSR	L04E4C(PC)	;*/undomodify BSR L04E4C
+	MOVEA.L	$0058(A6),A1	;arith stack
+	SUBQ.W	#6,A1
+	MOVE.L	$02(A6,A2.L),$02(A6,A1.L)
+	MOVE.W	0(A6,A2.L),0(A6,A1.L)
+	JSR	L0A404(PC)	;*/undomodify BSR L0A404
+	BRA.S	L09F78
+	BRA.S	L09F7A
+L09F76	MOVEQ	#0,D0
+L09F78	RTS
+L09F7A	BRA	L09E88
+L09F7E	MOVE.L	D6,D4
+L09F80	BSR.S	L09F96
+	MOVE.B	0(A6,A2.L),D1
+	MOVE.B	1(A6,A2.L),D2
+	MOVE.L	4(A6,A2.L),D0
+	MOVEA.L	BV_VVBAS(A6),A2	;variable values
+	ADDA.L	D0,A2
+	RTS
+L09F96	MOVE.L	D4,D0
+	MOVEA.L	BV_NTBAS(A6),A2	;name table
+	LSL.L	#3,D0
+	ADDA.W	D0,A2
+	RTS
+L09FA2	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	BEQ.S	L09FAE
+	MOVEA.L	BV_TKBAS(A6),A4	;token list
+	BRA.S	L0A006
+L09FAE	CMPI.W	#$840A,0(A6,A4.L)
+	BEQ.S	L09FBC
+	JSR	L09072(PC)	;*/undomodify BSR L09072
+	BRA.S	L09FAE
+L09FBC	ADDQ.W	#2,A4
+L09FBE	MOVEQ	#0,D1
+	MOVEQ	#0,D2
+	CMP.W	BV_LINUM(A6),D4	;current line #
+	BLE.S	L09FEC
+L09FC8	CMPA.L	BV_PFP(A6),A4	;program running pointer
+	BLT.S	L09FD2
+	JMP	L0A994(PC)	;*/undomodify BRA L0A994
+L09FD2	CMP.W	4(A6,A4.L),D4
+	BLE.S	L0A006
+L09FD8	MOVE.W	4(A6,A4.L),D2
+	MOVE.W	0(A6,A4.L),D1
+	ADDQ.W	#2,A4
+	ADD.W	D1,BV_LENGTH(A6)	;current length
+	ADDA.W	BV_LENGTH(A6),A4	;current length
+	BRA.S	L09FC8
+L09FEC	SUBA.W	BV_LENGTH(A6),A4	;current length
+	SUBQ.W	#2,A4
+	MOVE.W	0(A6,A4.L),D1
+	SUB.W	D1,BV_LENGTH(A6)	;current length
+	CMP.W	$04(A6,A4.L),D4
+	BGT.S	L09FD8
+	CMPA.L	BV_PFBAS(A6),A4	;program file
+	BGT.S	L09FEC
+L0A006	MOVEQ	#0,D0
+	RTS
+L0A00A	CMP.B	BV_STMNT(A6),D4	;current stmnt on line
+	BLE.S	L0A01E
+	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BLT.S	L0A01E
+	ADDQ.W	#2,A4
+	ADDQ.B	#1,BV_STMNT(A6)	;current stmnt on line
+	BRA.S	L0A00A
+L0A01E	MOVEQ	#0,D0
+	RTS
+L0A022	; execute GO
+	MOVEQ	#$01,D4
+	BRA.S	L0A038
+L0A026	; execute ON ...
+	JSR	L09876(PC)	;*/undomodify BSR L09876
+	BGE	L09CFE
+	BSR.S	L0A086
+	MOVE.W	0(A6,A1.L),D4
+	BLE.S	L0A082
+	ADDQ.W	#2,A4
+L0A038	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.B	#$0B,D1
+	SEQ	D5
+L0A042	MOVE.W	0(A6,A4.L),D1
+	JSR	L09686(PC)	;*/undomodify BSR L09686
+	BEQ.S	L0A082
+	ADDQ.W	#2,A4
+	BSR.S	L0A086
+	BGT.S	L0A042
+	SUBQ.W	#1,D4
+	BNE.S	L0A042
+	MOVE.W	0(A6,A1.L),D4
+	TST.B	D5
+	BEQ	L094CA
+	SF	BV_INLIN(A6)	;Processing inline clause
+	TST.B	BV_SING(A6)	;Single line exection
+				;ON ($FF) or OFF (0)
+	BEQ.S	L0A078
+	SF	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	MOVEA.L	BV_PFBAS(A6),A4	;program file
+	JSR	L0A966(PC)	;*/undomodify BSR L0A966
+	BNE.S	L0A07E
+L0A078	JSR	L09FA2(PC)	;*/undomodify BSR L09FA2
+	SUBQ.W	#2,A4
+L0A07E	MOVEQ	#0,D0
+	RTS
+L0A082	MOVEQ	#-$04,D0
+	RTS
+L0A086	MOVEA.L	A4,A0
+	JSR	L05A82(PC)	;*/undomodify BSR L05A82
+	MOVEA.L	A0,A4
+	BLT.S	L0A09A
+	BGT.S	L0A098
+	ADDQ.L	#2,BV_RIP(A6)	;arith stack
+	MOVEQ	#0,D0
+L0A098	RTS
+L0A09A	ADDQ.W	#4,A7
+	RTS
+L0A09E	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	MOVEQ	#0,D4
+	MOVE.W	$02(A6,A4.L),D4
+	ADDQ.W	#4,A4
+L0A0AA	JSR	L09F80(PC)	;*/undomodify BSR L09F80
+	MOVEQ	#0,D0
+	MOVE.B	D1,D0
+	SUBQ.B	#6,D0
+	BEQ.S	L0A0BC
+	SUBQ.B	#1,D0
+	BEQ.S	L0A0BC
+	MOVEQ	#-$07,D0
+L0A0BC	RTS
+L0A0BE	; execute IF
+	MOVEA.L	A4,A0
+	JSR	L05A7E(PC)	;*/undomodify BSR L05A7E
+	MOVEA.L	A0,A4
+	BNE	L0A150
+	JSR	L09852(PC)	;*/undomodify BSR L09852
+	BLT.S	L0A0DA
+	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BNE.S	L0A0DA
+	ST	BV_INLIN(A6)	;Processing inline clause
+L0A0DA	ADDQ.L	#6,BV_RIP(A6)	;arith stack
+	TST.W	0(A6,A1.L)
+	BNE.S	L0A14E
+	MOVEQ	#0,D4
+L0A0E6	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BGE.S	L0A0F2
+	TST.B	BV_INLIN(A6)	;Processing inline clause
+	BNE.S	L0A14E
+L0A0F2	JSR	L0A60E(PC)	;*/undomodify BSR L0A60E
+	BNE.S	L0A14E
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.B	#$81,D0
+	BNE.S	L0A0E6
+	ADDQ.W	#2,A4
+	CMPI.B	#$03,D1
+	BNE.S	L0A124
+	JSR	L09852(PC)	;*/undomodify BSR L09852
+	BLT.S	L0A120
+	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BNE.S	L0A120
+L0A116	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BLT.S	L0A0F2
+	ADDQ.W	#2,A4
+	BRA.S	L0A116
+L0A120	ADDQ.W	#1,D4
+	BRA.S	L0A0E6
+L0A124	CMPI.B	#$01,D1
+	BNE.S	L0A13C
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8103,D1
+	BNE.S	L0A0E6
+	TST.B	D4
+	BEQ.S	L0A14E
+	SUBQ.W	#1,D4
+	BRA.S	L0A0E6
+L0A13C	CMPI.B	#$14,D1
+	BNE.S	L0A0E6
+	TST.B	D4
+	BEQ.S	L0A14C
+	ADDQ.B	#1,BV_STMNT(A6)	;current stmnt on line
+	BRA.S	L0A0E6
+L0A14C	SUBQ.W	#2,A4
+L0A14E	MOVEQ	#0,D0
+L0A150	RTS
+L0A152	; used to execute depending instructions
+	DC.W	L09AA8-L0A190	;END
+	DC.W	L09DF2-L0A190	;FOR
+	DC.W	L0A0BE-L0A190	;IF
+	DC.W	L0A7B6-L0A190	;REPEAT
+	DC.W	L0A84A-L0A190	;SELECT
+	DC.W	L0AC00-L0A190	;WHEN
+	DC.W	L098A6-L0A190	;DEFINE
+	DC.W	$0		;PROCEDURE:USELESS IF ALONE
+	DC.W	$0		;FUNCTION: USELESS IF ALONE
+	DC.W	L0A022-L0A190	;GO
+	DC.W	$0		;TO:USELESS IF ALONE
+	DC.W	$0		;SUB: USELESS F ALONE
+	DC.W	$0		;WHEN: USELESS IF ALONE
+	DC.W	$0		;ERROR: USELESS IF ALONE
+	DC.W	$0		;EOF
+	DC.W	$0		;INPUT
+	DC.W	L0A820-L0A190	;RESTORE
+	DC.W	L0A372-L0A190	;NEXT
+	DC.W	L09C64-L0A190	;EXIT
+	DC.W	L09A4C-L0A190	;ELSE
+	DC.W	L0A026-L0A190	;ON
+	DC.W	DO_RETURn-L0A190	;RETURN
+	DC.W	$0		;REMAINDER
+	DC.W	L0A7B2-L0A190	;DATA
+	DC.W	L098C6-L0A190	;DIM
+	DC.W	L0A2FA-L0A190	;LOCAL
+	DC.W	L0A332-L0A190	;LET
+	DC.W	$0		;THEN
+	DC.W	$0		;STEP
+	DC.W	L0A7B2-L0A190	;REMARK
+	DC.W	L0A2FA-L0A190	;MISTAKE
+L0A190:
+	MOVEQ	#0,D0
+	MOVE.B	1(A6,A4.L),D0
+	ADDQ.W	#2,A4
+	ADD.B	D0,D0
+	MOVE.W	L0A150(PC,D0.W),D0
+	BEQ.S	L0A1A4
+	JMP	L0A190(PC,D0.W)
+L0A1A4	MOVEQ	#-7,D0		;Not found
+	RTS
+L0A1A8	MOVEA.L	A2,A3
+	ANDI.B	#$0F,1(A6,A3.L)
+	MOVE.L	A3,-(A7)
+	MOVE.B	$01(A6,A3.L),-(A7)
+	JSR	L07A8E(PC)	;*/undomodify BSR L07A8E
+	BNE.S	L0A1E8
+	CMPI.W	#$8405,D1
+	BNE.S	L0A1F6
+	CMPI.B	#1,1(A6,A3.L)
+	BNE.S	L0A242
+	MOVE.L	4(A6,A3.L),D0
+	BLT.S	L0A242
+	MOVEA.L	BV_VVBAS(A6),A2	;variable values
+	ADDA.L	D0,A2
+	MOVE.L	D0,-(A7)
+	LEA	2(A4),A0
+	JSR	L06446(PC)	;*/undomodify BSR L06446
+	MOVEA.L	A0,A4
+	MOVEA.L	BV_VVBAS(A6),A2	;variable values
+	ADDA.L	(A7)+,A2
+L0A1E8	BNE.S	L0A244
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8401,D1
+	BNE.S	L0A242
+	SF	(A7)
+L0A1F6	CMPI.W	#$8401,D1
+	BNE.S	L0A242
+	ADDQ.W	#2,A4
+	MOVE.B	(A7),D0
+	MOVEA.L	A4,A0
+	SUBA.L	BV_VVBAS(A6),A2	;variable values
+; --------------------------------------------------------------
+;*/beginoverlay
+;*/note when error fix donated by Simon N Goodwin
+	move.l	a2,-(a7) 	;*/note movem.l  a2/a4,-(a7)
+	JSR	L05A84(PC)	;*/undomodify BSR L05A84
+	movea.l	$0028(a6),a2	;*/note movem.l  (a7)+,a2/a4
+	adda.l	(a7)+,a2 	;*/note adda.l   $0028(a6),a2
+	movea.l	a0,a4		;*/note bne.s    L0A23C
+	bne.s	L0A23C		;*/note movea.l  a0,a4
+;*/endoverlay
+; --------------------------------------------------------------
+	MOVE.B	(A7)+,D0
+	MOVEA.L	(A7)+,A3
+	MOVE.B	D0,$01(A6,A3.L)
+	JSR	BP_LET(PC)	;*/undomodify BSR BP_LET
+	BNE.S	L0A23A
+	TST.W	$C8(A6)
+	BEQ.S	L0A23A
+	MOVE.B	0(A6,A3.L),D1
+	SUBQ.B	#2,D1
+	BEQ.S	L0A248
+	SUBQ.B	#4,D1
+	BEQ.S	L0A248
+	SUBQ.B	#1,D1
+	BEQ.S	L0A248
+L0A23A	RTS
+L0A23C	BLT.S	L0A244
+	MOVEQ	#-$11,D0
+	BRA.S	L0A244
+L0A242	; handling of MISTake and LOCal
+	MOVEQ	#-$0C,D0
+L0A244	ADDQ.W	#6,A7
+	RTS
+L0A248	; initialize WHEN
+	MOVE.L	A3,D4
+	SUB.L	BV_NTBAS(A6),D4	;name table
+	LSR.L	#3,D4
+	MOVEQ	#1,D3
+	JSR	L0ACC2(PC)	;*/undomodify BSR L0ACC2
+L0A256	BNE	L0A2DA
+	TST.W	$08(A6,A2.L)
+	BLT.S	L0A268
+L0A260	MOVEQ	#1,D3
+	JSR	L0ACDA(PC)	;*/undomodify BSR L0ACDA
+	BRA.S	L0A256
+L0A268	MOVE.W	BV_LINUM(A6),$08(A6,A2.L) ;current line #
+	MOVE.B	BV_STMNT(A6),$0A(A6,A2.L) ;current stmnt on line
+	MOVE.B	BV_INLIN(A6),$0B(A6,A2.L) ;Processing inline clause
+	MOVE.W	BV_INDEX(A6),$0C(A6,A2.L) ;Name tab row of last lp
+	MOVE.W	D4,-(A7)
+	MOVE.W	D2,-(A7)
+	MOVE.L	D1,-(A7)
+	MOVE.W	$02(A6,A2.L),D4
+	MOVE.B	$04(A6,A2.L),D1
+	SUBA.L	BV_VVBAS(A6),A2	;variable values
+	MOVE.L	A2,-(A7)
+	MOVE.B	D1,-(A7)
+	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	BEQ.S	L0A2A0
+	JSR	L0958E(PC)	;*/undomodify BSR L0958E
+L0A2A0	JSR	L09FA2(PC)	;*/undomodify BSR L09FA2
+	BNE.S	L0A2F2
+	JSR	L0A96A(PC)	;*/undomodify BSR L0A96A
+	BNE.S	L0A2F2
+	MOVE.B	(A7)+,D4
+	JSR	L0A00A(PC)	;*/undomodify BSR L0A00A
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	LEA	2(A4),A0
+	JSR	L05A7E(PC)	;*/undomodify BSR L05A7E
+	MOVEA.L	A0,A4
+	MOVEA.L	(A7)+,A2
+	BNE.S	L0A2F6
+	ADDA.L	BV_VVBAS(A6),A2	;variable values
+	ADDQ.L	#6,BV_RIP(A6)	;arith stack
+	TST.W	0(A6,A1.L)
+	BEQ.S	L0A2DE
+	ADDQ.W	#8,A7
+	MOVE.B	$0E(A6,A2.L),BV_INLIN(A6) ;Processing inline clause
+L0A2DA	MOVEQ	#0,D0
+	RTS
+L0A2DE	MOVE.L	A2,-(A7)
+	JSR	L09AFA(PC)	;*/undomodify BSR L09AFA
+	MOVEA.L	(A7)+,A2
+	BNE.S	L0A2F6
+	MOVE.L	(A7)+,D1
+	MOVE.W	(A7)+,D2
+	MOVE.W	(A7)+,D4
+	BRA	L0A260
+L0A2F2	MOVEQ	#-7,D0		;Not found error
+	ADDQ.W	#6,A7
+L0A2F6	ADDQ.W	#8,A7
+	RTS
+L0A2FA	; execute LOCal and MISTake
+	MOVEQ	#-21,D0		;bad line error
+	RTS
+L0A2FE	MOVEA.L	$04(A6,A2.L),A2
+	ADDA.L	BV_VVBAS(A6),A2	;variable values
+	MOVE.W	D7,0(A6,A2.L)
+	MOVE.L	D7,$02(A6,A2.L)
+	MOVE.W	BV_LINUM(A6),D1	;current line #
+	MOVE.B	BV_STMNT(A6),D0	;current stmnt on line
+	CMP.W	$06(A6,A2.L),D1
+	BNE.S	L0A322
+	CMP.B	$0A(A6,A2.L),D0
+	BEQ.S	L0A32E
+L0A322	MOVE.W	D1,$06(A6,A2.L)
+	MOVE.L	D7,$08(A6,A2.L)
+	MOVE.B	D0,$0A(A6,A2.L)
+L0A32E	MOVEQ	#0,D0
+	RTS
+L0A332	; handling of LET
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.B	#$88,D0
+	BNE.S	L0A36E
+L0A33C	MOVEQ	#0,D4
+	MOVE.W	2(A6,A4.L),D4
+	ADDQ.W	#4,A4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	JSR	L09F96(PC)	;*/undomodify BSR L09F96
+	MOVE.B	0(A6,A2.L),D0
+	CMPI.B	#$03,D0
+	BEQ	L093E6
+	CMPI.B	#$08,D0
+	BEQ	L0A6F6
+	MOVEQ	#$01,D5
+	CMPI.B	#$04,D0
+	BEQ	L094CA
+	JMP	L0A1A8(PC)	;*/undomodify BRA L0A1A8
+L0A36E	MOVEQ	#-19,D0		;not implemented error
+	RTS
+L0A372	; Execute NEXT
+	JSR	L0A09E(PC)	;*/undomodify BSR L0A09E
+	BLT	L0A402
+L0A37A	MOVE.L	D4,D6
+	CMPI.B	#$06,D1
+	BEQ.S	L0A3D4
+	MOVE.L	A2,-(A7)
+	JSR	L04E4C(PC)	;*/undomodify BSR L04E4C
+	MOVEA.L	(A7),A2
+	MOVEA.L	$0058(A6),A1	;arith stack
+	SUBA.W	#$000C,A1
+	MOVE.L	$14(A6,A2.L),$02(A6,A1.L)
+	BEQ.S	L0A3DE
+	MOVE.W	$12(A6,A2.L),0(A6,A1.L)
+	MOVE.W	0(A6,A2.L),$06(A6,A1.L)
+	MOVE.L	$02(A6,A2.L),$08(A6,A1.L)
+	JSR	RI_ADD(PC)	;*/undomodify BSR RI_ADD
+	BLT.S	L0A3D6
+	MOVE.L	A1,BV_RIP(A6)	;arith stack
+	JSR	RI_DUP(PC)	;*/undomodify BSR RI_DUP
+	MOVEA.L	(A7),A2
+	BSR.S	L0A404		;test for end of function
+	BRA.S	L0A3D6		;error
+	BRA.S	L0A3DA		;end of loop
+; back to start of loop
+	MOVEA.L	(A7)+,A2
+	MOVE.W	0(A6,A0.L),0(A6,A2.L)
+	MOVE.L	$02(A6,A0.L),$02(A6,A2.L)
+	ADDQ.L	#6,BV_RIP(A6)	;arith stack
+L0A3D4	BRA.S	L0A3E4
+L0A3D6	ADDQ.W	#4,A7
+	RTS
+; end of loop
+L0A3DA	ADDQ.L	#6,BV_RIP(A6)	;arith stack
+L0A3DE	MOVEA.L	(A7)+,A2
+	MOVEQ	#$01,D3
+	BRA.S	L0A3E6
+L0A3E4	MOVEQ	#0,D3
+L0A3E6	BSR.S	L0A44C
+	BNE.S	L0A402
+	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BGT.S	L0A3F4
+	SF	BV_INLIN(A6)	;Processing inline clause
+L0A3F4	CMPI.B	#$7F,BV_STMNT(A6) ;current stmnt on line
+	BNE.S	L0A400
+	SF	BV_INLIN(A6)	;Processing in inline clause
+L0A400	MOVEQ	#0,D0
+L0A402	RTS
+L0A404	; test start and end of a loop
+	MOVE.L	A2,-(A7)
+	SUBQ.W	#6,A1
+	MOVE.L	$0E(A6,A2.L),$02(A6,A1.L)
+	MOVE.W	$0C(A6,A2.L),0(A6,A1.L)
+	JSR	RI_SUB(PC)	;*/undomodify BSR RI_SUB
+	MOVEA.L	(A7)+,A2
+	BLT.S	L0A44A
+	MOVEQ	#$0D,D1
+	ADD.W	0(A6,A1.L),D1
+	CMP.W	$12(A6,A2.L),D1
+	BGT.S	L0A42E
+	LEA	$C(A2),A0
+	BRA.S	L0A446
+L0A42E	MOVEA.L	$0058(A6),A0	;arith stack
+	TST.B	$02(A6,A1.L)
+	BLT.S	L0A440
+	TST.B	$14(A6,A2.L)
+	BLT.S	L0A446
+	BRA.S	L0A448
+L0A440	TST.B	$14(A6,A2.L)
+	BLT.S	L0A448
+L0A446	ADDQ.L	#2,(A7)
+L0A448	ADDQ.L	#2,(A7)
+L0A44A	RTS
+L0A44C	; position pointer to code after loop
+	MOVE.B	BV_STMNT(A6),-(A7) ;current stmnt on line
+	MOVE.L	BV_LINUM(A6),-(A7) ;current line #
+	MOVE.L	A4,-(A7)
+	MOVE.W	$06(A6,A2.L),D4
+	JSR	L09FA2(PC)	;*/undomodify BSR L09FA2
+	BNE.S	L0A4AA
+	JSR	L0A96A(PC)	;*/undomodify BSR L0A96A
+	BNE.S	L0A4AA
+	MOVE.B	$0A(A6,A2.L),D4
+	JSR	L0A00A(PC)	;*/undomodify BSR L0A00A
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8102,D1
+	BEQ.S	L0A47E
+	CMPI.W	#$8104,D1
+	BNE.S	L0A4AA
+L0A47E	ADDQ.W	#2,A4
+	MOVEA.L	A4,A5
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMP.W	$02(A6,A4.L),D6
+	BNE.S	L0A4AA
+	TST.B	D3
+	BEQ.S	L0A4A4
+	MOVEA.L	A5,A4
+	ADDA.W	$18(A6,A2.L),A4
+	MOVE.L	D6,D4
+	JSR	L09E88(PC)	;*/undomodify BSR L09E88
+	BLT.S	L0A4AC
+	BEQ.S	L0A4A4
+	MOVEQ	#0,D0
+	BRA.S	L0A4AC
+L0A4A4	ADDA.W	#$000A,A7
+	RTS
+L0A4AA	MOVEQ	#-$07,D0
+L0A4AC	MOVEA.L	(A7)+,A4
+	MOVE.L	(A7)+,BV_LINUM(A6) ;current line #
+	MOVE.B	(A7)+,BV_STMNT(A6) ;current stmnt on line
+	TST.L	D0
+	RTS
+L0A4BA	; initialize all variables tables procs and funcs of
+	; proc or line
+	MOVE.L	A4,-(A7)
+	MOVE.B	BV_SING(A6),D6	;Single line execution
+				;ON ($FF) or OFF (0)
+	BEQ.S	L0A4CC
+	MOVEA.L	BV_TKBAS(A6),A4	;token list
+	MOVEQ	#0,D5
+	BRA.S	L0A4EE
+L0A4CA	SF	D6
+L0A4CC	TST.B	BV_EDIT(A6)	;Program has been
+				;edited ($ff) or not (0)
+	SF	BV_EDIT(A6)	;Program has been
+				;edited ($ff) or not (0)
+	BEQ.S	L0A4EA
+	MOVEA.L	BV_PFBAS(A6),A4	;program file
+L0A4DA	TST.B	D6
+	BNE.S	L0A4CA
+	MOVE.W	$04(A6,A4.L),D5
+	ADDQ.W	#6,A4
+	CMPA.L	BV_PFP(A6),A4	;program running pointer
+	BLT.S	L0A4EE
+L0A4EA	MOVEA.L	(A7)+,A4
+	RTS
+L0A4EE	BSR.S	L0A56C		;omit spaces
+	CMPI.B	#$88,D0
+	BEQ.S	L0A526
+	CMPI.B	#$81,D0
+	BNE.S	L0A55C
+	ADDQ.W	#2,A4
+	CMPI.B	#$14,D1
+	BEQ.S	L0A4EE
+	CMPI.B	#$02,D1
+	BNE.S	L0A50E
+	BSR.S	L0A56C
+	BRA.S	L0A534
+L0A50E	CMPI.B	#$04,D1
+	BNE.S	L0A51E
+	BSR.S	L0A56C
+	CMPI.B	#$88,D0
+	BNE.S	L0A55C
+	BRA.S	L0A534
+L0A51E	CMPI.B	#$1B,D1
+	BNE.S	L0A53A
+	BSR.S	L0A56C
+L0A526	MOVE.L	A4,D4
+	ADDQ.W	#4,A4
+	BSR.S	L0A56C
+	CMPI.W	#$8401,D1
+	BNE.S	L0A55C
+	MOVEA.L	D4,A4
+L0A534	MOVEQ	#$02,D1
+L0A536	BSR.S	L0A57E
+	BRA.S	L0A55C
+L0A53A	CMPI.B	#$07,D1
+	BNE.S	L0A554
+	BSR.S	L0A56C
+	MOVE.W	D1,D4
+	ADDQ.W	#2,A4
+	BSR.S	L0A56C
+	MOVEQ	#$04,D1
+	CMPI.B	#$08,D4
+	BEQ.S	L0A536
+	MOVEQ	#$05,D1
+	BRA.S	L0A536
+L0A554	CMPI.B	#$19,D1
+	BNE.S	L0A55C
+	BSR.S	L0A5CE
+L0A55C	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BGE.S	L0A568
+	ADDQ.W	#2,A4
+	BRA	L0A4DA
+L0A568	ADDQ.W	#2,A4
+	BRA.S	L0A4EE
+L0A56C	MOVE.W	0(A6,A4.L),D1
+	MOVE.B	0(A6,A4.L),D0
+	CMPI.B	#$80,D0
+	BNE.S	L0A5CC
+	JMP	L09072(PC)	;*/undomodify BRA L09072
+L0A57E	MOVEQ	#0,D0
+	MOVE.W	2(A6,A4.L),D0
+	LSL.L	#3,D0
+	MOVEA.L	BV_NTBAS(A6),A0	;name table
+	ADDA.L	D0,A0
+	MOVE.B	0(A6,A0.L),D0
+	CMP.B	D0,D1
+	BEQ.S	L0A5BC
+	SUBQ.B	#2,D0
+	BLT.S	L0A5BC
+	BEQ.S	L0A5AC
+	SUBQ.B	#1,D0
+	BEQ.S	L0A5CC
+	SUBQ.B	#2,D0
+	BLE.S	L0A5A6
+	SUBQ.B	#3,D0
+	BLT.S	L0A5AC
+L0A5A6	CMPI.B	#$04,D1
+	BGE.S	L0A5BC
+L0A5AC	MOVEA.L	A0,A2
+	MOVEM.L	D1/A0,-(A7)
+	JSR	L05784(PC)	;*/undomodify BSR L05784
+	MOVEM.L	(A7)+,D1/A0
+	BNE.S	L0A5CC
+L0A5BC	MOVE.B	D1,0(A6,A0.L)
+	SUBQ.B	#4,D1
+	BEQ.S	L0A5C8
+	SUBQ.B	#1,D1
+	BNE.S	L0A5CC
+L0A5C8	MOVE.W	D5,$04(A6,A0.L)
+L0A5CC	RTS
+L0A5CE	; initialize variable in name table
+	MOVEQ	#0,D3
+	SUBQ.W	#2,A4
+L0A5D2	MOVE.W	#$8800,D4
+	BSR.S	L0A5E0
+	BNE.S	L0A60C
+	MOVEQ	#$03,D1
+	BSR.S	L0A57E
+	BRA.S	L0A5D2
+L0A5E0	; look for first variable without parenthesis
+	MOVEQ	#0,D3
+L0A5E2	JSR	L09072(PC)	;*/undomodify BSR L09072
+	CMP.W	D4,D1
+	BNE.S	L0A5F0
+	TST.B	D3
+	BEQ.S	L0A60C
+	BRA.S	L0A5E2
+L0A5F0	CMPI.W	#$8405,D1
+	BNE.S	L0A5FA
+	ADDQ.B	#1,D3
+	BRA.S	L0A5E2
+L0A5FA	CMPI.W	#$8406,D1
+	BNE.S	L0A604
+	SUBQ.B	#1,D3
+	BRA.S	L0A5E2
+L0A604	JSR	L09686(PC)	;*/undomodify BSR L09686
+	BNE.S	L0A5E2
+	MOVEQ	#$01,D1
+L0A60C	RTS
+L0A60E	; point to next instruction in line
+	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BGE.S	L0A640
+	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	BNE.S	L0A63E
+	ADDQ.W	#2,A4
+	CMPA.L	BV_PFP(A6),A4	;program running pointer
+	BLT.S	L0A626
+	JMP	L0A994(PC)	;*/undomodify BRA L0A994
+L0A626	MOVE.W	0(A6,A4.L),D0
+	ADD.W	D0,BV_LENGTH(A6)	;current length
+	MOVE.W	$04(A6,A4.L),BV_LINUM(A6) ;current line #
+	MOVEQ	#$01,D0
+	MOVE.B	D0,BV_STMNT(A6)	;current stmnt on line
+	ADDQ.W	#6,A4
+	MOVEQ	#0,D1
+L0A63E	RTS
+L0A640	ADDQ.W	#2,A4
+	ADDQ.B	#1,BV_STMNT(A6)	;current stmnt on line
+	MOVEQ	#0,D0
+	RTS
+L0A64A	; point to according value of select
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8117,D1
+	BEQ.S	L0A6CE
+	BSR.S	L0A68C
+	CMPI.W	#$810B,0(A6,A4.L)
+	BEQ.S	L0A672
+	BSR.S	L0A6D6
+	MOVE.W	0(A6,A1.L),D0
+	BEQ.S	L0A6CA
+	ADDI.W	#$18,D0
+	SUB.W	-6(A6,A1.L),D0
+	BLE.S	L0A6CA
+	BRA.S	L0A6A6
+L0A672	BSR.S	L0A6D6
+	TST.B	$02(A6,A1.L)
+	BGT.S	L0A6A6
+	ADDQ.W	#2,A4
+	ADDQ.L	#6,BV_RIP(A6)	;arith stack
+	BSR.S	L0A68C
+	BSR.S	L0A6D6
+	TST.B	$02(A6,A1.L)
+	BLT.S	L0A6A6
+	BRA.S	L0A6CA
+L0A68C	MOVEA.L	A4,A0
+	SUBA.L	BV_VVBAS(A6),A2	;variable values
+	MOVE.L	A2,-(A7)
+	JSR	L05A7E(PC)	;*/undomodify BSR L05A7E
+	MOVEA.L	BV_VVBAS(A6),A2	;variable values
+	ADDA.L	(A7)+,A2
+	MOVEA.L	A0,A4
+	BEQ.S	L0A6D4
+	ADDQ.W	#4,A7
+	RTS
+L0A6A6	ADDQ.L	#6,BV_RIP(A6)	;arith stack
+L0A6AA	MOVE.W	0(A6,A4.L),D0
+	CMPI.W	#$8404,D0
+	BNE.S	L0A6B8
+	ADDQ.W	#2,A4
+	BRA.S	L0A64A
+L0A6B8	CMPI.W	#$840A,D0
+	BEQ.S	L0A6D2
+	CMPI.W	#$8402,D0
+	BEQ.S	L0A6D2
+	JSR	L09072(PC)	;*/undomodify BSR L09072
+	BRA.S	L0A6AA
+L0A6CA	ADDQ.L	#6,BV_RIP(A6)	;arith stack
+L0A6CE	MOVEQ	#0,D0
+	RTS
+L0A6D2	MOVEQ	#-$01,D0
+L0A6D4	RTS
+L0A6D6	SUBQ.W	#6,A1
+	MOVE.L	$02(A6,A2.L),$02(A6,A1.L)
+	MOVE.W	0(A6,A2.L),0(A6,A1.L)
+	JSR	RI_SUB(PC)	;*/undomodify BSR RI_SUB
+	BEQ.S	L0A6EC
+	ADDQ.W	#4,A7
+L0A6EC	RTS
+L0A6EE	; execute BASIC instruction
+	MOVEA.L	$B0(A6),A4
+	MOVEA.L	$B4(A6),A2
+L0A6F6	SF	$B8(A6)
+	MOVE.L	A4,$00B0(A6)
+	MOVE.L	A2,$00B4(A6)
+	MOVE.L	$04(A6,A2.L),D4
+	MOVEA.L	A4,A0
+	MOVE.L	BV_NTP(A6),D0	;name table running pointer
+	SUB.L	BV_NTBAS(A6),D0	;name table
+	MOVE.L	D0,-(A7)
+	JSR	L0614A(PC)	;*/undomodify BSR L0614A
+	BNE.S	L0A724
+	MOVE.W	0(A6,A0.L),D1
+	JSR	L09686(PC)	;*/undomodify BSR L09686
+	BEQ.S	L0A732
+	MOVEQ	#-$0F,D0
+L0A724	MOVE.L	BV_NTBAS(A6),D1	;name table
+	ADD.L	(A7)+,D1
+	MOVE.L	D1,BV_NTP(A6)	;name table running pointer
+	TST.L	D0
+	RTS
+L0A732	MOVE.L	A5,D0
+	SUB.L	BV_NTBAS(A6),D0	;name table
+	MOVE.L	D0,-(A7)
+	MOVEA.L	A0,A4
+	MOVEA.L	BV_NTBAS(A6),A3	;name table
+	ADDA.L	$0004(A7),A3
+	MOVEA.L	D4,A2
+	MOVEA.L	BV_RIP(A6),A1	;arith stack
+	SUBA.L	BV_RIBAS(A6),A1	;arith stack running ptr
+	SUBA.L	BV_TKBAS(A6),A4	;token list
+	MOVEM.L	D5-D7/A1/A4,-(A7)
+	MOVE.L	BV_LINUM(A6),-(A7) ;current line #
+	MOVE.B	BV_STMNT(A6),-(A7) ;current stmnt on line
+	MOVE.L	BV_INLIN(A6),-(A7) ;Processing in inline clause
+	JSR	(A2)		;call Machinecode procedure
+	MOVE.L	D0,D2		;*** Procedure return ***
+	MOVE.L	(A7)+,BV_INLIN(A6) ;Processing inline clause
+	MOVE.B	(A7)+,BV_STMNT(A6) ;current stmnt on line
+	MOVE.L	(A7)+,BV_LINUM(A6) ;current line #
+	MOVEM.L	(A7)+,D5-D7/A1/A4
+	ADDA.L	BV_TKBAS(A6),A4	;token list
+	ADDA.L	BV_RIBAS(A6),A1	;arith stack running ptr
+	MOVE.L	A1,BV_RIP(A6)	;arith stack
+	MOVEA.L	BV_NTBAS(A6),A5	;name table
+	MOVEA.L	A5,A3
+	ADDA.L	(A7)+,A5
+	ADDA.L	(A7)+,A3
+	JSR	STO_VARValue(PC)	;*/undomodify BSR STO_VARValue
+	MOVE.L	D2,D0
+	TST.B	$B8(A6)		;undo rt stack then redo
+				;procedure
+	BNE	L097E0
+	RTS
+L0A79C	MOVE.B	#$7F,BV_STMNT(A6) ;current stmnt on line
+	MOVEQ	#0,D4
+	MOVE.W	BV_INDEX(A6),D4	;Name tab row of last lp
+	JSR	L0A0AA(PC)	;*/undomodify BSR L0A0AA
+	BGE	L0A37A
+	RTS
+L0A7B2	; execute DATA and REMark lines
+	MOVEQ	#0,D0
+	RTS
+L0A7B6	; execute a conditional repeat
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.B	#$88,D0
+	BNE.S	L0A7F0
+	MOVEQ	#0,D4
+	MOVE.W	2(A6,A4.L),D4
+	ADDQ.W	#4,A4
+	JSR	L09852(PC)	;*/undomodify BSR L09852
+	BLT.S	L0A7D8
+	MOVE.B	#1,BV_INLIN(A6)	;Processing inline clause
+	MOVE.W	D4,BV_INDEX(A6)	;Name tab row of last lp
+L0A7D8	JSR	L09F96(PC)	;*/undomodify BSR L09F96
+	MOVE.B	0(A6,A2.L),D2
+	MOVEQ	#$06,D1
+	SUBQ.B	#2,D2
+	BEQ.S	L0A7F4
+	SUBQ.B	#4,D2
+	BEQ.S	L0A81C
+	MOVEQ	#$1A,D1
+	SUBQ.B	#1,D2
+	BEQ.S	L0A7F4
+L0A7F0	MOVEQ	#-$0C,D0
+	RTS
+L0A7F4	; initialize conditions of REPeat loop
+	MOVE.L	A2,-(A7)
+	MOVE.L	4(A6,A2.L),D2
+	BLT.S	L0A806
+	MOVEA.L	BV_VVBAS(A6),A0	;variable values
+	ADDA.L	D2,A0
+	JSR	L04FE8(PC)	;*/undomodify BSR L04FE8
+L0A806	MOVEQ	#$0C,D1
+	JSR	L04DF6(PC)	;*/undomodify BSR L04DF6
+	SUBA.L	BV_VVBAS(A6),A0	;variable values
+	MOVEA.L	(A7)+,A2
+	MOVE.L	A0,$04(A6,A2.L)
+	MOVE.B	#$06,0(A6,A2.L)
+L0A81C	JMP	L0A2FE(PC)	;*/undomodify BRA L0A2FE
+L0A820	; execute RESTore
+	CLR.W	BV_DALNO(A6)	;Current DATA line #
+	MOVEA.L	A4,A0
+	JSR	L05A82(PC)	;*/undomodify BSR L05A82
+	MOVEA.L	A0,A4
+	BLT.S	L0A848
+	BGT.S	L0A83A
+	ADDQ.L	#2,BV_RIP(A6)	;arith stack
+	MOVE.W	0(A6,A1.L),BV_DALNO(A6) ;Current DATA line #
+L0A83A	MOVE.B	#$01,BV_DASTM(A6) ;Current DATA statement #
+	MOVE.B	#$01,BV_DAITM(A6) ;Next DATA item to read
+	MOVEQ	#0,D0
+L0A848	RTS
+L0A84A	; execute conditions fo SELect
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8115,D1
+	BNE.S	L0A85A
+	ADDQ.W	#2,A4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+L0A85A	MOVEQ	#0,D4
+	MOVE.W	$02(A6,A4.L),D4
+	ADDQ.W	#4,A4
+	JSR	L09F80(PC)	;*/undomodify BSR L09F80
+	SUBQ.B	#2,D2
+	BNE.S	L0A8A0
+	TST.L	D0
+	BLT.S	L0A89C
+	JSR	L09852(PC)	;*/undomodify BSR L09852
+	BLT.S	L0A88C
+	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BNE.S	L0A87E
+	ST	BV_INLIN(A6)	;Processing inline clause
+L0A87E	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8401,D1
+	BNE.S	L0A88C
+	ADDQ.W	#2,A4
+	BRA.S	L0A892
+L0A88C	JSR	L09D72(PC)	;*/undomodify BSR L09D72
+	BNE.S	L0A898
+L0A892	JSR	L0A64A(PC)	;*/undomodify BSR L0A64A
+	BLT.S	L0A88C
+L0A898	MOVEQ	#0,D0
+	RTS
+L0A89C	MOVEQ	#-17,D0		;Error in expression
+	RTS
+L0A8A0	MOVEQ	#-12,D0		;Bad name
+	RTS
+L0A8A4	; supervisor of direct or programm lines
+	MOVEA.L	BV_PFBAS(A6),A4	;program file
+L0A8A8	SF	BV_INLIN(A6)	;Processing inline clause
+	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	BNE.S	L0A8B8
+L0A8B2	BSR	L0A966
+	BNE.S	L0A8F8
+L0A8B8	MOVEQ	#1,D0
+	JSR	L04E32(PC)	;*/undomodify BSR L04E32
+				;allocate memory
+	MOVEQ	#0,D0
+; --------------------------------------------------------------
+;*/beginoverlay
+	ifd	NoTas
+L0A8C0:
+	BSR	L0A56C		;*/modify JSR $A56C(PC)
+	CMPI.B	#$81,D0
+	BNE.S	L0A8D0
+	BSR	L0A190		;*/modify JSR $A190(PC)
+	BRA.S	o0A8EA		;*/modify BRA.S $A8EA
+L0A8D0:
+	SUBI.B	#$88,D0		;*/modify CMPI.B #$88,D0
+	BNE.S	L0A8DC
+	BSR	L0A33C		;*/modify JSR $A33C(PC)
+	BRA.S	o0A8EA		;*/modify BRA.S $A8EA
+L0A8DC:
+	ADDQ.B	#$04,D0		;*/modify CMPI.B #$84,D0
+	BNE.S	o0A8E8		;*/modify BNE.S $A8E8
+	BSR	L0ABF0		;*/modify JSR $ABF0(PC)
+	BRA.S	o0A8EA		;*/modify BRA.S $A8EA
+; test for errors and Break
+o0A8E8:
+	MOVEQ	#-19,D0		;Not implemented error
+o0A8EA:
+	TST.L	D0
+	BNE	L09BA8
+	BSET	#7,BV_BRK(A6)	;*/mend TAS BV_BRK(A6)
+				;There has been a
+				;break (0) or not ($80)
+	BEQ	L09B90
+L0A8F8:
+	BSET	#7,BV_CONT(A6)	;*/mend TAS BV_CONT(A6)
+				;continue ($80)
+				;or stop (0) processing
+	BEQ.S	L0A938		;*/modify BEQ.L L0A9BA
+	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	BNE.S	L0A90C
+	CMPA.L	BV_PFBAS(A6),A4	;program file
+	BLE.S	L0A8A4
+L0A90C:
+	BSR	L09B32		;*/modify JSR $9B32(PC)
+	BGE.S	L0A95C
+	TST.B	BV_INLIN(A6)	;Processing inline clause?
+	BEQ.S	L0A94E
+	BLT.S	L0A924
+	BSR	L0A79C		;*/modify JSR $A79C(PC)
+	TST.B	BV_INLIN(A6)	;Processing inline clause
+	BNE.S	o0A8EA		;*/modify BNE.S L0A8EA
+;
+	endc
+;
+	ifnd	NoTas
+L0A8C0:
+	JSR	L0A56C(PC)
+	CMPI.B	#$81,D0
+	BNE.S	L0A8D0
+	JSR	L0A190(PC)
+	BRA.S	o0A8EA
+L0A8D0:
+	CMPI.B	#$88,D0
+	BNE.S	L0A8DC
+	JSR	L0A33C(PC)
+	BRA.S	o0A8EA
+L0A8DC:
+	CMPI.B	#$84,D0
+	BNE.S	L0A8E8
+	JSR	L0ABF0(PC)
+	BRA.S	o0A8EA
+L0A8E8:
+	MOVEQ	#$-13,D0
+o0A8EA:
+	TST.L	D0
+	BNE	L09BA8
+	TAS	$008F(A6)
+	BEQ	L09B90
+L0A8F8:
+	TAS	BV_CONT(A6)
+	BEQ	L0A9BA
+	TST.B	$6F(A6)
+	BNE.S	L0A90C
+	CMPA.L	$10(A6),A4
+	BLE.S	L0A8A4
+L0A90C:
+	JSR	L09B32(PC)
+	BGE.S	L0A95C
+	TST.B	$6E(A6)
+	BEQ.S	L0A94E
+	BLT.S	L0A924
+	JSR	L0A79C(PC)
+	TST.B	$6E(A6)
+	BNE.S	o0A8EA
+;
+	endc
+;*/endoverlay
+; --------------------------------------------------------------
+; WHEN ERROR ?
+L0A924:
+	TST.B	$C0(A6)
+	BEQ.S	L0A93C
+	TST.B	$BF(A6)
+	BEQ.S	L0A94E
+	JSR	BAS_CONTinue(PC)	;*/undomodify BSR BAS_CONTinue
+	ST	BV_CONT(A6)	;continue ($80) or stop (0)
+L0A938:
+	JMP	L0A9BA(PC)	;*/undomodify BRA L0A9BA
+L0A93C:
+	MOVE.W	BV_LINUM(A6),D4	;current line #
+	MOVEQ	#-1,D3
+	JSR	L0ACC2(PC)	;*/undomodify BSR L0ACC2
+	BNE.S	L0A94E
+	JSR	L09AEE(PC)	;*/undomodify BSR L09AEE
+	BRA.S	L0A90C
+L0A94E	; test for return after line end
+	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	ADDQ.W	#2,A4
+	BEQ	L0A8B2
+	BSR.S	L0A998
+	BRA.S	L0A990
+L0A95C	ADDQ.W	#2,A4
+	ADDQ.B	#1,BV_STMNT(A6)	;current stmnt on line
+	BRA	L0A8B8
+L0A966	; point to first instruction in line
+	SF	BV_INLIN(A6)	;Processing inline clause
+L0A96A	CLR.W	BV_LINUM(A6)	;current line #
+	TST.B	BV_SING(A6)	;Single line execution
+				;ON ($FF) or OFF (0)
+	BNE.S	L0A98A
+	CMPA.L	BV_PFP(A6),A4	;program running pointer
+	BGE.S	L0A994
+	MOVE.W	0(A6,A4.L),D0
+	ADD.W	D0,BV_LENGTH(A6)	;current length
+	MOVE.W	4(A6,A4.L),BV_LINUM(A6) ;current line #
+	ADDQ.W	#6,A4
+L0A98A	MOVE.B	#1,BV_STMNT(A6)	;current stmnt on line
+L0A990	MOVEQ	#0,D0
+	RTS
+L0A994	; set flags after end of prog
+	SF	BV_CONT(A6)	;continue ($80) or stop (0)
+L0A998	MOVE.W	#$FFFF,BV_NXLIN(A6) ;line # to start after
+				;to start after
+	MOVE.W	#4,BV_STOPN(A6)	;Which stop number set
+	RTS
+; execute system commands
+; Labels relativ to L0A9BA
+; NOTE: ALL following commands have been rewritten
+; by Tony Tebby - if you use TOOLKIT II you can easily
+; omit all the code that is following
+L0A9A6	DC.W	L0A9F2-L0A9BA	;CLEAR
+	DC.W	L0AADC-L0A9BA	;NEW
+	DC.W	L0ABCA-L0A9BA	;STOP
+	DC.W	L0AA5E-L0A9BA	;RUN
+	DC.W	L0AADC-L0A9BA	;LRUN
+	DC.W	L0AADC-L0A9BA	;LOAD
+	DC.W	L0ABDC-L0A9BA	;MRUN
+	DC.W	L0ABDC-L0A9BA	;MERGE
+	DC.W	L0ABA6-L0A9BA	;CONTINUE-RETRY
+	DC.W	L0A9C6-L0A9BA	;ERROR-RETURN
+L0A9BA	MOVE.W	BV_STOPN(A6),D1	;Which stop number set
+	MOVE.W	L0A9A6(PC,D1.W),D1
+	JMP	L0A9BA(PC,D1.W)
+L0A9C6	; restore system and error return
+	JSR	L09BA8(PC)	;*/undomodify BSR L09BA8
+	MOVEA.L	BV_RTP(A6),A0	;return table running ptr
+	SF	BV_AUTO(A6)	;Whether AUTO/EDIT
+				;is on ($FF) or off (0)
+L0A9D2	CMPA.L	BV_RTBAS(A6),A0	;return table
+	BLE.S	L0A9FC
+	MOVE.B	-$08(A6,A0.L),D0
+	BEQ.S	L0A9EE
+	MOVE.L	-$18(A6,A0.L),D0
+	ADD.L	BV_NTBAS(A6),D0	;name table
+	MOVE.L	D0,BV_NTP(A6)	;name table running pointer
+	SUBA.W	#$0010,A0
+L0A9EE	SUBQ.W	#8,A0
+	BRA.S	L0A9D2
+L0A9F2	; system command clear
+	TST.B	BV_UNRVL(A6)	;Need to unravel
+				;($ff) or not (0)
+	BEQ.S	L0A9FC
+	JSR	L097E0(PC)	;*/undomodify BSR L097E0
+L0A9FC	BSR	L0AA88
+	JSR	L056C6(PC)	;*/undomodify BSR L056C6
+	MOVEA.L	BV_NTBAS(A6),A0	;name table
+L0AA08	MOVE.B	0(A6,A0.L),D0
+	SUBQ.B	#1,D0
+	BEQ.S	L0AA4A
+	SUBQ.B	#3,D0
+	BLT.S	L0AA1C
+	SUBQ.B	#2,D0
+	BLT.S	L0AA52
+	SUBQ.B	#2,D0
+	BGE.S	L0AA52
+L0AA1C	MOVE.W	2(A6,A0.L),D0
+	BLT.S	L0AA4A
+	BSR	L0AACC
+	MOVE.B	-1(A6,A1.L),D0
+	MOVEQ	#1,D1
+	SUBI.B	#$25,D0
+	BLT.S	L0AA38
+	BGT.S	L0AA36
+	ADDQ.W	#1,D1
+L0AA36	ADDQ.W	#1,D1
+L0AA38	MOVE.B	D1,1(A6,A0.L)
+	MOVE.B	D7,0(A6,A0.L)
+	MOVE.L	#$FFFFFFFF,4(A6,A0.L)
+	BRA.S	L0AA52
+L0AA4A	MOVE.L	D7,0(A6,A0.L)
+	MOVE.L	D7,4(A6,A0.L)
+L0AA52	ADDQ.W	#8,A0
+	CMPA.L	BV_NTP(A6),A0	;name table running pointer
+	BLT.S	L0AA08
+	ST	BV_EDIT(A6)	;Program has been
+				;edited ($ff) or not (0)
+L0AA5E	; execute RUN
+	TST.B	BV_UNRVL(A6)	;Need to unravel
+				;($ff) or not (0)
+	BEQ.S	L0AA80
+	MOVE.W	BV_NXLIN(A6),$B4(A6) ;line # to start after
+	MOVE.W	BV_STOPN(A6),$B6(A6) ;Which stop number set
+	JSR	L097E0(PC)	;*/undomodify BSR L097E0
+	MOVE.W	$B4(A6),BV_NXLIN(A6)
+	MOVE.W	$B6(A6),BV_STOPN(A6)
+L0AA80	JSR	L0A4BA(PC)	;*/undomodify BSR L0A4BA
+	BRA	L0ABE6
+L0AA88	; clear stacks and storage places
+	MOVEQ	#0,D7
+	MOVE.L	D7,BV_DALNO(A6)	;Current DATA line #
+	MOVE.B	#$01,BV_DAITM(A6) ;Next DATA item to read
+	MOVE.L	BV_VVBAS(A6),$2C(A6) ;variable values
+	MOVE.L	#$FFFFFFFF,$CA(A6) ;
+	MOVE.W	D7,$C8(A6)	;
+	MOVE.L	BV_RTBAS(A6),BV_RTP(A6) ;return table
+	MOVEQ	#$58,D0
+L0AAAE	MOVE.L	BV_RIBAS(A6),0(A6,D0.W) ;arith stack running ptr
+	SUBQ.W	#4,D0
+	CMPI.B	#$48,D0
+	BGE.S	L0AAAE
+	SF	$0090(A6)	;Need to unravel
+				;($ff) or not (0)
+	MOVE.L	D7,BV_VVFREE(A6)	;First free space in vvtable
+	JSR	L04F9E(PC)	;*/undomodify BSR L04F9E
+	JMP	L04F96(PC)	;*/undomodify BRA L04F96
+L0AACC	; point to end of name list
+	MOVEA.L	BV_NLBAS(A6),A1	;name list
+	ADDA.W	D0,A1
+	MOVEQ	#$01,D0
+	ADD.B	0(A6,A1.L),D0
+	ADDA.W	D0,A1
+	RTS
+L0AADC:
+	MOVEA.L	BV_CHP(A6),A3	;channel name running ptr
+	MOVEA.L	BV_CHBAS(A6),A2	;channel name
+	ADDA.W	#$78,A2
+	MOVE.L	A2,BV_CHP(A6)	;channel name running ptr
+L0AAEC	CMPA.L	A3,A2
+	BGE.S	L0AB02
+	MOVE.L	0(A6,A2.L),D0
+	BLT.S	L0AAFC
+	MOVEA.L	D0,A0
+	MOVEQ	#2,D0		;IO.CLOSE
+	TRAP	#2
+L0AAFC	ADDA.W	#$0028,A2
+	BRA.S	L0AAEC
+L0AB02	MOVEQ	#$10,D0		;MT.DMODE sets or reads the
+				;display mode
+	MOVEQ	#-1,D1		;read mode
+	MOVEQ	#-1,D2		;read display
+	TRAP	#1
+	MOVEQ	#$10,D0		;MT.DMODE sets this mode
+	TRAP	#1
+	MOVE.L	BV_LNBAS(A6),BV_LNP(A6) ;line # table
+	CLR.W	BV_LSBAS(A6)	;Bottom line in window
+	BSR	L0AA88
+	MOVE.L	BV_PFBAS(A6),BV_PFP(A6) ;program file
+	MOVEQ	#0,D0
+	MOVEQ	#0,D5
+	MOVEA.L	BV_NTBAS(A6),A0	;name table
+	MOVEQ	#8,D1
+L0AB2C	CMPA.L	BV_NTP(A6),A0	;name table running pointer
+	BEQ.S	L0AB84
+	CMP.B	0(A6,A0.L),D1
+	BGT.S	L0AB42
+	TST.B	D5
+	BNE.S	L0AB50
+	MOVE.W	2(A6,A0.L),D0
+	BRA.S	L0AB80
+L0AB42	TST.B	D5
+	BNE.S	L0AB80
+	MOVEA.L	A0,A2
+	BSR.S	L0AACC
+	MOVEA.L	A1,A3
+	ST	D5
+	BRA.S	L0AB80
+L0AB50	MOVE.L	0(A6,A0.L),0(A6,A2.L)
+	MOVE.L	$04(A6,A0.L),$04(A6,A2.L)
+	MOVE.W	$02(A6,A2.L),D0
+	BSR	L0AACC
+	SUBA.W	D0,A1
+	MOVE.L	A3,D2
+	SUB.L	BV_NLBAS(A6),D2	;name list
+	MOVE.W	D2,$02(A6,A2.L)
+	ADDQ.W	#8,A2
+L0AB72	MOVE.B	0(A6,A1.L),0(A6,A3.L)
+	ADDQ.W	#1,A1
+	ADDQ.W	#1,A3
+	SUBQ.W	#1,D0
+	BGT.S	L0AB72
+L0AB80	ADDQ.W	#8,A0
+	BRA.S	L0AB2C
+L0AB84	TST.B	D5
+	BEQ.S	L0AB90
+	MOVE.L	A2,BV_NTP(A6)	;name table running pointer
+	MOVE.L	A3,BV_NLP(A6)	;name list running pointer
+L0AB90	JSR	L04F9A(PC)	;*/undomodify BSR L04F9A
+	JSR	L04F8E(PC)	;*/undomodify BSR L04F8E
+	JSR	L04F92(PC)	;*/undomodify BSR L04F92
+	JSR	L04F8A(PC)	;*/undomodify BSR L04F8A
+	JSR	L056C6(PC)	;*/undomodify BSR L056C6
+	BRA.S	L0ABC4
+L0ABA6	; execute RETRY or CONTINUE
+	MOVE.W	BV_CNLNO(A6),BV_NXLIN(A6) ;Line to CONTINUE from
+	MOVE.B	BV_CNSTM(A6),$8A(A6) ;Statement to CONTINUE from
+	MOVE.W	#$FFFF,BV_CNLNO(A6) ;Line to CONTINUE from
+	MOVE.B	BV_CNINL(A6),BV_INLIN(A6) ;CONTINUE Inline loop flg
+	MOVE.W	BV_CNIND(A6),BV_INDEX(A6) ;Inline loop indx
+L0ABC4	SF	BV_COMLN(A6)	;Command line saved ($ff)
+				;or not (0)
+	BRA.S	L0ABEC
+L0ABCA	; execute STOP
+	TST.B	$C0(A6)
+	SF	$C0(A6)
+	BNE.S	L0ABE6
+	MOVEQ	#0,D0
+	JSR	L09B5E(PC)	;*/undomodify BSR L09B5E
+	BRA.S	L0ABEC
+L0ABDC	; execute MRUN or MERGE
+	TST.B	BV_UNRVL(A6)	;Need to unravel
+				;($ff) or not (0)
+	BEQ.S	L0ABE6
+	JSR	L097E0(PC)	;*/undomodify BSR L097E0
+L0ABE6	MOVE.B	BV_SING(A6),BV_COMLN(A6) ;Single line execution
+				;ON ($FF) or OFF (0)
+L0ABEC	MOVEQ	#0,D0
+	RTS
+L0ABF0	; handling of lines starting with =
+	CMPI.W	#$8401,D1
+	BNE.S	L0ABFC
+	ADDQ.W	#2,A4
+	JMP	L09CFE(PC)	;*/undomodify BRA L09CFE
+				;search end of SELect
+L0ABFC	MOVEQ	#0,D0
+	RTS
+L0AC00	; execute WHEN
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$810E,D1
+	BNE.S	L0AC32
+	MOVE.W	BV_LINUM(A6),$00BC(A6) ;current line #
+	MOVE.B	BV_STMNT(A6),$00BE(A6) ;current stmnt on line
+	JSR	L09852(PC)	;*/undomodify BSR L09852
+	SEQ	$00BF(A6)
+	BEQ.S	L0AC28
+	MOVEQ	#$06,D2
+	JMP	L098A8(PC)	;*/undomodify BRA L098A8
+L0AC26	ADDQ.W	#2,A4
+L0AC28	JSR	L09B32(PC)	;*/undomodify BSR L09B32
+	BGE.S	L0AC26
+L0AC2E	MOVEQ	#0,D0
+	RTS
+L0AC32	; WHENvar
+	MOVE.W	2(A6,A4.L),D4
+	ADDQ.W	#4,A4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.B	#$85,D0
+	BEQ.S	L0AC54
+L0AC42:
+	MOVEQ	#$01,D3
+	JSR	L0ACC2(PC)	;*/undomodify BSR.S L0ACC2
+				;*/undomodify nop
+	BNE.S	L0AC2E
+	ST	0(A6,A2.L)
+	SUBQ.W	#1,$C8(A6)
+	BRA.S	L0AC42
+L0AC54:
+	MOVEQ	#$01,D3
+	JSR	L0ACC2(PC)	;*/undomodify BSR.S L0ACC2
+				;*/undomodify nop
+L0AC5A:
+	BNE.S	L0AC6C
+	MOVE.W	BV_LINUM(A6),D0	;current line #
+	CMP.W	$02(A6,A2.L),D0
+	BEQ.S	L0AC76
+	JSR	L0ACDA(PC)	;*/undomodify BSR.S L0ACDA
+				;*/undomodify nop
+	BRA.S	L0AC5A
+L0AC6C:
+	MOVEQ	#0,D3
+	JSR	L0ACC2(PC)	;*/undomodify BSR.S L0ACC2
+				;*/undomodify nop
+	ADDQ.W	#1,$00C8(A6)
+L0AC76:
+	MOVE.W	D4,0(A6,A2.L)
+	MOVE.W	BV_LINUM(A6),$02(A6,A2.L) ;current line #
+	MOVE.B	BV_STMNT(A6),$04(A6,A2.L) ;current statement
+	MOVE.W	BV_LINUM(A6),$06(A6,A2.L) ;current line #
+	MOVE.B	#$7F,$05(A6,A2.L)
+	CLR.L	$0A(A6,A2.L)
+	ST	$08(A6,A2.L)
+	MOVE.L	A2,-(A7)
+	JSR	L09852(PC)	;*/undomodify BSR L09852
+	MOVEA.L	(A7)+,A2
+	SEQ	$0E(A6,A2.L)
+	BEQ.S	L0AC28
+	MOVEQ	#$06,D2
+	MOVE.L	A2,-(A7)
+	JSR	L098A8(PC)	;*/undomodify BSR L098A8
+	MOVE.L	(A7)+,D2
+	MOVE.W	BV_LINUM(A6),$06(A6,A2.L) ;current line #
+	MOVE.B	BV_STMNT(A6),$05(A6,A2.L) ;current stmnt on line
+	BRA	L0AC2E
+L0ACC2	MOVE.W	$00C8(A6),D2
+	BEQ.S	L0AD06
+	BSR.S	L0AD10
+L0ACCA	MOVE.W	0(A6,A2.L),D0
+	BLT.S	L0ACEC
+	TST.B	D3
+	BLT.S	L0ACF2
+	BEQ.S	L0ACDE
+	CMP.W	D0,D4
+	BEQ.S	L0ACFE
+L0ACDA	SUBQ.W	#1,D2
+	BEQ.S	L0AD02
+L0ACDE	ADDA.W	#$0010,A2
+	SUBI.L	#$00000010,D1
+	BGE.S	L0ACCA
+	BRA.S	L0AD26
+L0ACEC	TST.B	D3
+	BNE.S	L0ACDE
+	RTS
+L0ACF2	CMP.W	$06(A6,A2.L),D4
+	BNE.S	L0ACDA
+	TST.W	$08(A6,A2.L)
+	BLT.S	L0ACDA
+L0ACFE	MOVEQ	#0,D0
+	RTS
+L0AD02	MOVEQ	#-$01,D0
+	RTS
+L0AD06	TST.B	D3
+	BNE.S	L0AD02
+	TST.L	$CA(A6)		;
+	BLT.S	L0AD26
+L0AD10	MOVEA.L	BV_VVBAS(A6),A2	;variable values
+	ADDA.L	$CA(A6),A2	;
+	MOVE.L	0(A6,A2.L),D1
+	SUBI.L	#$14,D1
+	ADDQ.W	#4,A2
+	RTS
+L0AD26	MOVE.L	$CA(A6),D1	;
+	BGE.S	L0AD32
+	MOVEQ	#0,D1
+	MOVEQ	#0,D0
+	BRA.S	L0AD3C
+L0AD32	MOVEA.L	BV_VVBAS(A6),A2	;variable values
+	ADDA.L	D1,A2
+	MOVE.L	0(A6,A2.L),D0
+L0AD3C	ADDI.L	#$140,D1
+	MOVE.L	A2,-(A7)
+	MOVE.L	D0,-(A7)
+	JSR	L04DF6(PC)	;*/undomodify BSR L04DF6
+	MOVE.L	(A7)+,D0
+	MOVEA.L	(A7)+,A2
+	MOVE.L	D1,0(A6,A0.L)
+	MOVE.L	A0,-(A7)
+	SUB.L	D0,D1
+L0AD56	ADDQ.W	#4,A2
+	ADDQ.W	#4,A0
+	SUBQ.W	#4,D0
+	BLE.S	L0AD66
+	MOVE.L	0(A6,A2.L),0(A6,A0.L)
+	BRA.S	L0AD56
+L0AD66	MOVE.L	A0,-(A7)
+L0AD68	ST	0(A6,A0.L)
+	ADDA.W	#$10,A0
+	SUBI.L	#$10,D1
+	BGT.S	L0AD68
+	MOVE.L	$CA(A6),D1
+	BLT.S	L0AD8C
+	MOVEA.L	BV_VVBAS(A6),A0	;variable values
+	ADDA.L	D1,A0
+	MOVE.L	0(A6,A0.L),D1
+	JSR	L04FE8(PC)	;*/undomodify BSR L04FE8
+L0AD8C	MOVEA.L	(A7)+,A2
+	MOVE.L	(A7)+,D1
+	SUB.L	BV_VVBAS(A6),D1	;variable values
+	MOVE.L	D1,$CA(A6)
+	RTS
+; --------------------------------------------------------------
+;*/endfile

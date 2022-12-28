@@ -1,0 +1,2388 @@
+*/beginfile QDOS4_asm
+; --------------------------------------------------------------
+; QDOS4_asm - The QDOS kernel
+;	   - last modified 11/04/99
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...latest changes by Mark J Swift
+; --------------------------------------------------------------
+
+; --------------------------------------------------------------
+; microdrive routines to switch on & off motor and read & write
+; sectors used to reside here, various 8049 routines also.
+; also patch out polled task for keyboard reading (PLIST)
+; and schedular task for serial I/O (SHLST1)
+
+L029FC:
+
+; --------------------------------------------------------------
+;*/beginoverlay
+FS_FIX:
+	MOVEA.L	4(A4),A4 	; get address after link
+
+	CMPI.B	#$46,D0		; FS.HEADS
+	BEQ.S	FS_FIX1
+
+	CMPI.B	#$49,D0		; FS.SAVE
+	BNE.S	FS_FIX2
+
+FS_FIX1:
+	BSR.S	CLRALL
+
+FS_FIX2:
+	JSR	(A4)		; call I/O device driver to
+				; execute TRAP #3 with D0
+	CMPI.B	#$47,$13(A0)	; FS.HEADR
+	BEQ.S	FS_FIX3
+
+	CMPI.B	#$48,$13(A0)	; FS.LOAD
+	BNE.S	MSG_FIX1
+
+FS_FIX3:
+	BRA.s	CLRALL
+
+MSG_FIX:
+	movem.l	d0-d2/a0,-(a7)
+	moveq	#0,d0
+	trap	#1
+	move.l	$14A(a0),a2
+	move.w	0(a2,d5.w),d5
+	lea	0(a2,d5.w),a2
+	movem.l	(a7)+,d0-d2/a0
+
+MSG_FIX1:
+	rts
+
+;*/endoverlay
+; --------------------------------------------------------------
+
+; --------------------------------------------------------------
+;*/beginoverlay
+;*/beginfilling
+NOP02FAE:
+	DCB.w	($2FAE-(NOP02FAE-ORGN))/2,$4E71
+L02FAE:
+;*/endfilling
+;*/endoverlay
+; --------------------------------------------------------------
+; allocate common heap
+MM_ALCHP:
+	LEA	$08(A6),A0	;SV.CHPFR First free space
+				; in common heap area
+	MOVEQ	#$0F,D2
+	JSR	L03106(PC)	;*/undomodify BSR L03106
+				; allocate area in heap
+				; (D1 bytes)
+	BLT.S	L02FD6
+	LEA	$4(A6),A2	;SV.CHEAP Base of common
+				; heap area
+	CMPA.L	A1,A2
+	BEQ.S	L02FC6
+	CLR.L	$0008(A1)
+L02FC6:
+	MOVE.L	D1,D0
+	ADDQ.W	#4,A0		;*/undomend ADDQ.L #4,A0
+	SUBQ.L	#4,D0
+; --------------------------------------------------------------
+;*/beginundoinsert
+;	BCLR	#2,$28002	; This flag bit has  been
+				; added to provide
+;	BNE.S	L0HILF		; memory allocation without
+				; destroying data
+;*/endundoinsert
+; --------------------------------------------------------------
+L02FCC:
+	CLR.L	(A0)+
+	SUBQ.L	#4,D0
+	BGT.S	L02FCC
+	SUBA.L	D1,A0		; A0= base of reserved space
+	BRA.S	L02FF8
+; --------------------------------------------------------------
+;*/beginundoinsert
+L0HILF:
+;	CLR.L	(A0)+
+;	CLR.L	(A0)+
+;	SUBQ.L	#8,D0
+;	ADD.L	D0,A0
+;	SUBA.L	D1,A0
+;	MOVEQ	#0,D0
+;	BRA.S	L02FF8
+;*/endundoinsert
+; --------------------------------------------------------------
+; allocate memory in transient program area
+L02FD6:
+	MOVE.L	D1,-(A7)
+	ADDA.L	(A0),A1
+	CMPA.L	$0C(A6),A1	;SV.FREE    Base of free
+				; area
+	BNE.S	L02FE2
+	SUB.L	(A0),D1
+L02FE2	JSR	L0324E(PC)	;*/undomodify BSR L0324E
+	BNE.S	L02FF6
+	SUBA.L	D1,A0
+	LEA	$8(A6),A1	;SV.CHPFR   First free space
+				; in common heap area
+	JSR	L0315E(PC)	;*/undomodify BSR L0315E
+	MOVE.L	(A7)+,D1
+	BRA.S	MM_ALCHP
+L02FF6	ADDQ.W	#4,A7		;*/undomend ADDQ.L #4,A7
+L02FF8	RTS
+RESERVD1 ; reserve D1 bytes in transient programm area
+	LEA	$18(A6),A0	;SV.TRNFR First free space
+				; in Trans. Prog. Area
+	MOVEQ	#$0F,D2
+	MOVEQ	#1,D0
+	JSR	L03134(PC)	;*/undomodify BSR L03134
+	TST.L	D2
+	BGT.S	L03032
+	MOVE.L	D1,-(A7)
+	LEA	$14(A6),A1	; base of transient program
+				; area
+	ADDA.L	4(A1),A1
+	CMPA.L	$14(A6),A1	; base of transient program
+				; area
+	BNE.S	L0301C
+	SUB.L	(A1),D1
+L0301C	JSR	L031B8(PC)	;*/undomodify BSR L031B8
+				; allocate memory
+	BNE.S	L0305A
+	SUB.L	D1,$14(A6)	; base of transient program
+				; area
+	LEA	$18(A6),A1	; first free space in
+				; transient program area
+	JSR	L0315E(PC)	;*/undomodify BSR L0315E
+	MOVE.L	(A7)+,D1
+	BRA.S	RESERVD1
+L03032	MOVEA.L	A2,A0
+	ADDA.L	4(A2),A0
+	MOVE.L	(A0),D3
+	CMP.L	D1,D3
+	BGT.S	L0304E
+	MOVE.L	4(A0),D3
+	BEQ.S	L03048
+	ADD.L	A0,D3
+	SUB.L	A2,D3
+L03048	MOVE.L	D3,$0004(A2)
+	BRA.S	L03056
+L0304E	SUB.L	D1,D3
+	MOVE.L	D3,(A0)
+	ADDA.L	D3,A0
+	MOVE.L	D1,(A0)
+L03056	MOVEQ	#0,D0
+	RTS
+L0305A	ADDQ.W	#4,A7		;*/undomend ADDQ.L #4,A7
+	RTS
+MM_RECHP:
+	MOVE.L	(A0),D1
+	LEA	8(A6),A1 	; first free space in common
+				; heap aerea
+	JSR	L0315E(PC)	;*/undomodify BSR L0315E
+	MOVE.L	(A1),D2
+	ADDA.L	D2,A1
+	CMPA.L	$0C(A6),A1	;SV.FREE    Base of free
+				; area
+	BNE.S	L03088
+	MOVE.L	D2,D1
+	JSR	L03282(PC)	;*/undomodify BSR L03282
+	SUB.L	D1,D2
+	BEQ.S	L03084
+	ADDA.L	$0004(A2),A2
+	MOVE.L	D2,(A2)
+	BRA.S	L03088
+L03084	CLR.L	4(A2)
+L03088	MOVEQ	#0,D0
+	RTS
+RELE_MEM ; release memory
+	MOVE.L	(A0),D1
+	LEA	$18(A6),A1	; first free space in
+				; transient prog. area
+	JSR	L0315E(PC)	;*/undomodify BSR L0315E
+	LEA	$14(A6),A2	; base of transient program
+				; area
+	ADDA.L	4(A2),A2
+	CMPA.L	$14(A6),A2	;SV.TRNSP   Base of
+				; transient program area
+	BNE.S	L030DE
+	MOVE.L	4(A2),-(A7)
+	MOVE.L	(A2),D2
+	MOVE.L	D2,D1
+	JSR	L031C8(PC)	;*/undomodify BSR L031C8
+				; release memory
+	ADD.L	D1,$14(A6)	;SV.TRNSP   Base of
+				; transient program area
+	SUB.L	D1,D2
+	BEQ.S	L030D2
+	MOVEA.L	(A7)+,A1
+	ADDA.L	D1,A2
+	ADD.L	D1,$18(A6)	;SV.TRNFR   First free space
+				; in TPA
+	MOVE.L	D2,(A2)
+	CLR.L	8(A2)
+	MOVE.L	A1,$0004(A2)
+	BEQ.S	L030DE
+	SUB.L	D1,4(A2)
+	BRA.S	L030DE
+L030D2	MOVE.L	(A7)+,D2
+	BEQ.S	L030DA
+	ADD.L	$18(A6),D2	;SV.TRNFR   First free space
+				; in TPA
+L030DA	MOVE.L	D2,$18(A6)	;SV.TRNFR   First free space
+				; in TPA
+L030DE	RTS
+MT_FREE:
+	MOVEQ	#1,D0
+	MOVEQ	#0,D1
+	LEA	$18(A6),A0	; first free space in
+				; transient prog. area
+	JSR	L03134(PC)	;*/undomodify BSR.S L03134
+				;*/undomodify nop
+	MOVEA.L	$10(A6),A0	; base of basic stack
+	SUBA.W	#$200,A0 	;*/undomend SUBA.L #$200,A0
+	SUBA.L	$C(A6),A0	; base of free area
+	MOVE.L	A0,D1
+	CMP.L	D1,D2
+	BLE.S	L03100
+	MOVE.L	D2,D1
+L03100	BRA	RET_CLD0
+MM_ALLOC ; allocate D1 bytes in A0
+	MOVEQ	#7,D2
+L03106	MOVEQ	#0,D0
+	JSR	L03134(PC)	;*/undomodify BSR.S L03134
+				;*/undomodify nop
+	CMP.L	D1,D2
+	BEQ.S	L03122
+	BGT.S	L03116
+	MOVEQ	#-3,D0		;out of memory
+	RTS
+L03116	ADD.L	D1,4(A1)
+	MOVEA.L	A0,A1
+	ADDA.L	D1,A1
+	SUB.L	D1,D3
+	MOVE.L	D3,(A1)
+L03122	MOVE.L	$0004(A0),D2
+	BEQ.S	L0312C
+	ADD.L	A0,D2
+	SUB.L	A1,D2
+L0312C	MOVE.L	D2,$0004(A1)
+	MOVE.L	D1,(A0)
+	RTS
+L03134	; general memory allocation
+	SUBQ.W	#4,A0		;*/undomend SUBQ.L #4,A0
+	ADD.L	D2,D1
+	NOT.B	D2
+	AND.B	D2,D1
+	MOVEQ	#0,D2
+	MOVEA.L	D2,A2
+L03140	MOVEA.L	A0,A1
+	MOVE.L	4(A0),D3
+	BEQ.S	L0315C
+	ADDA.L	D3,A0
+	MOVE.L	(A0),D3
+	CMP.L	D1,D3
+	BLT.S	L03140
+	MOVEA.L	A1,A2
+	CMP.L	D2,D3
+	BLE.S	L03158
+	MOVE.L	D3,D2
+L03158	TST.B	D0
+	BNE.S	L03140
+L0315C	RTS
+; link free space to task
+L0315E	CLR.L	8(A0)
+MM_LNKFR:
+	SUBQ.W	#4,A1		;*/undomend SUBQ.L #4,A1
+	SUBA.L	A2,A2
+L03166	MOVEA.L	A2,A3
+	MOVEA.L	A1,A2
+	MOVE.L	$0004(A1),D2
+	BEQ.S	L0317A
+	ADDA.L	D2,A1
+	CMPA.L	A0,A1
+	BLE.S	L03166
+	SUBA.L	A0,A1
+	BRA.S	L0317C
+L0317A	MOVEA.L	D2,A1
+L0317C	MOVE.L	A0,D2
+	SUB.L	A2,D2
+	MOVE.L	D2,$0004(A2)
+	MOVE.L	D1,(A0)+
+	MOVE.L	A1,(A0)
+L03188	MOVEA.L	A2,A1
+	MOVEA.L	A3,A2
+L0318C	MOVE.L	4(A1),D2
+
+	ifd	DoCache
+; --------------------------------------------------------------
+;*/beginoverlay
+	beq.s	L0315C		;*/modify BEQ.S  L031B6
+	endif
+	ifnd	DoCache
+	BEQ.S	L031B6
+	endif
+
+	MOVEA.L	A2,A3
+	MOVEA.L	A1,A2
+	ADDA.L	D2,A1
+	MOVE.L	A3,D2
+	BEQ.S	L0318C
+	MOVE.L	(A2),D2
+	ADD.L	A2,D2
+	CMP.L	A1,D2
+	BNE.S	L0318C
+	MOVE.L	4(A1),D2
+	BEQ.S	L031AC
+	ADD.L	(A2),D2
+L031AC	MOVE.L	D2,4(A2)
+	MOVE.L	(A1),D2
+	ADD.L	D2,(A2)
+	BRA.S	L03188
+
+	ifd	DoCache
+				;*/removecode L031B6   RTS
+	endif
+	ifnd	DoCache
+L031B6	RTS
+	endif
+
+L031B8	; test against memory base, used to allocate memory
+	JSR	L0323A(PC)	;*/undomodify BSR  L0323A
+
+	ifd	DoCache
+	bne.s	L0315C		;*/modify BNE.S  L031DE
+	endif
+	ifnd	DoCache
+	BNE.S	L031DE
+	endif
+
+	BSR.S	L031E0
+L031C0	MOVE.L	(A1)+,(A0)+
+	SUBQ.L	#4,D0
+	BNE.S	L031C0
+	BRA.S	L031DE
+L031C8	; test against top of memory, used to release memory
+	JSR	L03276(PC)	;*/undomodify BSR L03276
+	NEG.L	D1
+
+	ifd	DoCache
+	beq.s	L0315C		;*/modify BEQ.S L031DE
+	endif
+	ifnd	DoCache
+	BEQ.S	L031DE
+	endif
+
+	BSR.S	L031E0
+	NEG.L	D1
+	ADDA.L	D0,A0
+	ADDA.L	D0,A1
+L031D8	MOVE.L	-(A1),-(A0)
+	SUBQ.L	#4,D0
+	BNE.S	L031D8
+
+	ifd	DoCache
+L031DE:
+	bra	CLRALL		;*/modify L031DE	 RTS
+;*/endoverlay
+; --------------------------------------------------------------
+	endif
+	ifnd	DoCache
+L031DE	RTS
+	endif
+
+; update A6 and A7 for Basic
+L031E0:
+	MOVEA.L	$68(A6),A3	; SV.JBBAS Pointer to base
+				; of job table
+	MOVE.L	A0,(A3)
+	ADDA.L	D1,A0
+	SUB.L	D1,$58(A0)
+	SUB.L	D1,$5C(A0)
+	MOVEA.L	A0,A1
+	SUBA.L	D1,A0
+	MOVE.L	$14(A6),D0	; SV.TRNSP Base of
+				; transient program area
+	SUB.L	A1,D0
+	CMPA.L	$64(A6),A3	; SV.JBPNT Pointer to
+				; current job table entry
+	BNE.S	L0320A
+	SUB.L	D1,8(A5)
+	MOVE.L	USP,A3
+	SUBA.L	D1,A3
+	MOVE.L	A3,USP
+L0320A	RTS
+L0320C	ADDI.L	#$1FF,D1 	; 512 bytes round
+L03212	ANDI.W	#$FE00,D1	;*/undomend ANDI.L#$FFFFFE00
+				;*/note high word unaltered
+	RTS
+; calculate new position of server block
+L03218:
+	MOVEA.L	$10(A6),A0	;SV.BASIC Base o BASIC stack
+	MOVEQ	#-8,D3
+	BRA.S	L03226
+L03220:
+	MOVEA.L	$0C(A6),A0	;SV.FREE Base of free area
+	MOVEQ	#8,D3
+L03226:
+	MOVE.L	A0,D0
+	SUB.L	A6,D0
+	LSR.L	#6,D0		; number of 512 byte  blocks
+	MOVEA.L	$58(A6),A1	; SV.BTBAS Pointer to base
+				; of slave block table
+	ADDA.L	D0,A1		;*/mend ADDA.W D0,A1
+	MOVE.L	D1,D0
+	LSR.L	#6,D0		; /512
+	LSR.L	#3,D0
+	RTS
+; Expand BASIC area and update server block
+L0323A:
+	BSR.S	L0320C
+	BSR.S	L03218
+	SUBA.L	D1,A0
+; do we intrude beyond SV.FREE - base of free area?
+	CMPA.L	$0C(A6),A0	;*/undomodify
+				; LEA -$200(A0),A2
+				; CMPA.L $0C(A6),A2
+				;*/note would be safer
+	ble.s	L0329E
+	MOVE.L	A0,$10(A6)	;SV.BASIC Base o BASIC stack
+	ADDA.L	D3,A1
+	bra.s	L03270
+; Expand HEAP space and update server block
+L0324E:
+	BSR.S	L0320C
+	BSR.S	L03220
+	ADDA.L	D1,A0
+; do we intrude beyond SV.BASIC - base of BASIC stack?
+	CMPA.L	$10(A6),A0	;*/undomodify
+				; LEA $200(A0),A2
+				; CMPA.L $10(A6),A2
+				;*/note would be safer
+	bge.s	L0329E
+	MOVE.L	A0,$0C(A6)	; SV.FREE Base of free area
+	bra.s	L03270
+L03260:
+;?	CMP.L   $58(A6),A1 ; below base of slaveblock table ?
+;?	BLT     L0329A
+;?	CMP.L   $5C(A6),A1 ; behind top of slaveblock table ?
+;?	BGE     L0329A
+	MOVEQ	#$0C,D2
+	AND.B	(A1),D2
+	BEQ.S	L0326C
+	JSR	L0352A(PC)	;*/undomodify BSR L0352A
+				; forced slaving ?
+	BRA.S	L03260
+L0326C:
+	CLR.B	(A1)		; mark server block as
+				; unavailable
+	ADDA.W	D3,A1		;*/undomend ADDA.L D3,A1
+L03270:
+	DBF	D0,L03260
+	bra.s	L0329A
+L03276:
+	BSR.S	L03212
+	BSR.S	L03218
+	ADD.L	D1,A0
+	MOVE.L	A0,$10(A6)	;SV.BASIC Base of BASIC
+				; stack
+	bra.s	L03296
+; reclaim slave blocks
+L03282:
+	BSR.S	L03212
+	BSR.S	L03220
+	SUBA.L	D1,A0
+	MOVE.L	A0,$0C(A6)	;SV.FREE Base of free area
+	SUBA.W	D3,A1		;*/undomend SUBA.L D3,A1
+	BRA.S	L03296
+L03290:
+	MOVE.B	#1,(A1)
+	SUBA.W	D3,A1		;*/undomend SUBA.L D3,A1
+L03296:
+	DBF	D0,L03290
+L0329A:
+	MOVEQ	#0,D0
+	BRA.S	L032A0
+L0329E:
+	MOVEQ	#-3,D0		; out of memory error
+L032A0:
+	RTS
+; ***********************************************************
+; * TRAP #2 , I/O open, close, format calls		      *
+; ***********************************************************
+DO_TRAP2 ; supervisor of TRAP 2
+	MOVEA.L	$64(A6),A1	;SV.JBPNT   Pointer to
+				; current job table entry
+	MOVEA.L	(A1),A1		; base of job table
+	BCLR	#7,$16(A1)	; Relative addressing (TRAP
+				; #4 ?)
+	BEQ.S	L032B4
+	ADDA.L	8(A5),A0 	; add A6 of Basic to A0 (A5
+				; points to saved regs)
+L032B4	SUBQ.B	#1,D0
+	BEQ.S	IO_OPEN
+	SUBQ.B	#1,D0
+	BEQ	IO_CLOSE
+	SUBQ.W	#1,D0
+	BEQ	IO_FORMT
+	SUBQ.W	#1,D0
+	BEQ	IO_DELET
+	MOVEQ	#-15,D0		; Bad parameter error
+	BRA	RET_TRAP
+L032D0:
+IO_OPEN:
+; --------------------------------------------------------------
+*/beginundoinsert
+; The code that had been inserted here was to provide a
+; searchlist for all OPEN_IN (old file) calls.
+; The routine first tried the supplied name, and if the file
+; was not found, it then tried the following paths:
+; RAM1_ ,RAM2_ , FLP1_ , FLP2_ , JAN1_
+*/endundoinsert
+; --------------------------------------------------------------
+	MOVEM.L	A1-A4,-(A7)	;*/undomend MOVEM.L D7/A1-A4,-(A7)
+	MOVEA.L	A0,A1
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+				; Base address of job -> A0
+	EXG	A0,A1		; channel ID -> A0 / Job
+				; address -> A1
+	MOVEA.L	$78(A6),A3	;SV.CHBAS   Pointer to base
+				; of channel table
+L032E0	TST.B	(A3)
+	BLT.S	L032F0
+	ADDQ.W	#4,A3		;*/undomend ADDQ.L #4,A3
+	CMPA.L	$7C(A6),A3	;SV.CHTOP Pointer to top of
+				; channel table
+	BLT.S	L032E0
+	MOVEQ	#-6,D0		; channel not found error
+	BRA.S	L0334C		; return
+L032F0	MOVEA.L	$44(A6),A2	;SV.DRLST Pointer to list of
+				; device drivers
+L032F4	MOVEM.L	D1-D7/A1-A6,-(A7)
+	LEA	-$18(A2),A3
+	MOVEA.L	8(A2),A4
+	JSR	(A4)
+	MOVEM.L	(A7)+,D1-D7/A1-A6
+	TST.L	D0
+	BEQ.S	L0331E
+	CMPI.W	#-7,D0		; not found error
+	BNE.S	L0334C		; return if not -7
+	MOVEA.L	(A2),A2		; try next device driver
+	MOVE.L	A2,D0
+	BGT.S	L032F4		; continue
+	JSR	L0355A(PC)	;*/undomodify BSR L0355A
+				; now check Directory device
+				; drivers
+	TST.L	D0
+	BNE.S	L0334C		; return with this result
+L0331E	; channel opened without error
+	MOVE.L	A0,(A3)
+	MOVE.W	$70(A6),D2	;SV.CHTAG   Current value of
+				; channel tag
+	ADDQ.W	#1,$70(A6)	; increment channel tag
+	ADDQ.W	#4,A0		;*/undomend ADDQ.L #4,A0
+	MOVE.L	A2,(A0)+ 	; store address of driver
+	MOVE.L	D1,(A0)+ 	; owner job
+	MOVE.L	A3,(A0)+ 	; address to be sent when
+				; space released
+	MOVE.W	D2,(A0)+ 	; store channel Tag= channel
+				; ID
+	CLR.W	(A0)+		; clear status (OK) and
+				; action for waiting job
+	CLR.L	(A0)+		; job waiting on IO
+	SWAP	D2
+	SUBA.L	$78(A6),A3	;SV.CHBAS Pointer to base of
+				; channel table
+	MOVE.W	A3,D2
+	LSR.W	#2,D2
+	MOVEA.L	D2,A0
+	CMP.W	$72(A6),D2	;SV.CHMAX Highest current
+				; channel number
+	BLS.S	L0334C
+	MOVE.W	D2,$72(A6)	; update Highest current
+				; channel number
+L0334C	MOVEM.L	(A7)+,A1-A4	;*/undomend MOVEM.L (A7)+,D7/A1-A4
+	BRA.S	L03378		;*/undomodify RTS
+IO_CLOSE:
+	MOVE.L	A0,D7		; Store channel ID
+	JSR	L03476(PC)	;*/undomodify BSR L03476
+				; verify channel ID and get
+				; linkage block of ID
+	MOVEM.L	D1-D7/A1-A6,-(A7)
+	MOVEA.L	4(A0),A4 	; Address of driver for
+				; channel
+	LEA	-$18(A4),A3	; get start of linkage block
+				; (including all)
+	MOVEA.L	$C(A4),A4	; close routine of driver
+	JSR	(A4)		; call close routine of
+				; driver
+	MOVEM.L	(A7)+,D1-D7/A1-A6
+	LSL.W	#2,D7		; stored channel ID*4
+	MOVEA.L	$78(A6),A0	;SV.CHBAS   Pointer to base
+				; of channel table
+	ADDA.W	D7,A0		; get address of channel def
+				; block pointer
+	ST	(A0)		; set flag for closed
+				; channel
+L03378	BRA	RET_TRAP
+; --------------------------------------------------------------
+;  TRAP #3 handling
+; --------------------------------------------------------------
+;*/beginoverlay
+	ifd	NoTas
+L0337C:
+DO_TRAP3:
+	MOVE.L	A0,D7
+	BSR	L03476		;*/modify JSR $3476(PC)
+				; verify channel ID and get
+				; linkage block for ID
+	BSET	#7,$12(A0)	;*/mend TAS $12(A0)
+				;*/note won't work on AMIGA
+	BNE	o03414
+	MOVEM.L	D2-D7/A2-A6,-(A7)
+	CLR.L	-(A7)
+	ANDI.L	#$7F,D0
+	CMPI.B	#$49,D0		; highest possible routine
+				; number
+	BGT.S	o033B0
+	CMPI.B	#$46,D0		; FS.HEADS / FS.HEADR /
+				; FS.LOAD / FS.SAVE
+	BGE.S	o033AE
+	CMPI.B	#$07,D0		; separate SD.xx (screen
+				; output) calls
+	BGT.S	o033B0
+	BTST	#1,D0
+	BEQ.S	o033B0
+o033AE:
+	MOVEQ	#0,D1
+o033B0:
+	MOVEA.L	$64(A6),A3	; pointer to current
+				; jobtable entry
+	MOVEA.L	(A3),A3		; get job control block
+	BCLR	#7,$16(A3)	; relative addressing flag
+	BEQ.S	o033C4
+	MOVE.L	8(A5),(A7)
+	ADDA.L	(A7),A1
+o033C4:
+	MOVEA.L	4(A0),A4 	; address of I/O driver
+	MOVE.B	D0,$13(A0)	;store action for waiting
+				; job as D0 at call time
+	MOVEQ	#0,D3
+	LEA	-$18(A4),A3
+;	 MOVEA.L  4(A4),A4	 ; get address after link
+;	 JSR	 (A4)		 ; call I/O device driver to
+				; execute TRAP #3 with D0
+	bsr	FS_FIX		;*/mend
+	nop
+
+	SUBA.L	(A7),A1
+	CMPI.W	#-1,D0		; error ?
+	BNE.S	o03422
+	MOVE.W	$A(A7),D3
+	BEQ.S	o03422
+	MOVEA.L	$2C(A7),A6
+	BSR	JOBID_ME
+	MOVE.L	D0,$14(A0)	; job status
+	LEA	$12(A0),A0	; jobs accumulated priority
+	TST.L	(A7)+
+	BNE.S	o033FC
+	ST	(A0)
+o033FC:
+	MOVE.L	A0,$C(A3)
+	MOVE.W	D3,$14(A3)
+	SF	$12(A3)
+	MOVEQ	#-1,D0
+	MOVEM.L	(A7)+,D2-D7/A2-A6
+o0340E:
+	MOVEA.L	D7,A0
+	BRA	L00936
+o03414:
+	TST.W	D3
+	BEQ.S	o0341E
+	SUBQ.L	#2,$000E(A7)
+	BRA.S	o0340E
+o0341E:
+	MOVEQ	#-$01,D0
+	BRA.S	o0342C
+o03422:
+	ADDQ.L	#4,A7
+	MOVEM.L	(A7)+,D2-D7/A2-A6
+	SF	$12(A0)		; jobs accumulated priority
+o0342C:
+	MOVEA.L	D7,A0
+	BRA.S	L0347C		;*/modify BRA RET_TRAP
+				;*/note to save space only
+; --------------------------------------------------------------
+;  TRAP #4
+; --------------------------------------------------------------
+L03432:
+DO_TRAP4:
+	MOVE.L	A3,-(A7)
+	MOVEA.L	$64(A6),A3	;SV.JBPNT   Pointer to
+				; current job table entry
+	MOVEA.L	(A3),A3
+	BSET	#7,$16(A3)	;*/mend TAS $16(A3)
+				;*/note won't work on AMIGA
+	MOVEA.L	(A7)+,A3
+	BRA.S	L0347C		;*/modify BRA RET_TRAP
+				;*/note to save space only
+	endc
+	ifnd	NoTas
+L0337C:
+DO_TRAP3:
+	MOVE.L	A0,D7
+	JSR	L03476(PC)
+	TAS	$12(A0)
+	BNE	L03414
+	MOVEM.L	D2-D7/A2-A6,-(A7)
+	CLR.L	-(A7)
+	ANDI.L	#$7F,D0
+	CMPI.B	#$49,D0
+	BGT.S	L033B0
+	CMPI.B	#$46,D0
+	BGE.S	L033AE
+	CMPI.B	#$07,D0
+	BGT.S	L033B0
+	BTST	#1,D0
+	BEQ.S	L033B0
+L033AE:
+	MOVEQ	#0,D1
+L033B0:
+	MOVEA.L	$64(A6),A3
+	MOVEA.L	(A3),A3
+	BCLR	#7,$16(A3)
+	BEQ.S	L033C4
+	MOVE.L	8(A5),(A7)
+	ADDA.L	(A7),A1
+L033C4:
+	MOVEA.L	4(A0),A4
+	MOVE.B	D0,$13(A0)
+	MOVEQ	#0,D3
+	LEA	-$18(A4),A3
+	MOVEA.L	4(A4),A4
+	JSR	(A4)
+	SUBA.L	(A7),A1
+	CMPI.W	#-1,D0
+	BNE.S	L03422
+	MOVE.W	$A(A7),D3
+	BEQ.S	L03422
+	MOVEA.L	$2C(A7),A6
+	JSR	JOBID_ME(PC)
+	MOVE.L	D0,$14(A0)
+	LEA	$12(A0),A0
+	TST.L	(A7)+
+	BNE.S	L033FC
+	ST	(A0)
+L033FC:
+	MOVE.L	A0,$C(A3)
+	MOVE.W	D3,$14(A3)
+	SF	$12(A3)
+	MOVEQ	#-1,D0
+	MOVEM.L	(A7)+,D2-D7/A2-A6
+L0340E:
+	MOVEA.L	D7,A0
+	BRA	L00936
+L03414:
+	TST.W	D3
+	BEQ.S	L0341E
+	SUBQ.L	#2,$000E(A7)
+	BRA.S	L0340E
+L0341E:
+	MOVEQ	#-$01,D0
+	BRA.S	L0342C
+L03422:
+	ADDQ.L	#4,A7
+	MOVEM.L	(A7)+,D2-D7/A2-A6
+	SF	$12(A0)
+L0342C:
+	MOVEA.L	D7,A0
+	BRA.L	RET_TRAP
+; --------------------------------------------------------------
+;  TRAP #4
+; --------------------------------------------------------------
+L03432:
+DO_TRAP4:
+	MOVE.L	A3,-(A7)
+	MOVEA.L	$64(A6),A3
+	MOVEA.L	(A3),A3
+	TAS	$16(A3)
+	MOVEA.L	(A7)+,A3
+	BRA	RET_TRAP
+	endc
+*/endoverlay
+; --------------------------------------------------------------
+; verify wether channel is open and belongs to job
+L03444:
+	MOVE.L	A0,-(A7)
+	MOVE.L	D0,-(A7)
+	MOVE.L	A0,D0
+	CMP.W	$72(A6),D0	;SV.CHMAX Highest current
+				; channel number
+	BHI.S	L0346E		; -> Channel not found
+	LSL.W	#2,D0
+	MOVEA.L	$78(A6),A0	;SV.CHBAS Pointer to base of
+				; channel table
+	ADDA.W	D0,A0
+	TST.B	(A0)		; channel closed ?
+	BLT.S	L0346E		; -> Channel not found
+	MOVEA.L	(A0),A0		; get linkage block of
+				; channel
+	SWAP	D0
+	CMP.W	$10(A0),D0	; TAG for job
+	BNE.S	L0346E
+	MOVE.L	(A7)+,D0
+	ADDQ.W	#4,A7		;*/undomend ADDQ.L #4,A7
+	CMP.B	D0,D0
+L0346C:
+	RTS
+L0346E:
+	ADDQ.W	#4,A7		;*/undomend ADDQ.L #4,A7
+	MOVEQ	#-6,D0		; channel not found
+	MOVEA.L	(A7)+,A0
+	RTS
+L03476:
+	BSR.S	L03444		; verify channel ID and get
+				; linkage block for ID
+	BEQ.S	L0346C
+	ADDQ.W	#4,A7		;*/undomend ADDQ.W #4,A7
+L0347C:
+	BRA	RET_TRAP
+SHLST2	DC.L	0		; last item in list of
+				; scheduler tasks
+	DC.L	L03488-ORG0
+L03488	MOVEA.L	$74(A6),A1	; pointer to last channel
+				; checked
+	MOVEA.W	$72(A6),A2	; highest current channel
+				; number
+	ADDA.W	A2,A2
+	ADDA.W	A2,A2
+	ADDA.L	$78(A6),A2	; pointer to base of channel
+				; table
+	MOVEA.L	A1,A3
+L0349A	ADDQ.W	#4,A1		;*/undomend ADDQ.L #4,A1
+	CMPA.L	A2,A1
+	BLE.S	L034A4
+	MOVEA.L	$78(A6),A1	; pointer to base of channel
+				; table
+L034A4	TST.B	(A1)
+	BLT.S	L034B0
+	MOVEA.L	(A1),A0
+	MOVE.B	$12(A0),D4	; jobs accumulated priority
+	BNE.S	L034B6
+L034B0	CMPA.L	A1,A3
+	BNE.S	L0349A
+	BRA.S	L03522
+L034B6:
+	MOVE.L	A1,$74(A6)	;SV.CHPNT   Pointer to last
+				; channel checked
+				;*/undoinsert MOVEQ #0,D1
+				;*/note not necessary
+	MOVE.L	$14(A0),D1	;*/undomodify MOVE.W $16(A0),D1
+	LSL.W	#2,D1		;*/undomodify LSL.L #2,D1
+	MOVEA.L	$68(A6),A4	;SV.JBBAS   Pointer to base
+				; of job table
+	ADDA.W	D1,A4		;*/undomend ADDA.L D1,A4
+				;*note D1 sign exten long
+	TST.B	(A4)
+	BLT.S	L03524
+	MOVEA.L	(A4),A4
+	SWAP	D1		;*/undomodify MOVE.W $14(A0),D1
+	CMP.W	$10(A4),D1
+	BLT.S	L03524
+	MOVEQ	#0,D0
+	MOVE.B	$13(A0),D0	; jobs priority increment
+	MOVEQ	#-1,D3
+	MOVEM.L	$0024(A4),D1-D2
+	MOVEM.L	$0044(A4),A1-A2
+	MOVE.L	A4,-(A7)
+	CLR.L	-(A7)
+	ADDQ.B	#1,D4
+	BEQ.S	L034F6
+	MOVE.L	$0058(A4),(A7)
+	ADDA.L	(A7),A1
+L034F6:
+	MOVEA.L	$0004(A0),A4
+	LEA	-$0018(A4),A3
+	MOVEA.L	$0004(A4),A4
+	JSR	(A4)
+	SUBA.L	(A7)+,A1
+	MOVEA.L	(A7)+,A4
+	MOVE.L	D1,$0024(A4)
+	MOVE.L	A1,$0044(A4)
+	CMPI.B	#$FF,D0
+	BEQ.S	L03522
+	MOVE.L	D0,$0020(A4)
+	CLR.B	$12(A0)		; jobs accumulated priority
+	CLR.W	$14(A4)		; job status = not suspended
+L03522	RTS
+L03524	CLR.B	$12(A0)		; jobs accumulated priority
+	RTS
+L0352A	; used to switch MDV Motor on
+	MOVEM.L	D0-D3/A0-A4,-(A7)
+	MOVEQ	#0,D1
+	MOVE.B	(A1),D1
+	LSR.B	#4,D1
+	LSL.B	#2,D1
+	LEA	$100(A6),A2	; SV.FSDEF pointer to file
+				; system physical def.
+	MOVEA.L	0(A2,D1.W),A2
+	MOVEA.L	$10(A2),A4
+	LEA	-$18(A4),A3
+	MOVEA.L	$10(A4),A4
+	JSR	(A4)
+	MOVEM.L	(A7)+,D0-D3/A0-A4
+	RTS
+IO_DELET ; Delete file which channel ID is in A0
+	ST	D3		; signal DELETE operation
+	BSR.S	L03564		; and continue like OPEN
+	BRA	RET_TRAP
+; IO_OPEN continue for directory device drivers
+L0355A:
+	CMPI.B	#4,D3		; 5 possible parameters : 2
+				; old, 2 new, dir
+	BLS.S	L03564
+	MOVEQ	#-15,D0		; bad parameter
+	RTS
+L03564:
+	MOVEM.L	D1-D6/A3-A6,-(A7)
+	MOVEA.L	A0,A5
+	MOVE.L	#$A0,D1		; allocate 160 bytes
+	JSR	MM_ALCHP(PC)	;*/undomodify BSR MM_ALCHP
+	BNE	L0368A
+	ADDA.W	#$18,A0		;*/undomend ADDA.L #$18,A0
+				;*/note #$18 sign exten long
+	LEA	$140(A6),A1	;SV.FSLIST pointer to list
+				; of file channel defs.
+	JSR	UT_LINK(PC)	;*/undomodify BSR UT_LINK
+	LEA	(A5),A1
+	JSR	L036D4(PC)	;*/undomodify BSR L036D4
+	BNE	L0366E		; give back allocated space
+				; for channel
+	MOVEQ	#$0F,D2
+	MOVEQ	#-1,D0
+	LEA	$140(A6),A4	;SV.FSLIST pointer to list
+				; of file channel defs.
+L03596:
+	MOVE.L	-(A4),D3
+	BNE.S	L0359E
+	MOVE.W	D2,D0		; highest number so far
+	BRA.S	L035AC
+L0359E:
+	MOVEA.L	D3,A1
+	CMP.B	$14(A1),D1
+	BNE.S	L035AC
+	CMPA.L	$10(A1),A2
+	BEQ.S	L035DC
+L035AC:
+	DBF	D2,L03596	; continue with next number
+	MOVE.W	D0,D2
+	BLT	L0366C		; no number found
+	MOVEM.L	D1-D2/A0/A2,-(A7)
+	MOVE.L	$20(A2),D1
+	JSR	MM_ALCHP(PC)	;*/undomodify BSR MM_ALCHP
+	MOVEM.L	(A7)+,D1-D2/A1-A2
+	EXG	A0,A1
+	BNE	L0366E		; give back allocated space
+				; in case of error
+	MOVE.L	A2,$10(A1)
+	MOVE.B	D1,$14(A1)
+				;*/undoinsert CLR.L D0
+	MOVE.W	D2,D0
+	LSL.W	#2,D0		;*/undomodify LSL.L #2,D0
+	ADDA.W	D0,A4		;*/undomend ADDA.L D0,A4
+				;*/note D0 sign exten long
+	MOVE.L	A1,(A4)
+L035DC:
+	MOVE.B	D2,5(A0)
+	MOVE.B	$B(A7),4(A0)
+	LEA	$1A(A0),A4
+	MOVE.W	(A5)+,D0 	; get legth of filename
+				;*/undoinsert CLR.L D3
+	MOVE.W	$24(A2),D3
+	ADDQ.W	#2,D3		;*/undomodify ADDQ.L #2,D3
+	ADDA.W	D3,A5		;*/undomnd ADDA.L D3,A5
+				;*/note D3 sign exten long
+	SUB.W	D3,D0
+	BLT.S	L03660		; -> bad name error
+	CMPI.W	#$24,D0		; length of filename too
+				; long ?
+	BGT.S	L03660		; -> bad name error
+	MOVE.W	D0,(A4)+
+	BRA.S	L03604
+L03602:
+	MOVE.B	(A5)+,(A4)+	; copy filename
+L03604:
+	DBF	D0,L03602
+	MOVEA.L	A1,A5
+	MOVEA.L	A0,A1
+; look for device driver with supplied name
+L0360C:
+	MOVEA.L	(A1),A1		; get next driver in list
+	MOVE.L	A1,D0
+	BEQ.S	L03652		; end of list
+	CMP.B	5(A1),D2
+	BNE.S	L0360C
+	MOVEQ	#1,D0
+	MOVEA.W	#$1A,A6		;*/undomend MOVEA.L #$1A,A6
+				;*/note #$1A sign exten long
+				; offset to filename
+	JSR	UT_CSTR(PC)	;*/undomodify BSR UT_CSTR
+				; compare strings
+				; (A6,A0) - (A6,A1)
+	MOVEA.L	$24(A7),A6	; restore A6
+	BNE.S	L0360C		; try next driver
+	CMPI.B	#2,4(A0) 	; open new file ? (mode 2)
+	BEQ.S	L03664		; allready exists error
+	CMPI.B	#1,4(A0) 	; open old file ? (mode 0
+				; and 1)
+	BNE.S	L03668		; in use error (old
+				; exclusive)
+	CMPI.B	#1,4(A1) 	; other file exclusive opend
+				; ?
+	BNE.S	L03668		; in use error
+	MOVE.W	6(A1),6(A0)
+	MOVE.L	$C(A1),$C(A0)
+	MOVE.W	#$40,$A(A0)
+L03652:
+	MOVEA.L	A5,A1
+	TST.W	6(A0)
+	BEQ.S	L03690
+	SUBA.W	#$18,A0		;*/undomend SUBA.L #$18,A0
+				;*/note #$18 sign exten long
+	BRA.S	L03684
+L03660:
+	MOVEQ	#-12,D0		; bad name error
+	BRA.S	L0366E		; give back allocated space
+L03664:
+	MOVEQ	#-8,D0		; already exists error
+	BRA.S	L0366E
+L03668:
+	MOVEQ	#-9,D0		; in use error
+	BRA.S	L0366E
+L0366C:
+	MOVEQ	#-6,D0		; channel not found error
+; give back allocated space in the case of an error
+L0366E:
+	LEA	$140(A6),A1	;SV.FSLIST pointer to list
+				; of file channel defs.
+	JSR	MT_UNLNK(PC)	;*/undomodify BSR MT_UNLNK
+	SUBA.W	#$18,A0		;*/undomend SUBA.L #$18,A0
+				;*/note #$18 sign exten long
+	MOVE.L	D0,D4
+	JSR	MM_RECHP(PC)	;*/undomodify BSR MM_RECHP
+	MOVE.L	D4,D0
+	BRA.S	L0368A
+L03684:
+	ADDQ.B	#1,$22(A1)
+	MOVEQ	#0,D0
+L0368A:
+	MOVEM.L	(A7)+,D1-D6/A3-A6
+	RTS
+; Look for MDV directory
+L03690:
+	SUBA.W	#$18,A0		;*/undomend SUBA.L #$18,A0
+				;*/note #$18 sign exten long
+	MOVE.L	A1,-(A7)
+	MOVE.L	A2,-(A7)
+	LEA	-$18(A2),A3	; start of linkage block
+	MOVEA.L	8(A2),A4 	; address to open a channel
+	JSR	(A4)		; call open routine
+	MOVEA.L	(A7)+,A2
+	MOVEA.L	(A7)+,A1
+	TST.B	$1C(A0)
+	BLT.S	L036B0
+	TST.L	D0
+	BEQ.S	L03684
+L036B0:
+	ADDA.W  #$18,A0		;*/undomend ADDA.L #$18,A0
+				;*/note #$18 sign exten long
+				; if error, then give back
+				; space
+	BRA.S	L0366E		; give back allocated space
+; Format medium (pointer to name in A0)
+L036B6:
+IO_FORMT:
+	MOVEM.L	D3-D7/A1-A5,-(A7)
+	MOVEA.L	A0,A1
+	JSR	L036D4(PC)	;*/undomodify BSR.S L036D4
+				;*/undomodify nop
+	BLT.S	L036CC
+	LEA	-$18(A2),A3
+	MOVEA.L	$1C(A2),A4
+	JSR	(A4)
+L036CC:
+	MOVEM.L	(A7)+,D3-D7/A1-A5
+	BRA	RET_TRAP
+; verify name
+L036D4:
+	MOVEM.L	A1/A4,-(A7)
+	MOVEA.L	$48(A6),A2	;SV.DDLST Pointer to list of
+				; directory device driver
+L036DC:
+	LEA	$24(A2),A4
+	MOVE.W	(A4)+,D0
+	MOVEA.L	(A7),A1
+	ADDQ.W	#2,A1		;*/undomend ADDQ.L #2,A1
+L036E6:
+	MOVE.B	(A1)+,D1
+	BCLR	#5,D1
+	CMP.B	(A4)+,D1
+	BNE.S	L036F6
+	SUBQ.W	#1,D0
+	BGT.S	L036E6
+	BRA.S	L036FE
+L036F6:
+	MOVEA.L	(A2),A2
+	MOVE.L	A2,D0
+	BNE.S	L036DC
+	BRA.S	L03718
+L036FE:
+	MOVEQ	#0,D1
+	MOVE.B	(A1)+,D1
+	SUBI.B	#$30,D1
+	BLE.S	L03718
+	CMPI.B	#$09,D1
+	BGE.S	L03718
+	CMPI.B	#$5F,(A1)
+	BNE.S	L03718
+	MOVEQ	#0,D0
+	BRA.S	L0371A
+L03718:
+	MOVEQ	#-$07,D0
+L0371A:
+	MOVEM.L	(A7)+,A1/A4
+	RTS
+; align address in A2
+L03720:
+A0_EVEN:
+	MOVE.L	A2,D2
+	ADDQ.L	#1,D2
+	BCLR	#0,D2
+	MOVEA.L	D2,A2
+	RTS
+; analyse syntax
+L0372C:
+IO_NAME:
+	MOVEA.L	(A7),A2
+	ADDQ.W	#6,A2		;*/undomend ADDQ.L #6,A2
+	MOVEM.L	D4/D7/A0/A3,-(A7)
+	MOVEQ	#0,D7
+	MOVE.W	(A0)+,D7
+	ADD.L	A0,D7
+	MOVE.W	(A2)+,D2
+L0373C:
+	BSR.S	L037B6
+	CMP.B	(A2)+,D1
+	BNE.S	L037A6
+	SUBQ.B	#1,D2
+	BNE.S	L0373C
+	BSR.S	A0_EVEN
+	MOVE.W	(A2)+,D4
+	BRA.S	L03790
+L0374C:
+	BSR.S	A0_EVEN
+	MOVE.B	(A2)+,D1
+	BEQ.S	L03778
+	BLT.S	L03760
+	BSR.S	L037B6
+	CMP.B	(A2)+,D1
+	BEQ.S	L03762
+	SUBQ.W	#1,A0		;*/undomend SUBQ.L #1,A0
+	MOVE.W	(A2)+,(A3)+
+	BRA.S	L03790
+L03760:
+	ADDQ.W	#1,A2		;*/undomend ADDQ.L #1,A2
+L03762:
+	MOVEA.L	A7,A1
+	MOVE.W	(A2)+,-(A7)
+	SUBA.L	A6,A0
+	SUBA.L	A6,A1
+	SUB.L	A6,D7
+	JSR	CN_DTOI(PC)	;*/undomodify BSR CN_DTOI
+	ADDA.L	A6,A0
+	ADD.L	A6,D7
+	MOVE.W	(A7)+,(A3)+
+	BRA.S	L03790
+L03778:
+	MOVE.B	(A2)+,D2
+	EXT.W	D2
+				;*/undoinsert EXT.L D2
+	ADDA.W	D2,A2		;*/undomend ADDA.L D2,A2
+				;*/note D2 sign exten long
+	MOVE.L	A2,-(A7)
+	BSR.S	L037B6
+L03782:
+	CMP.B	-(A2),D1
+	BEQ.S	L0378C
+	SUBQ.W	#1,D2
+	BNE.S	L03782
+	SUBQ.W	#1,A0
+L0378C:
+	MOVE.W	D2,(A3)+
+	MOVEA.L	(A7)+,A2
+L03790:
+	DBF	D4,L0374C
+	CMP.L	A0,D7
+	BNE.S	L0379C
+	MOVEQ	#$04,D1
+	BRA.S	L037AE
+L0379C:
+	MOVEM.L	(A7)+,D4/D7/A0/A3
+	ADDQ.L	#2,(A7)
+	MOVEQ	#-12,D0		; bad name
+	RTS
+L037A6:
+	MOVEM.L	(A7)+,D4/D7/A0/A3
+	MOVEQ	#-$07,D0
+	RTS
+L037AE:
+	MOVEM.L	(A7)+,D4/D7/A0/A3
+	ADDQ.L	#4,(A7)
+	RTS
+L037B6:
+	MOVEQ	#0,D1
+	CMP.L	A0,D7
+	BEQ.S	L037C8
+	MOVE.B	(A0),D1
+	CMPI.B	#$60,D1
+	BLT.S	L037C8
+	SUBI.B	#$20,D1
+L037C8:
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	RTS
+; Direct file handling
+L037CC:
+IO_SERQ:
+	LEA	$18(A0),A2	; Pointer to input queue
+	CMPI.B	#3,D0
+	BLS.S	L037D8
+	ADDQ.W	#4,A2		;*/undomend ADDQ.L #4,A2
+				; output operation
+				; => output queue
+L037D8:
+	TST.L	(A2)
+	BEQ.S	L037F0
+	MOVEA.L	(A2),A2
+	JSR	IO_SERIO(PC)	;*/undomodify BSR IO_SERIO
+RLOC0C	DC.L	IO_QTEST-ORG0
+	DC.L	IO_QOUT-ORG0
+	DC.L	IO_QIN-ORG0	; put a byte (D1) into a
+				; queue (A2)
+	RTS
+L037F0	MOVEQ	#-15,D0		; bad parameter
+	RTS
+; install file and place extensions
+L037F4:
+IO_QSET:
+	LEA	$10(A2,D1.W),A3
+	CLR.L	(A2)+
+	MOVE.L	A3,(A2)+
+	SUBQ.W	#1,A3		;*/undomend SUBQ.L #1,A3
+	MOVE.L	A3,(A2)+
+	MOVE.L	A3,(A2)+
+	SUBA.L	#$10,A2
+	RTS
+L0380A:
+IO_QTEST:
+	MOVEQ	#-$11,D2
+	ADD.L	4(A2),D2
+	SUB.L	A2,D2
+	MOVE.L	8(A2),D0
+	MOVEA.L	12(A2),A3
+	MOVE.B	(A3),D1
+	SUB.L	A3,D0
+	BGT.S	L03832
+	BLT.S	L0382E
+	TST.B	(A2)
+	BLT.S	L0382A
+	MOVEQ	#-1,D0		; not complete
+	RTS
+L0382A:
+	MOVEQ	#-10,D0		; end of file error
+	RTS
+L0382E:
+	ADD.L	D2,D0
+	ADDQ.L	#1,D0
+L03832:
+	SUB.L	D0,D2
+	MOVEQ	#0,D0
+	RTS
+; Put byte (D1) into queue (A2)
+L03838:
+IO_QIN:
+	TST.B	(A2)
+	blt.s	L0385A		;*/mend BNE.S    L0385A
+	MOVEA.L	8(A2),A3
+	MOVE.B	D1,(A3)+
+	CMPA.L	4(A2),A3
+	BLT.S	L0384C
+	LEA	$0010(A2),A3
+L0384C:
+	CMPA.L	$000C(A2),A3
+	BNE.S	L03856
+	MOVEQ	#-1,D0
+	RTS
+L03856:
+	MOVE.L	A3,$0008(A2)
+L0385A:
+	MOVEQ	#0,D0
+	RTS
+L0385E:
+; --------------------------------------------------------------
+;*/beginoverlay
+	ifd	NoTas
+IO_QOUT:
+	MOVEA.L	$C(A2),A3
+	CMPA.L	$8(A2),A3
+	BNE.S	o03874		;*/modify BNE.S $3874
+	TST.B	(A2)
+	BLT.S	L0382A		;*/modify BLT.S $3870
+	MOVEQ	#-1,D0		; not complete error
+	RTS
+L03870:
+				;*/removecode MOVEQ #-$0A,D0
+				;*/removecode RTS
+o03874:
+	MOVE.B	(A3)+,D1
+	CMPA.L	$4(A2),A3
+	BLT.S	o03880		;*/modify BLT.S $3880
+	LEA	$10(A2),A3
+o03880:
+	MOVE.L	A3,$C(A2)
+	MOVEQ	#0,D0
+	RTS
+o03888:
+IO_QEOF:
+	BSET	#7,(A2)		;*/mend TAS (A2)
+				;*/note won't work on AMIGA
+	RTS
+;*/beginfilling
+NOP0388C:
+	DCB.w	($388C-(NOP0388C-ORGN))/2,$4E71
+L0388C:
+;*/endfilling
+	endc
+	ifnd	NoTas
+IO_QOUT:
+	MOVEA.L	$C(A2),A3
+	CMPA.L	$8(A2),A3
+	BNE.S	L03874
+	TST.B	(A2)
+	BLT.S	L03870
+	MOVEQ	#-1,D0		; not complete error
+	RTS
+L03870:
+	MOVEQ	#-$0A,D0
+	RTS
+L03874:
+	MOVE.B	(A3)+,D1
+	CMPA.L	$4(A2),A3
+	BLT.S	L03880
+	LEA	$10(A2),A3
+L03880:
+	MOVE.L	A3,$C(A2)
+	MOVEQ	#0,D0
+	RTS
+L03888:
+IO_QEOF:
+	TAS	(A2)
+	RTS
+	endc
+;*/endoverlay
+; --------------------------------------------------------------
+; after the BSR there must be 3 long words (test/fetch/send)
+IO_SERIO:
+	ADDI.L	#$C,(A7)
+	MOVEA.L	(A7),A4
+	MOVE.L	D2,D4
+	MOVE.L	D1,D5
+	CMPI.W	#$45,D0		; separate file read or
+				; write operation
+	BHI.S	L038B2
+	CMPI.W	#7,D0		; Separate I/O call
+	BHI.S	SERIO_BAdpar
+	ANDI.L	#$0000FFFF,D4
+	MOVE.B	L038C0(PC,D0.W),D0
+	JMP	L038C0(PC,D0.W)
+L038B2:
+	CMPI.B	#$49,D0		; FS.SAVE is the last
+				; defined routine number
+	BHI.S	SERIO_BAdpar
+	MOVE.B	L038C0-$3E(PC,D0.W),D0
+	JMP	L038C0(PC,D0.W)
+L038C0:
+	DC.B	SERIO_PEnd-L038C0
+	DC.B	SERIO_FByte-L038C0
+	DC.B	SERIO_FLine-L038C0
+	DC.B	SERIO_FStrg-L038C0
+	DC.B	SERIO_BAdpar-L038C0
+	DC.B	SERIO_SByte-L038C0
+	DC.B	SERIO_BAdpar-L038C0
+	DC.B	SERIO_SStrg-L038C0
+	DC.B	SERIO_SHead-L038C0
+	DC.B	SERIO_RHead-L038C0
+	DC.B	SERIO_LOad-L038C0
+	DC.B	SERIO_SAve-L038C0
+L038CC:
+SERIO_FLine:
+	MOVE.L -8(A4),A4
+L038D0:
+	CMP.L	D5,D4
+	BLS.S	L03918
+	BSR.S	L03922
+	BNE.S	L0391E
+	MOVE.B	D1,(A1)+
+	ADDQ.L	#1,D5
+	CMPI.B	#$0A,D1
+	BNE.S	L038D0
+	BRA.S	L0391E
+L038E4:
+SERIO_SStrg:
+SERIO_SAve:
+	MOVEA.L	-4(A4),A4
+L038E8:
+	CMP.L	D5,D4
+	BLS.S	L0391C
+	MOVE.B	(A1),D1
+	BSR.S	L03922
+	BNE.S	L0391E
+	ADDQ.W	#1,A1		;*/undomend ADDQ.L #1,A1
+	ADDQ.L	#1,D5
+	BRA.S	L038E8
+L038F8:
+SERIO_FStrg:
+SERIO_LOad:
+	MOVEA.L	-8(A4),A4
+L038FC:
+	CMP.L	D5,D4
+	BLS.S	L0391C
+	BSR.S	L03922
+	BNE.S	L0391E
+	MOVE.B	D1,(A1)+
+	ADDQ.L	#1,D5
+	BRA.S	L038FC
+L0390A:
+SERIO_PEnd:
+	SUBQ.W #4,A4		;*/undomend SUBQ.L #4,A4
+L0390C:
+SERIO_FByte:
+	SUBQ.W #4,A4		;*/undomend SUBQ.L #4,A4
+L0390E:
+SERIO_SByte:
+	MOVEA.L -4(A4),A4
+	BRA.S	L03922
+; Bad IO call
+L03914:
+SERIO_BAdpar:
+	MOVEQ	#-15,D0
+	BRA.S	L0392C
+L03918:
+	MOVEQ	#-5,D0
+	BRA.S	L0391E
+L0391C:
+	MOVEQ	#0,D0
+L0391E:
+	MOVE.L	D5,D1
+	BRA.S	L0392C
+L03922:
+	MOVEM.L	D4-D5/A1/A4,-(A7)
+	JSR	(A4)
+	MOVEM.L	(A7)+,D4-D5/A1/A4
+L0392C:
+	TST.L	D0
+	RTS
+L03930:
+SERIO_SHead:
+	MOVEA.L	-4(A4),A4
+	MOVEQ	#$0F,D4
+	TST.W	D5
+	BGT.S	L038E8
+	ST	D1
+	BSR.S	L03922
+	BNE.S	L0391E
+	MOVEQ	#1,D5
+	BRA.S	L038E8
+L03944:
+SERIO_RHead:
+	MOVEQ	#$0F,D4
+	TST.W	D5
+	BGT.S	SERIO_FStrg
+	MOVEA.L	-12(A4),A4
+	BSR.S	L03922
+	BNE.S	L0391E
+	ADDQ.B	#1,D1
+	BNE.S	SERIO_BAdpar	;*/mend BNE.S SERIO_SStrg !
+	MOVEA.L	(A7),A4
+	BSR.S	SERIO_FByte
+	MOVEQ	#1,D5
+	BRA.S	L038FC
+L0395E:
+UT_ERR0:
+	MOVE.L	A0,-(A7)
+	SUBA.L	A0,A0
+	BSR.S	UT_ERR
+	MOVEA.L	(A7)+,A0
+	RTS
+L03968:
+UT_ERR:
+				;*/remove TST.L	 D0
+				;*/remove BGE.S	 L0398E
+	movem.l	d0-d3/d5/a1-a2,-(a7) ;*/modify MOVEM.L  D0-D3/A1,-(A7)
+				;*/remove MOVEA.L  D0,A1
+	ADD.L	D0,D0
+	bcc.s	L0398A		;*/insert
+				;*/remove BVS.S	 L03986
+
+	move.l	d0,d5		;*/insert
+	neg.l	d5		;*/insert
+	lsr.l	#1,d0		;*/insert
+	move.l	d0,a1		;*/insert
+	swap	d5		;*/insert
+	tst.w	d5		;*/insert
+	bne.s	L03986		;*/insert
+
+	swap	d5		;*/insert
+				;*/remove NEG.W	 D0
+
+	bsr	MSG_FIX		;*/mend MOVEA.L  $2814A,A1
+				;*/modify MOVE.W	 0(A1,D0.W),D0
+	move.l	a2,a1		;*/modify LEA	 0(A1,D0.W),A1
+
+L03986:
+	JSR	UT_MTEXT(PC)	;*/undomodify BSR.S UT_MTEXT
+L0398A:
+	movem.l	(a7)+,d0-d3/d5/a1-a2 ;*/modify MOVEM.L  (A7)+,D0-D3/A1
+L0398E:
+	RTS
+
+;*/beginfilling
+NOP03990:
+	DCB.w	($3990-(NOP03990-ORGN))/2,$4E71
+;*/endfilling
+
+L03990:
+UT_MINT:
+	MOVE.L	A6,-(A7)
+	SUBA.L	A6,A6
+	MOVEA.L	A7,A1
+	SUBQ.W	#8,A7		;*/undomend SUBQ.L #8,A7
+	MOVE.L	A0,-(A7)
+	LEA	4(A7),A0
+	MOVE.W	D1,-(A1)
+	JSR	CN_ITOD(PC)	;*/undomodify BSR CN_ITOD
+	MOVEA.L	(A7)+,A0
+	MOVEA.L	A7,A1
+	MOVE.W	D1,D2
+	BSR.S	L039B4
+	ADDQ.W	#8,A7		;*/undomodify ADDQ.L #8,A7
+	MOVEA.L	(A7)+,A6
+	RTS
+L039B2:
+UT_MTEXT:
+	MOVE.W	(A1)+,D2
+L039B4:
+	MOVEQ	#7,D0		; IO.SSTRG send string of
+				; bytes
+	MOVE.L	A0,D3
+	BEQ.S	L039BE
+	MOVEQ	#-1,D3
+	BRA.S	L039C4
+L039BE:
+	SF	$28033		; screen status (0=active)
+L039C4:
+	TRAP	#3
+	CMPI.W	#$FFFF,D0
+	BNE.S	L039D8
+	MOVEA.L	#$00010001,A0	; Basic screen channel #1
+	MOVEQ	#7,D0		; IO.SSTRG sends a string of
+				; bytes
+	TRAP	#3
+	SUBA.L	A0,A0
+L039D8:
+	TST.L	D0
+	RTS
+L039DC:
+UT_LINK:
+	MOVE.L	(A1),(A0)
+	MOVE.L	A0,(A1)
+	RTS
+L039E2:
+MT_UNLNK:
+	CMPA.L	(A1),A0
+	BEQ.S	L039EE
+	TST.L	(A1)
+	BEQ.S	L039F0
+	MOVEA.L	(A1),A1
+	BRA.S	MT_UNLNK
+L039EE:
+	MOVE.L	(A0),(A1)
+L039F0:
+	RTS
+UT_WINDW:
+	BSR.S	OPE_WNDW
+	BRA.S	L03A0C
+UT_CON:
+	LEA	CON_STR(PC),A0
+	BRA.S	L03A00
+UT_SCR:
+	LEA	SCR_STR(PC),A0
+L03A00	BSR.S	OPE_WNDW
+L03A02	addq.w	#4,a1		;*/undomend ADDQ.L #4,A1
+	MOVEQ	#$0D,D0		; SD.WDEF redefines a window
+	MOVEQ	#0,D2
+	BSR.S	L03A36
+	SUBQ.W	#4,A1		;*/undomend SUBQ.L #4,A1
+L03A0C	MOVEQ	#$0C,D0		; SD.BORDR Sets border width
+				; and colour
+	MOVE.B	(A1)+,D1
+	MOVE.B	(A1)+,D2
+	BSR.S	L03A36
+	MOVEQ	#$27,D0		; SD.SETPA set paper colour
+	MOVE.B	(A1),D1
+	BSR.S	L03A36
+	MOVEQ	#$28,D0		; SD.SETST set strip colour
+	MOVE.B	(A1)+,D1
+	BSR.S	L03A36
+	MOVEQ	#$29,D0		; SD.SETIN sets ink colour
+	MOVE.B	(A1),D1
+	BSR.S	L03A36
+	MOVEQ	#$20,D0		; SD.CLEAR clears all of a
+				; window
+	BRA.S	L03A36
+OPE_WNDW ; Open window
+	MOVE.L	A1,-(A7)
+	MOVEQ	#1,D0		; IO.OPEN
+	MOVEQ	#-1,D1
+	MOVEQ	#0,D3		; old file or device
+	TRAP	#2
+	BRA.S	L03A3A
+L03A36	; window trap
+	MOVE.L	A1,-(A7)
+	TRAP	#3
+L03A3A	MOVEA.L	(A7)+,A1
+	TST.L	D0
+	BEQ.S	L03A42
+	ADDQ.W	#4,A7		;*/undomend ADDQ.L #4,A7
+L03A42	RTS
+CON_STR	DC.B	0,3,'CON',0
+SCR_STR	DC.B	0,3,'SCR',0
+L03A50	; set pointer for string comparision
+	MOVEQ	#0,D4
+	MOVE.B	D0,D4
+	ROR.L	#1,D4
+	SUBQ.B	#2,D4
+	MOVE.W	0(A6,A0.L),D0
+	ADDQ.W	#2,A0		;*/undomend ADDQ.L #2,A0
+	LEA	0(A0,D0.W),A2
+	MOVE.W	0(A6,A1.L),D1
+	ADDQ.W	#2,A1		;*/undomend ADDQ.L #2,A1
+	LEA	0(A1,D1.W),A3
+	RTS
+L03A6E	; find position of string 2 in string 1
+	MOVEM.L	D4/A0-A4,-(A7)
+	BSR.S	L03A50
+	LEA	0(A1,D0.W),A4
+	EXG	A4,A3
+	MOVEQ	#0,D1
+L03A7C	CMPA.L	A4,A3
+	BGT.S	L03A8C
+	ADDQ.L	#1,D1
+	BSR.S	L03A96
+	BEQ.S	L03A90
+	ADDQ.W	#1,A1		;*/undomend ADDQ.L #1,A1
+	ADDQ.W	#1,A3		;*/undomend ADDQ.L #1,A3
+	BRA.S	L03A7C
+L03A8C	MOVEQ	#0,D1
+	MOVEQ	#0,D0
+L03A90	MOVEM.L	(A7)+,D4/A0-A4
+	RTS
+L03A96	MOVEM.L	D1-D5/A0-A3,-(A7)
+	BRA.S	L03AA2
+UT_CSTR	MOVEM.L	D1-D5/A0-A3,-(A7)
+	BSR.S	L03A50
+L03AA2	CMPA.L	A2,A0
+	BNE.S	L03AAC
+	CMPA.L	A3,A1
+	BNE.S	L03AC8
+	BRA.S	L03ACC
+L03AAC	CMPA.L	A3,A1
+	BEQ.S	L03AD0
+	BSR.S	L03AE8
+	CMP.B	D4,D0
+	BEQ.S	L03B2C
+	CMP.B	D3,D2
+	BNE.S	L03AC6
+	TST.B	D0
+	BLE.S	L03AA2
+	TST.L	D4
+	BLT.S	L03AA2
+	CMPI.B	#$02,D0
+L03AC6	BGT.S	L03AD0
+L03AC8	MOVEQ	#-1,D0
+	BRA.S	L03AD2
+L03ACC	MOVEQ	#0,D0
+	BRA.S	L03AD2
+L03AD0	MOVEQ	#1,D0
+L03AD2	MOVEM.L	(A7)+,D1-D5/A0-A3
+	RTS
+L03AD8	; table of results of string comparision
+	DC.W	0,0,$FF,0,0,1,0,$300
+L03AE8	; compare bytes of string
+	EXG	A1,A0
+	EXG	A3,A2
+	BSR.S	L03B04
+	EXG	A1,A0
+	EXG	A3,A2
+	MOVE.B	D0,D1
+	MOVE.B	D2,D3
+	BSR.S	L03B04
+	LSL.B	#2,D0
+	ADD.B	D1,D0
+	EXT.W	D0
+	MOVE.B	L03AD8(PC,D0.W),D0 ; get result of string
+				 ; comparision
+	RTS
+L03B04	; correct decimal values (3.5)
+	MOVE.B	0(A6,A0.L),D2
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	BSR	L03BFA
+	CMPI.B	#$CE,D2
+	BNE.S	L03B2A
+	CMPA.L	A2,A0
+	BEQ.S	L03B28
+	CMPI.B	#$30,0(A6,A0.L)
+	BLT.S	L03B28
+	CMPI.B	#$39,0(A6,A0.L)
+	BLE.S	L03B2A
+L03B28	CLR.B	D0
+L03B2A	RTS
+L03B2C	; compare two ASCII numbers
+	BSR.S	L03B96
+	MOVE.W	D3,D2
+	MOVE.W	D1,D3
+	EXG	A1,A0
+	EXG	A3,A2
+	BSR.S	L03B96
+	CMP.W	D1,D3
+L03B3A	BNE.S	L03AC6
+	SUBA.W	D1,A0		;!!! word length may cause
+				; errors !!!
+	SUBA.W	D1,A1
+	BRA.S	L03B50
+L03B42	MOVE.B	0(A6,A1.L),D5
+	ADDQ.W	#1,A1		;*/undomend ADDQ.L #1,A1
+	CMP.B	0(A6,A0.L),D5
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	BNE.S	L03B3A
+L03B50	DBF	D1,L03B42
+	BSR.S	L03BCC
+	MOVE.W	D3,-(A7)
+	MOVE.W	D1,-(A7)
+	EXG	A1,A0
+	EXG	A3,A2
+	BSR.S	L03BCC
+	MOVE.W	(A7)+,D0
+	MOVE.W	(A7)+,D2
+	SUB.W	D2,D3
+	BGT.S	L03B6A
+	ADD.W	D3,D2
+L03B6A	TST.W	D2
+	BEQ.S	L03B8C
+	SUBA.W	D1,A0		;!!! word length may cause
+				; errors !!!
+	SUBA.W	D0,A1
+	SUB.W	D2,D1
+	SUB.W	D2,D0
+L03B76	MOVE.B	0(A6,A0.L),D5
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	CMP.B	0(A6,A1.L),D5
+	ADDQ.W	#1,A1		;*/undomend ADDQ.L #1,A1
+	BNE.S	L03B3A
+	SUBQ.W	#1,D2
+	BNE.S	L03B76
+	ADDA.W	D1,A0		;!!! word length may cause
+				; errors !!!
+	ADDA.W	D0,A1
+L03B8C	TST.W	D3
+	BNE	L03AC6
+	BRA	L03AA2
+L03B96	MOVEQ	#0,D1
+L03B98	CMPI.B	#$D0,D2
+	BNE.S	L03BB0
+	CMPA.L	A2,A0
+	BEQ.S	L03BCA
+	MOVE.B	0(A6,A0.L),D2
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	BSR.S	L03BFA
+	SUBQ.B	#1,D0
+	BNE.S	L03BC8
+	BRA.S	L03B98
+L03BB0	CMPI.B	#$CE,D2
+	BEQ.S	L03BC8
+	ADDQ.W	#1,D1		;*/undomend ADDQ.L #1,D1
+	CMPA.L	A2,A0
+	BEQ.S	L03BCA
+	MOVE.B	0(A6,A0.L),D2
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	BSR.S	L03BFA
+	SUBQ.B	#1,D0
+	BEQ.S	L03BB0
+L03BC8	SUBQ.W	#1,A0		;*/undomend SUBQ.L #1,A0
+L03BCA	RTS
+L03BCC	MOVEQ	#0,D1
+	MOVEQ	#0,D3
+L03BD0	CMPA.L	A2,A0
+	BEQ.S	L03BF8
+	MOVE.B	0(A6,A0.L),D2
+	BSR.S	L03BFA
+	SUBQ.B	#1,D0
+	BNE.S	L03BF8
+	CMPI.B	#$CE,D2
+	BNE.S	L03BEA
+	TST.L	D1
+	BNE.S	L03BF8
+	MOVEQ	#-$01,D1
+L03BEA	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	ADDQ.W	#1,D1
+	CMPI.B	#$D0,D2
+	BEQ.S	L03BD0
+	MOVE.W	D1,D3
+	BRA.S	L03BD0
+L03BF8	RTS
+L03BFA	MOVE.B	D2,D0
+	BLT.S	L03C14
+	CMPI.B	#$2E,D0
+	BEQ.S	L03C18
+	EXT.W	D0
+	ADDI.W	#$002E,D0
+	MOVE.B	L03BFA(PC,D0.W),D0
+	BEQ.S	L03C14
+	SUBQ.B	#2,D0
+	BLE.S	L03C18
+L03C14	CLR.B	D0
+	RTS
+L03C18	MOVE.B	D2,D0
+	ADDI.B	#$A0,D2
+	BCC.S	L03C24
+	SUBI.B	#$20,D2
+L03C24	LSR.B	#5,D0
+	RTS
+L03C28	; this table defines type of ASCII code
+	DC.L	$00000000,$00000000,$00000000,$00000000
+	DC.L	$00000000,$00000000,$00000000,$00000000
+	DC.L	$20030000,$24250003,$00000000,$03000000
+	DC.L	$02020202,$02020202,$02020003,$00000000
+	DC.L	$00010101,$01010101,$01010101,$01010101
+	DC.L	$01010101,$01010101,$01010100,$00000001
+	DC.L	$00010101,$01010101,$01010101,$01010101
+	DC.L	$01010101,$01010101,$01010100,$00000000
+L03CA8	; test sign of number to convert to floatinpoint number
+	CMP.L	A0,D7
+	BEQ.S	L03CCA
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+L03CAE	CMPI.B	#$20,0(A6,A0.L)
+	BEQ.S	L03CA8
+	MOVEQ	#0,D5
+	MOVEQ	#$2B,D6
+	SUB.B	0(A6,A0.L),D6
+	BEQ.S	L03CC8
+	ADDQ.B	#2,D6
+	BNE.S	L03CCA
+	BSET	#$1F,D5
+L03CC8	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+L03CCA	RTS
+L03CCC	; convert ASCII to decimal
+	MOVEQ	#0,D6
+	CMP.L	A0,D7
+	BEQ.S	L03CEA
+	MOVE.B	0(A6,A0.L),D6
+	SUBI.W	#'0',D6
+	BLT.S	L03CE6
+	CMPI.W	#9,D6
+	BGT.S	L03CE6
+	ADDQ.L	#2,(A7)
+	BRA.S	L03CEA
+L03CE6	ADDI.W	#$0030,D6
+L03CEA	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	RTS
+L03CEE	; convert entire number from ASCII to decimal
+	BSR.S	L03CAE
+	BSR.S	L03CCC		; convert ASCII to decimal
+	BRA.S	L03D08		; error
+	MOVE.L	D6,D3
+L03CF6	BSR.S	L03CCC		; convert ASCII to decimal
+	BRA.S	L03D0C		; error
+	MULU	#10,D3
+	ADD.L	D6,D3
+	CMPI.L	#$00007FFF,D3
+	BLE.S	L03CF6
+L03D08	MOVEQ	#-17,D0		; Error in expression
+	RTS
+L03D0C	; test sign + / -
+	TST.L	D5
+	BPL.S	L03D12
+	NEG.W	D3
+L03D12	MOVEQ	#0,D0
+	RTS
+CN_DTOF	; vector $100 : convert ASCII to floatingpoint
+	MOVEM.L	D3-D6/A0-A1,-(A7)
+	MOVEQ	#0,D4
+	BSR.S	L03CAE
+	SUBQ.W	#6,A1		;*/undomend SUBQ.L #6,A1
+	CLR.L	2(A6,A1.L)
+	CLR.W	0(A6,A1.L)
+L03D28	BSR.S	L03CCC		; convert ASCII to decimal
+	BRA.S	L03D48
+	MOVE.B	#$DF,D5
+	TST.W	D4
+	BEQ.S	L03D36
+	ADDQ.W	#1,D4
+L03D36	BSR.S	L03DB6
+	JSR	RI_MULT(PC)	;*/undomodify BSR RI_MULT
+	BNE.S	L03DB0
+	MOVE.L	D6,D1
+	BSR.S	L03DB8
+	JSR	RI_ADD(PC)	;*/undomodify BSR RI_ADD
+	BRA.S	L03D28
+L03D48	CMPI.B	#$2E,D6
+	BNE.S	L03D56
+	TST.W	D4
+	BNE.S	L03DAE
+	MOVEQ	#$01,D4
+	BRA.S	L03D28
+L03D56	TST.B	D5
+	BEQ.S	L03DAE
+	TST.L	D5
+	BPL.S	L03D62
+	JSR	RI_NEG(PC)	;*/undomodify BSR RI_NEG
+L03D62	MOVEQ	#0,D3
+	AND.B	D5,D6
+	CMPI.B	#$45,D6
+	BNE.S	L03D70
+	BSR.S	L03CEE
+	BNE.S	L03DB0
+L03D70	TST.W	D4
+	BEQ.S	L03D76
+	SUBQ.W	#1,D4
+L03D76	SUB.W	D3,D4
+	BVS.S	L03DAE
+	BEQ.S	L03DA2
+	SGE	D5
+	BGE.S	L03D82
+	NEG.W	D4
+L03D82	BSR.S	L03DB6
+	SUBQ.W	#2,A1		;*/undomend SUBQ.L #2,A1
+	MOVE.W	D4,0(A6,A1.L)
+	JSR	L047DC(PC)	;*/undomodify BSR L047DC
+	BNE.S	L03DB0
+	TST.B	D5
+	BEQ.S	L03D9C
+	JSR	RI_DIV(PC)	;*/undomodify BSR RI_DIV
+	BNE.S	L03DB0
+	BRA.S	L03DA2
+L03D9C	JSR	RI_MULT(PC)	;*/undomodify BSR RI_MULT
+	BNE.S	L03DB0
+L03DA2	MOVEM.L	(A7)+,D3-D6
+	SUBQ.W	#1,A0		;*/undomodify SUBQ.L #1,A0
+	ADDQ.W	#8,A7		;*/undomodify ADDQ.L #8,A7
+	MOVEQ	#0,D0
+	RTS
+L03DAE	MOVEQ	#-$11,D0
+L03DB0	MOVEM.L	(A7)+,D3-D6/A0-A1
+	RTS
+L03DB6	MOVEQ	#$0A,D1
+L03DB8	MOVE.L	#$0000081F,D0
+	JMP	L04830(PC)	;*/undomodify BRA L04830
+CN_DTOI	; vector $102 : convert number to ASCII
+	MOVEM.L	D3-D6/A0-A1,-(A7)
+	BSR	L03CEE
+	BNE.S	L03DB0
+	SUBQ.W	#2,A1		;*/undomend SUBQ.L #2,A1
+	MOVE.W	D3,0(A6,A1.L)
+	BRA.S	L03DA2
+CN_HTOIB:
+	MOVEQ	#$02,D2
+	BRA.S	CN_HTOI
+CN_HTOIW:
+	MOVEQ	#$04,D2
+	BRA.S	CN_HTOI
+CN_HTOIL:
+	MOVEQ	#$08,D2
+CN_HTOI:
+	MOVEM.L	D3-D6/A0-A1,-(A7)
+	MOVE.L	D2,D4
+	LSR.B	#1,D4
+	SUBQ.W	#2,A1		;*/undomend SUBQ.L #2,A1
+	MOVE.B	D4,$01(A6,A1.L)
+	MOVE.B	#$0F,0(A6,A1.L)
+	MOVEQ	#$04,D4
+L03DF4	MOVE.L	D2,D5
+	MOVEQ	#0,D3
+L03DF8	BSR	L03CCC		; convert ASCII to decimal
+	BRA.S	L03E00		; error
+	BRA.S	L03E0E		; ok
+L03E00	ANDI.B	#$DF,D6
+	SUBI.B	#'A',D6
+	BLT.S	L03E1E
+	ADDI.B	#10,D6
+L03E0E	CMP.B	0(A6,A1.L),D6
+	BHI.S	L03E1E
+	LSL.L	D4,D3
+	ADD.L	D6,D3
+	DBF	D2,L03DF8
+	BRA.S	L03E30
+L03E1E	MOVE.B	$01(A6,A1.L),D4
+	ADDQ.L	#2,A1
+	MOVE.L	D3,-$04(A6,A1.L)
+	SUBA.L	D4,A1
+	CMP.W	D2,D5
+	BGT	L03DA2
+L03E30	BRA	L03DAE
+CN_BTOIB:
+	MOVEQ	#$08,D2
+	BRA.S	L03E3E
+CN_BTOIW:
+	MOVEQ	#$10,D2
+	BRA.S	L03E3E
+CN_BTOIL:
+	MOVEQ	#$20,D2
+L03E3E	MOVEM.L	D3-D6/A0-A1,-(A7)
+	MOVE.L	D2,D4
+	LSR.B	#3,D4
+	SUBQ.W	#2,A1		;*/undomend SUBQ.L #2,A1
+	MOVE.B	D4,$01(A6,A1.L)
+	MOVEQ	#$01,D4
+	MOVE.B	D4,0(A6,A1.L)
+	BRA.S	L03DF4
+CN_ITOD	MOVE.L	A2,-(A7)
+	MOVE.L	A0,-(A7)
+	MOVEQ	#0,D0
+	MOVE.W	0(A6,A1.L),D0
+	ADDQ.W	#2,A1		;*/undomend ADDQ.L #2,A1
+	BGE.S	L03E6C
+	MOVE.B	#$2D,0(A6,A0.L)
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	NEG.W	D0
+L03E6C	MOVE.L	A0,-(A7)
+	ADDQ.W	#5,A0		;*/undomend ADDQ.L #5,A0
+L03E70	DIVU	#10,D0
+	SWAP	D0
+	ADDI.B	#$30,D0
+	SUBQ.W	#1,A0		;*/undomend SUBQ.L #1,A0
+	MOVE.B	D0,0(A6,A0.L)
+	CLR.W	D0
+	SWAP	D0
+	BNE.S	L03E70
+	MOVE.L	(A7)+,D1
+	SUB.L	A0,D1
+	MOVE.W	D1,D0
+	ADDQ.W	#4,D0
+L03E8E	LEA	0(A0,D1.W),A2
+	MOVE.B	0(A6,A0.L),0(A6,A2.L)
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	DBF	D0,L03E8E
+	ADD.L	A0,D1
+	MOVEA.L	D1,A0
+	SUB.L	(A7)+,D1
+	MOVEA.L	(A7)+,A2
+	RTS
+CN_ITOHL:
+	bsr.l	CN_ITOHW 	; not possible to have short
+				; branch to next instruction
+CN_ITOHW:
+	bsr.l	CN_ITOHB 	; ditto
+CN_ITOHB:
+	MOVE.B	0(A6,A1.L),D0
+	LSR.B	#4,D0
+	BSR.S	L03EC0
+	MOVEQ	#$0F,D0
+	AND.B	0(A6,A1.L),D0
+	ADDQ.W	#1,A1		;*/undomend ADDQ.L #1,A1
+L03EC0	ADDI.B	#$30,D0
+	CMPI.B	#$39,D0
+	BLS.S	L03ECC
+	ADDQ.B	#7,D0
+L03ECC	MOVE.B	D0,0(A6,A0.L)
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	RTS
+CN_ITOBL:
+	bsr.l	CN_ITOBW 	; not possible to have short
+				; branch to next instruction
+CN_ITOBW:
+	bsr.l	CN_ITOBB 	; ditto
+CN_ITOBB:
+	MOVEQ	#7,D0
+L03EDE	BTST	D0,0(A6,A1.L)
+	SEQ	0(A6,A0.L)
+	ADDI.B	#$31,0(A6,A0.L)
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	DBF	D0,L03EDE
+	ADDQ.W	#1,A1		;*/undomend ADDQ.L #1,A1
+	RTS
+CN_FTOD:
+	MOVEM.L	D2-D5,-(A7)
+	MOVE.L	A0,-(A7)
+	TST.L	$02(A6,A1.L)
+	BEQ	L04000
+
+; --------------------------------------------------------------
+;*/beginoverlay
+; modified to allow for eight digit precision
+; based on hack by S N Goodwin
+
+	MOVEQ	#$07,D4		;*/modify MOVEQ #$06,D4
+	MOVE.L	D4,D5		;*/insertcode
+	TST.B	$02(A6,A1.L)
+	BGE.S	L03F18
+	MOVE.B	#$2D,0(A6,A0.L)
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	JSR	RI_NEG(PC)	;*/undomodify BSR RI_NEG
+
+L03F18	CMPI.L	#$081E7736,0(A6,A1.L) ;*/modify CMPI.L #$081B5F60,0(A6,A1.L) about 1E8
+				; new top, about 1E9
+	BLT.S	L03F2C
+	ADDQ.W	#1,D4
+	BSR.S	L03F40
+	JSR	RI_DIV(PC)	;*/undomodify BSR RI_DIV
+	BRA.S	L03F18
+
+L03F2C	CMPI.L	#$081B5F5F,0(A6,A1.L) ;*/modify CMPI.L #$08184C4C,0(A6,A1.L) about 1E7
+				; new bottom, about 1E8
+	BGE.S	L03F6C
+	SUBQ.W	#1,D4
+	BSR.S	L03F40
+	JSR	RI_MULT(PC)	;*/undomodify BSR RI_MULT
+	BRA.S	L03F2C
+L03F40	SUBQ.W	#6,A1		;*/undomend SUBQ.L #6,A1
+	MOVE.L	#$08045000,0(A6,A1.L) ; 10.0
+	CLR.W	4(A6,A1.L)
+	RTS
+L03F50	MOVEQ	#0,D0
+	SWAP	D1
+	MOVE.W	D1,D0
+	DIVU	#10,D0
+	SWAP	D0
+	MOVE.W	D0,D1
+	SWAP	D1
+	DIVU	#10,D1
+	MOVE.W	D1,D0
+	SWAP	D1
+	EXG	D0,D1
+	RTS
+
+L03F6C	MOVEQ	#$1F,D0
+	SUB.W	0(A6,A1.L),D0
+	MOVE.L	2(A6,A1.L),D1
+	LSR.L	D0,D1
+	ADDQ.W	#6,A1		;*/undomend ADDQ.L #6,A1
+L03F7A	ADDQ.L	#5,D1
+	BSR.S	L03F50
+	ADDQ.W	#1,D4
+	CMPI.L	#$05F5E100,D1 ;*/modify CMPI.L #$00989680,D1
+			     ; long int scaling limit, 1E8
+	BGE.S	L03F7A
+
+	LEA	2(A0,D5.L),A0	;*/modify ADDQ.W #8,A0
+				;*/modify MOVEQ #6,D2
+	MOVE.L	A0,D2		;*/insertcode
+	MOVE.L	D5,D3		;*/insertcode
+
+L03F8C	BSR.S	L03F50
+	ADDI.B	#$30,D0
+	SUBQ.W	#1,A0
+	MOVE.B	D0,0(A6,A0.L)
+	DBF	D5,L03F8C	;*/modify DBF D2,L03F8C
+
+	CMP.W	D3,D4		;*/modify CMPI.W #5,D4
+	BGT.S	L03FAC
+
+	CMPI.W	#$FFFF,D4
+	BLT.S	L03FAC
+
+	MOVEQ	#0,D5
+	BRA.S	L03FB0
+
+L03FAC	MOVE.L	D4,D5
+	MOVEQ	#0,D4
+L03FB0	ADDQ.W	#1,D4
+				;*/removecode MOVE.L A0,D2
+	BRA.S	L03FBE
+
+L03FB6	MOVE.B	0(A6,A0.L),-1(A6,A0.L)
+	ADDQ.W	#1,A0
+L03FBE	DBF	D4,L03FB6
+
+	MOVE.B	#'.',-1(A6,A0.L)	; Decimal point
+
+	MOVEA.L	D2,A0
+				;*/removecode ADDQ.W #7,A0
+;*/endoverlay
+; --------------------------------------------------------------
+L03FCC	SUBQ.W	#1,A0		;*/undomend SUBQ.L #1,A0
+	CMPI.B	#'0',0(A6,A0.L)	; 0
+	BEQ.S	L03FCC
+	CMPI.B	#'.',0(A6,A0.L)	; .
+	BEQ.S	L03FE0
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+L03FE0	TST.W	D5
+	BEQ.S	L03FF6
+	MOVE.B	#'E',0(A6,A0.L)	; exponent E
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	SUBQ.W	#2,A1		;*/undomend SUBQ.L #2,A1
+	MOVE.W	D5,0(A6,A1.L)
+	JSR	CN_ITOD(PC)	;*/undomodify BSR CN_ITOD
+L03FF6	MOVE.L	A0,D1
+	SUB.L	(A7)+,D1
+	MOVEM.L	(A7)+,D2-D5
+	RTS
+L04000	MOVE.B	#'0',0(A6,A0.L)	; 0
+	ADDQ.W	#1,A0		;*/undomend ADDQ.L #1,A0
+	ADDQ.W	#6,A1		;*/undomend ADDQ.L #6,A1
+	BRA.S	L03FF6
+L0400C	MOVEM.L	D0/D5,-(A7)
+	CMPI.W	#10,D0
+	BGE.S	L04034
+L04016	SUBQ.W	#1,D5
+	BLE.S	L04024
+	MOVE.B	#'0',0(A6,A1.L)	; 0
+	ADDQ.L	#1,A1
+	BRA.S	L04016
+L04024	ADDI.W	#'0',D0		; calculate ASCII digit from
+				; number
+	MOVE.B	D0,0(A6,A1.L)
+	ADDQ.L	#1,A1
+	MOVEM.L	(A7)+,D0/D5
+	RTS
+L04034	ANDI.L	#$0000FFFF,D0
+	DIVU	#10,D0
+	SUBQ.W	#1,D5
+	BSR.S	L0400C
+	SWAP	D0
+	BRA.S	L04024
+L04046	BSR.S	L0400C
+	MOVE.B	#' ',0(A6,A1.L)
+	ADDQ.L	#1,A1
+	RTS
+L04052	BSR.S	L0400C
+	MOVE.B	#':',0(A6,A1.L)
+	ADDQ.L	#1,A1
+	RTS
+
+; --------------------------------------------------------------
+;*/beginoverlay
+
+CN_DATE:
+	MOVEM.L	D1-D5/A2,-(A7)
+	BSR	L040F6
+	SUBA.L	#$16,A1
+	MOVE.W	#$14,0(A6,A1.L)
+	ADDQ.L	#2,A1
+	MOVE.W	D2,D0
+	MOVEQ	#4,D5
+	BSR.S	L04046
+	MULU	#3,D4
+	moveq	#$3A,d5		;*/mend MOVEA.L  $2814A,A2
+	bsr	MSG_FIX		;*/mend MOVE.W   #$3A(A2),D0
+				;*/mend LEA      0(A2,D0.W),A2
+	ADDA.W	D4,A2		;*/undomend ADDA.L D4,A2
+	BSR.S	L040E8
+	MOVE.B	#$20,0(A6,A1.L)
+	ADDQ.L	#1,A1
+	MOVEQ	#2,D5
+	MOVE.W	D1,D0
+	BSR.S	L04046
+	SWAP	D2
+	MOVE.W	D2,D0
+	BSR.S	L04052
+	MOVE.W	D3,D0
+	BSR.S	L04052
+	SWAP	D3
+	MOVE.W	D3,D0
+	BSR	L0400C
+	SUBA.L	#$16,A1
+L040B6	MOVEM.L	(A7)+,D1-D5/A2
+	MOVEQ	#0,D0
+	RTS
+CN_DAY:
+	MOVEM.L	D1-D5/A2,-(A7)
+	BSR.S	L040F6
+	SUBQ.L	#6,A1
+	MOVE.W	#3,0(A6,A1.L)
+	ADDQ.L	#2,A1
+	MULU	#3,D0
+	moveq	#$38,d5		;*/mend MOVEA.L  $2814A,A2
+	bsr	MSG_FIX		;*/mend MOVE.W   #$38(A2),D1
+				;*/mend LEA      0(A2,D1.W),A2
+	ADDA.W	D0,A2		;*/undomodify ADDA.L D0,A2
+	BSR.S	L040E8
+	SUBQ.L	#5,A1
+	BRA.S	L040B6
+;*/beginfilling
+NOP040E8:
+	DCB.w	($40E8-(NOP040E8-ORGN))/2,$4E71
+;*/endfilling
+;*/endoverlay
+L040E8	MOVEQ	#2,D0
+L040EA	MOVE.B	(A2)+,0(A6,A1.L)
+	ADDQ.L	#1,A1
+	DBF	D0,L040EA
+	RTS
+L040F6	MOVE.W	#$3C,D2
+	BSR	L0417E
+	MOVE.W	D0,D3
+	SWAP	D3
+	BSR.S	L0417E
+	MOVE.W	D0,D3
+	DIVU	#$18,D1
+	MOVE.L	D1,D2
+	ANDI.L	#$FFFF,D1
+	MOVE.L	D1,D0
+	DIVU	#7,D0
+	SWAP	D0
+	DIVU	#$05B5,D1
+	MOVE.W	D1,D2
+	ASL.W	#2,D2
+	ADDI.W	#$07A9,D2
+	CLR.W	D1
+	SWAP	D1
+	DIVU	#$016D,D1
+	MOVEQ	#0,D4
+	CMPI.W	#4,D1
+	BNE.S	L0413C
+	SUBQ.W	#1,D1
+	MOVE.W	#$016D,D4
+L0413C	ADD.W	D1,D2
+	SWAP	D1
+	ADD.W	D4,D1
+	MOVEQ	#0,D5
+	MOVE.W	D2,D4
+	ANDI.W	#3,D4
+	BNE.S	L0414E
+	MOVEQ	#1,D5
+L0414E	MOVE.W	D5,D4
+	ADDI.W	#$003A,D4
+	CMP.W	D4,D1
+	BLE.S	L0415C
+	ADDQ.W	#2,D1
+	SUB.W	D5,D1
+L0415C	MOVE.W	D1,D5
+	ADDI.W	#$005C,D5
+	MULU	#$0064,D5
+	DIVU	#$0BEF,D5
+	MOVE.W	D5,D4
+	ADDI.W	#$005C,D1
+	MULU	#$0BEF,D5
+	DIVU	#$0064,D5
+	SUB.W	D5,D1
+	SUBQ.W	#3,D4
+	RTS
+L0417E	MOVEQ	#0,D0
+	SWAP	D1
+	MOVE.W	D1,D0
+	DIVU	D2,D0
+	SWAP	D0
+	MOVE.W	D0,D1
+	SWAP	D1
+	DIVU	D2,D1
+	MOVE.W	D1,D0
+	SWAP	D1
+	EXG	D0,D1
+	RTS
+; --------------------------------------------------------------
+;*/endfile

@@ -1,0 +1,202 @@
+JS ROM BUG FIXES
+
+
+The following is a list of (some) JS system ROM bugs, together with
+an appropriate patch for fixing them.
+
+Most of these bugs only show up on large memory systems.
+
+--------------------------------------------------------------------------
+
+   A bug in the JS ROM IO_QIN routine assumes 24 bit addressing.
+   $383A BNE.S $385A should be BLT.S $385A -MJS
+
+FIX:
+
+0000383A 6D1E	      blt.s	$385A
+
+--------------------------------------------------------------------------
+
+   A bug in the JS ROM RI_EXEC routine assumes that the byte stored
+   at address $0 is $0. The long word stored at address $0 contains the
+   initial stack when re-booting QDOS. If QDOS is run from a high address
+   (eg $7e00000-$8000000), then the byte at zero would need to be non-zero.
+   -MJS
+
+FIX:
+
+000041AC 48E770B4     movem.l	d1-d3/a0/a2-a3/a5,-(a7)
+000041B0 9BCD	      suba.l	a5,a5
+000041B2 6010	      bra.s	$41C4
+000041B4 48E770B4     movem.l	d1-d3/a0/a2-a3/a5,-(a7)
+000041B8 2A4B	      move.l	a3,a5
+000041BA 200D	      move.l	a5,d0		;***
+000041BC 6716	      beq.s	$41D4		;***
+000041BE 7000	      moveq	#$0,d0
+000041C0 101D	      move.b	(a5)+,d0
+000041C2 6710	      beq.s	$41D4
+000041C4 0C000030     cmpi.b	#$30,d0
+000041C8 6210	      bhi.s	$41DA
+000041CA 303B0038     move.w	$4204(pc,d0.w),d0
+000041CE 4EBB0036     jsr	$4206(pc,d0.w)
+000041D2 67E6	      beq	$41BA
+000041D4 4CDF2D0E     movem.l	(a7)+,d1-d3/a0/a2-a3/a5
+000041D8 4E75	      rts
+000041DA 0040FF00     ori.w	#-$100,d0
+000041DE 08800000     bclr	#$0,d0
+000041E2 D8C0	      adda.w	d0,a4
+000041E4 6606	      bne.s	$41EC
+000041E6 5D49	      subq.w	#6,a1
+000041E8 610E	      bsr.s	$41F8
+000041EA 6008	      bra.s	$41F4
+000041EC C949	      exg	a4,a1
+000041EE 6108	      bsr.s	$41F8
+000041F0 C34C	      exg	a1,a4
+000041F2 5C49	      addq.w	#6,a1
+000041F4 98C0	      suba.w	d0,a4
+000041F6 60C2	      bra	$41BA
+000041F8 3DB6C8009800 move.w	$0(a6,a4.l),$0(a6,a1.l)
+000041FE 2DB6C8029802 move.l	$2(a6,a4.l),$2(a6,a1.l)
+00004204 4E75	      rts
+
+--------------------------------------------------------------------------
+
+   There is a bug in JS ROM ATAN routine...
+   $4350 move.l #...,(a6,a1.w) should be move.l #...,(a6,a1.l) -SNG
+
+FIX:
+
+00004350 2DBC4498517A9802 move.l    #$4498517A,$2(a6,a1.l)
+
+--------------------------------------------------------------------------
+
+   There is a bug in RJOB/FRJOB routine (Trap#1 d0=4/5). This routine
+   uses the upper bytes of addresses in the job table to "mark" jobs
+   awaiting deletion, while it traverses the job tree looking for related
+   jobs. It then assumes 24 bit addressing in hardware, and uses the
+   address without consideration as to the validity of the upper byte.
+   This can cause a bus error on 32 bit systems whenever a job is removed.
+
+   The routine below uses a new status word (-3) that is stored in JB_STAT
+   of the job header to signify a job awaiting deletion. Thus this routine
+   performs the same function in a 32-bit clean way. -MJS
+
+FIX:
+
+0000060C 610000E0     bsr	$6EE
+00000610 317CFFFD0014 move.w	#-$3,$14(a0)
+00000616 4EBA00AE     jsr	$6C6(pc)
+0000061A 66F4	      bne	$610
+0000061C 51E7	      sf	-(a7)
+0000061E 226E0068     move.l	$68(a6),a1
+00000622 5849	      addq.w	#4,a1
+00000624 5241	      addq.w	#1,d1
+00000626 B26E0062     cmp.w	$62(a6),d1
+0000062A 6200008A     bhi	$6B6
+0000062E 2051	      move.l	(a1),a0
+00000630 4A11	      tst.b	(a1)
+00000632 6DEE	      blt	$622
+00000634 0C68FFFD0014 cmpi.w	#-$3,$14(a0)
+0000063A 66E6	      bne	$622
+
+--------------------------------------------------------------------------
+
+   There are bugs in the JS ROM code at addresses $3EC, $60E, $6F0 and
+   $3230 that contain ADDA.W instructions, where ADDA.L should be used.
+   This causes problems on large memory systems. -MJS
+
+FIX:
+
+000003EC D3C9	      adda.l	a1,a1
+000003EE D3C9	      adda.l	a1,a1
+
+0000060E D3C9	      adda.l	a1,a1
+00000610 D3C9	      adda.l	a1,a1
+
+000006F0 D3C9	      adda.l	a1,a1
+000006F2 D3C9	      adda.l	a1,a1
+
+00003230 D3C0	      adda.l	d0,a1
+
+--------------------------------------------------------------------------
+
+   This is not a bug, but the replacement code does improve functionality.
+   This rejigged Floating point output routine (based on some pokes by
+   S N Goodwin) allows accurate editing and printing of 8 digit numbers
+   without going into E notation. -MJS
+
+FIX:
+
+00003F04 7807	      moveq	#$7,d4
+00003F06 2A04	      move.l	d4,d5
+00003F08 4A369802     tst.b	$2(a6,a1.l)
+00003F0C 6C0C	      bge.s	$3F1A
+00003F0E 1DBC002D8800 move.b	#$2D,$0(a6,a0.l)
+00003F14 5248	      addq.w	#1,a0
+00003F16 4EBA0AF4     jsr	$4A0C(pc)
+00003F1A 0CB6081E7736 cmpi.l	#$81E7736,$0(a6,a1.l)
+	 9800
+00003F22 6D0A	      blt.s	$3F2E
+00003F24 5244	      addq.w	#1,d4
+00003F26 611A	      bsr.s	$3F42
+00003F28 4EBA0A54     jsr	$497E(pc)
+00003F2C 60EC	      bra	$3F1A
+00003F2E 0CB6081B5F5F cmpi.l	#$81B5F5F,$0(a6,a1.l)
+	 9800
+00003F36 6C36	      bge.s	$3F6E
+00003F38 5344	      subq.w	#1,d4
+00003F3A 6106	      bsr.s	$3F42
+00003F3C 4EBA09A0     jsr	$48DE(pc)
+00003F40 60EC	      bra	$3F2E
+00003F42 5D49	      subq.w	#6,a1
+00003F44 2DBC08045000 move.l	#$8045000,$0(a6,a1.l)
+	 9800
+00003F4C 42769804     clr.w	$4(a6,a1.l)
+00003F50 4E75	      rts
+00003F52 7000	      moveq	#$0,d0
+00003F54 4841	      swap	d1
+00003F56 3001	      move.w	d1,d0
+00003F58 80FC000A     divu	#$A,d0
+00003F5C 4840	      swap	d0
+00003F5E 3200	      move.w	d0,d1
+00003F60 4841	      swap	d1
+00003F62 82FC000A     divu	#$A,d1
+00003F66 3001	      move.w	d1,d0
+00003F68 4841	      swap	d1
+00003F6A C141	      exg	d0,d1
+00003F6C 4E75	      rts
+00003F6E 701F	      moveq	#$1F,d0
+00003F70 90769800     sub.w	$0(a6,a1.l),d0
+00003F74 22369802     move.l	$2(a6,a1.l),d1
+00003F78 E0A9	      lsr.l	d0,d1
+00003F7A 5C49	      addq.w	#6,a1
+00003F7C 5A81	      addq.l	#5,d1
+00003F7E 61D2	      bsr	$3F52
+00003F80 5244	      addq.w	#1,d4
+00003F82 0C8105F5E100 cmpi.l	#$5F5E100,d1
+00003F88 6CF2	      bge	$3F7C
+00003F8A 41F05802     lea	$2(a0,d5.l),a0
+00003F8E 2408	      move.l	a0,d2
+00003F90 2605	      move.l	d5,d3
+00003F92 61BE	      bsr	$3F52
+00003F94 06000030     addi.b	#$30,d0
+00003F98 5348	      subq.w	#1,a0
+00003F9A 1D808800     move.b	d0,$0(a6,a0.l)
+00003F9E 51CDFFF2     dbra	d5,$3F92
+00003FA2 B843	      cmp.w	d3,d4
+00003FA4 6E0A	      bgt.s	$3FB0
+00003FA6 0C44FFFF     cmpi.w	#-$1,d4
+00003FAA 6D04	      blt.s	$3FB0
+00003FAC 7A00	      moveq	#$0,d5
+00003FAE 6004	      bra.s	$3FB4
+00003FB0 2A04	      move.l	d4,d5
+00003FB2 7800	      moveq	#$0,d4
+00003FB4 5244	      addq.w	#1,d4
+00003FB6 6008	      bra.s	$3FC0
+00003FB8 1DB6880088FF move.b	$0(a6,a0.l),-$1(a6,a0.l)
+00003FBE 5248	      addq.w	#1,a0
+00003FC0 51CCFFF6     dbra	d4,$3FB8
+00003FC4 1DBC002E88FF move.b	#$2E,-$1(a6,a0.l)
+00003FCA 2042	      move.l	d2,a0
+
+--------------------------------------------------------------------------

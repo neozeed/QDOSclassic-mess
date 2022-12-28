@@ -1,0 +1,15 @@
+Short:    A dummy entry for the TK2 ROM
+Author:   CARE / QJUMP
+Version:  2.12
+Type:     util/rom
+
+
+This is NOT the TK2_ROM. The TK2_ROM in this directory
+consists of 16384 bytes of NOPs. You should replace it
+with your own legal/spare copy of TK2.
+
+
+ARCHIVE CONTENTS
+
+ TK2_ROM    - the dummy toolkit
+ TK2_readme - this file

@@ -1,0 +1,53 @@
+100 REMark Commodore Music keyboard
+110 REMark QDOS input test routine.
+120 REMark Simon N Goodwin, 3/2/93.
+130 REMark Uses BIN$ from Toolkit 2
+140 REMark Turbo directives:
+150 IMPLICIT% u,j,row,col,b,mask
+160 :
+170 LET control_port=HEX("bfe301")
+180 LET data_port=control_port-512
+190 NOTES
+200 POKE control_port,0
+210 CLS : CSIZE 2,0
+220 AT 10,0
+230 PRINT "Press the music keys"
+240 PRINT "to see their effect."\\
+250 PRINT "Press SPACE to stop."
+260 PAUSE 20
+270 REPeat poll
+280   FOR i=0 TO 7:AT i,6:j=PEEK(data_port):PRINT BIN$(j,8)!:LOOKUP i,j
+290   IF CODE(INKEY$(#1,1))=32:EXIT poll
+300 END REPeat poll
+310 REMark Revert to parallel output
+320 POKE control_port,255
+330 AT 16,0
+340 PRINT "PAR output restored."
+350 :
+360 DEFine PROCedure S
+370 SAVE "MUSIC_KEYS_BAS"
+380 END DEFine S
+390 :
+400 DEFine PROCedure LOOKUP(row,col)
+410 LOCal b,mask
+420 mask=1
+430 FOR b=0 TO 7
+440   IF (col && mask)=0 : PRINT !a$((b+row*8) MOD 24)!
+450   mask=mask+mask
+460   NEXT b
+470   CLS 4
+480 END FOR b
+490 END DEFine LOOKUP
+500 :
+510 DEFine PROCedure NOTES
+520 DIM a$(23,2)
+530 RESTORE 
+540 FOR i=0 TO 23
+550   READ a$(i)
+560 END FOR i
+570 END DEFine NOTES
+580 :
+590 REMark Note names
+600 DATA "C#","D#","D","E","G","C","F#","F"
+610 DATA "A","B","A#","C","D#","G#","D","C#"
+620 DATA "F","G","F#","G#","B","E","A#","A"

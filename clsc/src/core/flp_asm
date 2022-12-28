@@ -1,0 +1,2964 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_FLP_inc'
+
+	SECTION	FLP
+
+	XDEF	noints
+
+	XREF.L	HARDTAG
+	XREF	user_ini
+	XREF	fd_hwselect,fd_hwckrdy,fd_hwrestore,fd_hwraddr
+	XREF	fd_hwside,fd_hwseek,fd_hwmtrsoff,fd_hwwpro
+	XREF	fd_hwchng,fd_hwread,fd_hwwrite,fd_hwftrack
+
+; --------------------------------------------------------------
+; FLP1_asm - floppy disk device driver for QDOS
+;	  - last modified 11/08/99
+
+; Floppy disk driver for CST    (c) 1984  Tony Tebby	  QJUMP
+; Modified for CST maintenance  (c) 1986  David Oliver  CST.
+; Modified for Amiga floppies   (c) 1989  Rainer Kowallik
+;				      Public Domain
+; --------------------------------------------------------------
+
+VERSTAG	EQU	'1.44'
+
+; --------------------------------------------------------------
+rom_base
+	dc.l	$4afb0001
+	dc.w	proc_tab-rom_base
+	dc.w	rom_init-rom_base
+	dc.b	0,27
+	dc.l	HARDTAG
+	dc.b	'FLP device driver '
+	dc.l	VERSTAG
+	dc.b	$A,0
+; --------------------------------------------------------------
+
+fds_fo_mess dc.b	0,18,' files still open',$a
+	ds.w	0
+
+fds_rw_mess dc.b	0,19,' read/write failed',$a
+	ds.w	0
+; --------------------------------------------------------------
+rom_init
+
+	bra.l	fd_init
+
+; --------------------------------------------------------------
+proc_tab
+	dc.w	13		; 7 procedures
+
+	dc.w	flp_sec-*	; FLP_SEC security_level
+	dc.b	7,'FLP_SEC'	; (0 to 2)
+	dc.w	flp_start-*	; FLP_START start_up_time
+	dc.b	9,'FLP_START'	; (in 20 ms)
+	dc.w	flp_track-*	; FLP_TRACK nr_of_tracks
+	dc.b	9,'FLP_TRACK'
+	dc.w	flp_use-*
+	dc.b	7,'FLP_USE'
+	dc.w	prog_use-*
+	dc.b	8,'PROG_USE',0
+	dc.w	data_use-*
+	dc.b	8,'DATA_USE',0
+	dc.w	dest_use-*
+	dc.b	8,'DEST_USE',0
+	dc.w	spl_use-*
+	dc.b	7,'SPL_USE'
+	dc.w	0		; end of procedures
+
+	dc.w	3		; no functions
+	dc.w	prog_d$-*
+	dc.b	6,'PROGD$',0
+	dc.w	data_d$-*
+	dc.b	6,'DATAD$',0
+	dc.w	dest_d$-*
+	dc.b	6,'DESTD$',0
+	dc.w	0		; end of functions
+
+
+; --------------------------------------------------------------
+fd_init
+	movem.l	a0/a3,-(sp)
+
+	BSR	user_ini
+
+	moveq	#fdd_end,d1
+	moveq	#MT.ALCHP,d0
+	moveq	#0,d2
+	trap	#1
+
+	lea	fd_poll(pc),a2
+	move.l	a2,fdd_pllk+4(a0) ; !
+
+	lea	fdd_iolk(a0),a3
+	lea	fd_io(pc),a2
+	move.l	a2,(a3)+ 	; input/output... at $1c
+	lea	fd_opn(pc),a2
+	move.l	a2,(a3)+ 	; open... at $20
+	lea	fd_clos(pc),a2
+	move.l	a2,(a3)+ 	; close... at $24
+	lea	fd_slave(pc),a2	; slave
+	move.l	a2,(a3)+
+	addq.l	#8,a3		; two spare
+	lea	fd_format(pc),a2	; format
+	move.l	a2,(a3)+
+	move.l	#fd_end,(a3)+	; length
+	move.w	#3,(a3)+
+	move.l	#'MDV0',(a3)+
+	addq.l	#6,a3		; side/drive/side
+				; add/empty/fint/name set
+	subq.l	#1,(a3)+ 	; all step rates unset
+	move.l	#$02020202,(a3)	; 512 byte sectors
+
+	addq.b	#1,fdd_scty(a0)	; set security level
+	move.b	#fdd.rnup,fdd_stim(a0) ; and default motor
+				     ; start time
+	move.l	a0,a3
+
+	st	fdd_wait(a3)	; hold up polled task
+
+	lea	fdd_pllk(a3),a0	; link into
+	moveq	#MT.LPOLL,d0	; polling list !
+	trap	#1
+
+	lea	fdd_ddlk(a3),a0	; link into
+	moveq	#MT.LDD,d0	; dd driver list
+	trap	#1
+*
+* now start up drive 1
+*
+	bsr	noints		; sv mode, ints off **MSW**
+
+	moveq	#1,d1		; select drive one
+	bsr.l	fd_hwselect
+	bsr.l	fd_hwckrdy
+	bne.s	fdini_ndsk
+
+	bsr	fd_hwrestore
+	bsr.l	fd_hwraddr	; read address
+	bne.s	fdini_ndsk	; ... oops, no disk
+
+	bra.s	fdini_um
+*
+fdini_ndsk
+	move.l	#fdd.name,fdd_name(a3)	... none there, forget about MDV
+	st	fdd_nset(a3)
+
+fdini_um
+	move.w	(sp)+,sr 	; restore mode **MSW**
+
+fdini_arel
+	st	fdd_driv(a3)	; set silly drive number
+	clr.l	fdd_chck(a3)	; mark drives not selected
+	bsr.l	fd_arel
+
+	moveq	#MT.ALCHP,d0	; make space for defaults
+	moveq	#3*36,d1 	; ** 1.17 **
+	moveq	#0,d2
+	trap	#1
+	move.l	a0,a4		; save pointer
+	moveq	#MT.INF,d0	; find the system variables
+	trap	#1
+	lea	SV_PROGD(a0),a0	; and set the pointers to
+				; the defaults
+	move.l	#$00050000+'FL',d1
+	move.l	#'P1_ ',d2
+	move.l	a4,(a0)+ 	; program default FLP1_
+	move.l	d1,(a4)+
+	move.l	d2,(a4)
+	add.w	#32,a4
+	move.l	a4,(A0)+ 	; data default FLP1_
+	move.l	d1,(a4)+
+	move.l	d2,(a4)
+;	 add.w	 #1,(a4) 	 ; Data default now FLP2_
+	add.w	#32,a4
+	move.l	a4,(a0)+ 	; spool default PAR
+	move.l	#$00030000+'PA',(a4)+
+	move.b	#'R',(a4)+
+
+	movem.l	(sp)+,a0/a3
+	rts
+
+; --------------------------------------------------------------
+; internal adaption to user routines
+; --------------------------------------------------------------
+fd_selct:
+	move.b	d1,fdd_driv(a3)
+	bra.l	fd_hwselect
+fd_side1:
+	move.b	d1,fdd_side(a3)
+	bra.l	fd_hwside
+fd_crdy:
+	bsr	fd_hwckrdy
+	tst.b	d0
+	beq.s	crdy_rts
+	move.w	d0,-(a7)
+	bsr	fd_hwrestore
+	move.w	(a7)+,d0
+	tst.b	d0
+crdy_rts rts
+; --------------------------------------------------------------
+; Floppy disc utilities, read, write, seek	 1984 Tony Tebby
+; 1770/1793 version
+
+;       d1 c s  track or sector to seek
+;	  length of read/write -1
+;       a1 cr   pointer to data buffer
+;       a2  r   ptr to data reg (read/write/write track only)
+;       a3 c p  pointer to physical definition
+;       a4 c p  pointer to status/command register
+;       !!!!! a4 and a2 are not used in the AMIGA routines !!!!
+
+; seek using 40/80 flag
+
+fd_seek40
+	moveq	#0,d0		; get drive number
+	move.b	fdd_driv(a3),d0
+	tst.b	fdd_wprt-1(a3,d0.w) ; is it 40 in 80?
+	ble	fd_hwseek	; ... no
+	move.b	d1,-(sp) 	; save real track
+	add.b	d1,d1		; seek twice as far
+; move.b fd_trakr(a4),d0
+; add.b	d0,fd_trakr(a4)
+	bsr	fd_hwseek
+	move.b	(sp)+,d1 	; \\fd_trakr(a4)	   set
+				; real track
+	rts
+
+; seek to track
+
+fd_seekr
+	BRA	fd_hwseek	; otherwise use fd_hwseek
+				; anyway
+fd_poll
+	tst.b	fdd_wait(a3)	; are we waiting for do all pending
+	blt.s	fdp_rts		; suspended
+	beq.s	fdp_pend 	; ... no
+	subq.b	#1,fdd_wait(a3)	; ... yes, decrement wait
+	rts
+
+fdp_pend
+	tst.b	fdd_pend(a3)	; are there any pending operations?
+	beq.s	fdp_time 	; ... no
+	bsr.l	fd_do_all	; do operations
+
+fdp_time
+	tst.b	fdd_time(a3)	; test timer
+	beq.s	fdp_rts		; already timed out
+	subq.b	#3,fdd_time(a3)	; 255/3 * 20ms = 1.7 secs
+
+fdp_desel
+	bne.s	fdp_rts		; not yet run down
+	clr.l	fdd_chck(a3)	; ... not checked
+	sf	fdd_driv(a3)	; deselect
+
+	bsr	fd_hwmtrsoff
+
+fdp_rts
+	rts
+
+; --------------------------------------------------------------
+; Allocation routines for floppy disk IO
+;  1984 Tony Tebby  QJUMP
+
+; routine to find the slave block for a sector
+
+fdb_find
+	move.l	FS_CBLOK(a0),a4	; get pointer to current
+				; block
+	move.l	a4,d0		; is it set?
+	bne.s	fdb_fstrt
+	move.l	SV_BTBAS(a6),a4	; start at base of tables
+fdb_fstrt
+	move.l	a4,a5		; ... and keep a copy
+
+fdb_check
+	moveq	#BT.INUSE,d0	; set mask of in use bits
+	and.b	BT_STAT(a4),d0	; check if this block is in
+				; use
+	beq.s	fdb_next 	; ... no
+	moveq	#$fffffff1,d0	; set mask of drive id
+	and.b	BT_STAT(a4),d0	; get drive id
+	cmp.b	d0,d6		; is it the right drive
+	bne.s	fdb_next 	; ... no
+	moveq	#0,d0		; preset error flag
+	cmp.l	BT_FILNR(a4),d5	; is it the right file/block
+	beq.s	fdb_rts		; ... yes
+
+fdb_next
+	addq.l	#BT_END,a4	; move to next entry in
+				; slave block tables
+	cmp.l	SV_BTTOP(a6),a4	; ... is it off top
+	blt.s	fdb_last 	; ... no
+	move.l	SV_BTBAS(a6),a4	; ... yes - start again at
+				; bottom
+fdb_last
+	cmp.l	a4,a5		; have we been right the way
+				; round
+	bne.s	fdb_check	; ... no - look at this next
+				; entry
+; sector is not in slave blocks
+
+	bsr.s	fdas_get 	; ... find the sector
+	bne.s	fdb_rts
+	bsr.s	fdb_new		; ... allocate a new block
+	bne.s	fdb_rts
+	move.w	d2,BT_SECTR(a4)	; ... set the sector number
+
+	tst.w	d3		; is operation send
+	bge.s	fdb_read 	; ... no
+	tst.w	d4		; is this a first byte in a
+				; block?
+	bne.s	fdb_read 	; ... no
+	move.l	d7,d0		; is end
+	sub.l	a1,d0		; ... less start
+	sub.l	#$200,d0 	; >= one sector?
+	blt.s	fdb_read 	; ... no
+	bset	#BT..ACCS,BT_STAT(a4) ; ... yes, all will be
+				    ; overwritten
+	bra.s	fdb_ok
+
+fdb_read
+	or.b	#BT.RREQ,BT_STAT(a4) ; tell fd to read it
+	bsr.l	fds_read 	; read it - now!
+	beq.s	fdb_ok		; ... done
+
+fdb_ncs
+	moveq	#ERR.NC,d0	; not complete
+fdb_rts
+	rts
+
+; find a new block
+
+fdb_new
+	move.l	SV_BTPNT(a6),a4	; get current slave block
+				; pointer
+	move.l	a4,a5		; ... save it
+fdb_nnext
+	addq.l	#8,a4		; move to next
+	cmp.l	SV_BTTOP(a6),a4	; off end yet?
+	blt.s	fdb_nchk 	; ... no
+	move.l	SV_BTBAS(a6),a4	; ... yes, reset to base
+fdb_nchk
+	moveq	#%00001111,d1	; mask out drive bits
+	and.b	BT_STAT(a4),d1
+	subq.b	#BT.EMPTY,d1	; and check for empty
+	beq.s	fdb_nset 	; ... yes
+	subq.b	#BT.TRUE-BT.EMPTY,d1 ; ... not empty, check
+				   ; for true copy
+	beq.s	fdb_nset 	; ... yes true copy, reuse
+				; it
+	cmp.l	a5,a4		; have we gone through all
+				; blocks
+	bne.s	fdb_nnext	; ... no
+	bsr.l	fd_slave 	; $$$$$$$$$$$$$ temporary
+	bra.s	fdb_ncs		; ... yes
+
+fdb_nset
+	move.l	a4,FS_CBLOK(a0)	; set current block
+	move.l	a4,SV_BTPNT(a6)	; set block pointer
+	move.b	d6,BT_STAT(a4)	; set empty
+	move.l	d5,BT_FILNR(a4)	; ... set the file/block
+fdb_ok
+	moveq	#0,d0		; no errors
+	rts
+
+; routine to find a sector group in the map
+
+fdas_get
+	move.l	a4,-(sp)
+	lea	fd_map+2(a2),a5	; get start of map+2
+	move.l	fd_mapend(a2),a4	;*/modify lea fd_end(a2),a4
+				; and end of map
+	bsr.s	fdas_comp
+	move.l	d0,d2		; set sector number MOD
+				; alloc in top end
+	clr.w	d2
+fdasg_loop
+	cmp.b	(a5),d1		; group matches?
+	bne.s	fdasg_lend
+	ror.l	#8,d1
+	cmp.b	-1(a5),d1	; and next bit of file/group
+				; ?
+	bne.s	fdasg_l1
+	ror.l	#8,d1
+	cmp.b	-2(a5),d1	; and last bit?
+	beq.s	fdasg_done
+	rol.l	#8,d1		; restore comparison
+				; register
+fdasg_l1
+	rol.l	#8,d1
+fdasg_lend
+	addq.w	#1,d2		; next group
+	addq.l	#3,a5
+	cmp.l	a4,a5		; off end yet?
+	blt.s	fdasg_loop	; ... no
+	moveq	#ERR.FE,d0	; oops, not found
+fdasg_done
+	subq.l	#2,a5		; set a5 to point to start
+	move.l	(sp)+,a4
+	rts
+
+; routine to calculate compressed form of file/group
+
+fdas_comp
+	move.l	d5,d1		; get file / block in d1
+	moveq	#0,d0		; and convert to file /
+				; group
+	move.w	d1,d0
+	divu	fd_mallc(a2),d0
+	move.w	d0,d1
+	lsl.w	#4,d1		; and stick them together
+	lsr.l	#4,d1
+	rts
+
+; routine to allocate a new sector
+
+fdas_new
+	tst.w	d5		; is this first sector?
+	beq.s	fdas_first	; ... yes
+	subq.w	#1,d5		; ... no, first find
+				; previous sector
+	bsr.s	fdas_get
+	bne.s	fdas_rts
+	addq.w	#1,d5		; now set this sector
+	bsr.s	fdas_comp	; compressed form in d1
+	swap	d0
+	tst.w	d0		; block MOD alloc is zero?
+	bne.s	fdas_ok		; ... no, then we've got new
+				; sector in old group
+	bsr.s	fdas_look	; look for empty hole
+	beq.s	fdas_set 	; ... found
+	bra.s	fdas_retry	; try again from start of
+				; disk
+fdas_first
+	bsr.s	fdas_comp	; set compressed form in d1
+	moveq	#0,d2
+	move.w	fd_mscyl(a2),d2	; ... no, keep clear of
+				; track 0
+	divu	fd_mallc(a2),d2
+	bsr.s	fdas_try 	; try once
+	beq.s	fdas_rts 	; ... ok
+
+fdas_retry
+	moveq	#0,d2		; try from start
+fdas_try
+	lea	fd_map(a2),a5	; base of map
+	add.w	d2,a5		; + sector offset
+	add.w	d2,a5
+	add.w	d2,a5
+	bsr.s	fdas_look	; looking for an empty
+				; sector
+	bne.s	fdas_rts
+fdas_set
+	swap	d1
+	move.b	d1,(a5)+ 	; set file/block in sector
+				; table
+	rol.l	#8,d1
+	move.b	d1,(a5)+
+	rol.l	#8,d1
+	move.b	d1,(a5)+
+
+	move.w	fd_mallc(a2),d0
+	sub.w	d0,fd_mfree(a2)	; one fewer free allocation
+				; blocks
+
+	st	fd_mupdt(a2)	; map updated
+fdas_ok
+	moveq	#0,d0
+fdas_rts
+	rts
+
+; look for an empty sector
+
+fdas_look
+	move.l	a4,-(sp) 	; save a4
+	move.l	fd_mapend(a2),a4	;*/modify lea fd_end(a2),a4
+				; and set end pointer
+	moveq	#$fffffffd,d0
+fdasl_loop
+	cmp.b	(a5),d0		; free?
+	beq.s	fdasl_done	; ... yes
+	addq.w	#1,d2		; next sector group
+	addq.l	#3,a5
+	cmp.l	a4,a5		; off end?
+	blt.s	fdasl_loop
+	moveq	#ERR.DF,d0	; no empty groups
+fdasl_done
+	move.l	(sp)+,a4
+	rts
+; --------------------------------------------------------------
+; Check all aspects of a drive    V0.3    1985  Tony Tebby
+; Modified for maintenance by CST V 1.17  1986  David Oliver
+
+; write error messages
+
+fds_err_mess
+	move.l	a1,-(sp)
+	lea	FS_MNAME-2(a2),a1
+	move.w	(a1),-(sp)
+	move.w	#10,(a1)
+	bsr.s	fds_w_mess
+	move.w	(sp)+,FS_MNAME-2(a2)
+	move.l	(sp)+,a1
+fds_w_mess
+	movem.l	d3/a0/a2,-(sp)
+	sub.l	a0,a0
+	move.w	UT.MTEXT,a2
+	jsr	(a2)
+	movem.l	(sp)+,d3/a0/a2
+	rts
+
+; Check drive set registers and select
+
+; called internally and from SECTIO and FORMT
+
+;       d2  r   current drive running
+;       d4  r   drive required
+;       a2 c p  drive definition block
+;       a3 c p  device linkage block
+;       a4  r   disk control chip address
+
+;       smashes d0,d1,d2,d4,a4
+
+fd_ck_sel
+	bsr.s	fdc_rset 	; set up registers etc.
+fdc_sel
+	move.b	d4,d1
+	cmp.b	d1,d2		; is selection required
+	bne.l	fd_selct 	; ... yes
+	rts
+
+fdc_rset
+	bsr.l	fd_ahold 	; hold up asynchronous task
+	clr.w	d4
+	move.b	FS_DRIVN(a2),d4	; set drive number required
+	move.b	fdd_driv(a3),d2	; save drive number running
+	rts
+
+; check drive for read/write ops
+
+;       d5 c p  read/write flag
+;       a2 c p  drive definition block
+;       a3 c p  device linkage block
+
+fd_ck_rw
+	movem.l	d1-d5/a0/a1/a4,-(sp) ; save registers
+
+	bsr	noints		; sv mode, ints off **MSW**
+
+	moveq	#0,d4		; changed medium not
+				; permitted
+	bsr.s	fdc_rset 	; set registers
+	tst.b	fdd_scty(a3)	; which security level?
+	blt.s	fdc_rwerr	; ... low, only check if it
+				; has errored
+	bgt.s	fdc_rwdc 	; ... high, check if not
+				; checked
+	tst.b	d5		; ... middling, is it write?
+	beq.s	fdc_rwerr	; ... read, only check if ot
+				; has errored
+fdc_rwdc
+	tst.b	fdd_chck-1(a3,d4.l) ; is drive already
+				  ; checked?
+	beq.s	chk_do		; ... no, check it
+fdc_rwerr
+	tst.b	fd_estat(a2)	; has it errored?
+	bra.s	chk_do		; ... yes, check it
+
+; check drive find track
+
+	cmp.b	d4,d2		; is drive changed?
+	beq.s	fdc_ok1		; ... no
+	bsr.s	fdc_sel		; ... yes, select
+; bne.s	 fdc_fe1
+	bsr.l	fd_hwraddr	; read address
+fdc_fe1
+; bne.l	 fdc_fe
+; move.b  d1,fd_trakr(a4) ; set track number
+fdc_ok1
+	bra.l	fdc_exok
+
+; check drive for open
+
+fd_ck_op
+	movem.l	d1-d5/a0/a1/a4,-(sp) ; save registers
+
+	bsr	noints		; sv mode, ints off **MSW**
+
+	moveq	#1,d4
+	tst.b	FS_FILES(a2)	; any files open?
+	bne.s	ck_op_rset	; ... yes
+	ror.l	#1,d4		; ... no, set msb to flag
+				; change ok
+ck_op_rset
+	bsr.s	fdc_rset 	; set registers
+; cmp.b	d2,d4	; is required drive running?
+; beq.s	fdc_operr;... yes, only check if errored
+	tst.b	fdd_scty(a3)	; which security level?
+	bgt.s	chk_do		; ... high, always check
+	beq.s	fdc_ck_ck	; ... middling, check if not
+				; already checked
+	tst.l	d4		; ... low, only check if
+				; there are no f open
+	bge.s	fdc_ok1		; ... files open
+fdc_ck_ck
+	tst.b	fdd_chck-1(a3,d4.w) ; has drive been checked?
+	beq.s	chk_do		; ... no
+fdc_operr
+	tst.b	fd_estat(a2)	; has it errored?
+	beq.s	fdc_ok1		; ... no
+
+; drive does require checking
+
+chk_do
+	bsr.s	fdc_sel		; select drive
+	bsr.l	fd_crdy		; check if drive has disk in
+fdc_est1
+	bne.l	fdc_estat	; ... no
+	bsr.l	fdc_check	; check if disk changed
+	blt.s	fdc_est1 	; ... bad
+	st	fdd_chck-1(a3,d4.w) ; ... checked
+	beq.s	fdc_wprot	; ... not changed
+	tst.l	d4		; is changed disk ok?
+	bge.l	fdc_fo		; ... no
+
+	lea	fd_pend(a2),a1	; changed disk
+	moveq	#fd.npend-1,d0	; ... clear out pending
+				; list!!!
+fdc_pdclr
+	clr.L	(a1)+		; ensure pending list is
+				; empty
+	dbra	d0,fdc_pdclr
+
+	move.l	SV_BTBAS(a6),a1
+fdc_sbclr
+	moveq	#$fffffff1,d0	; mask out all odd bits
+	and.b	BT_STAT(a1),d0	; is this a block for this
+				; drive?
+	cmp.b	d0,d6
+	bne.s	fdc_sbnxt	; ... no
+	move.b	#BT.EMPTY,BT_STAT(a1) ; ... yes, clear it
+fdc_sbnxt
+	addq.l	#8,a1		; next block
+	cmp.l	SV_BTTOP(a6),a1
+	blt.s	fdc_sbclr
+
+	moveq	#0,d5		; read sectors
+	bsr.l	fd_do_ms 	; ... of map
+	bne.s	fdc_bad_map	; ... oops
+
+	lea	fd_mdnam(a2),a1	; transfer medium name
+	lea	FS_MNAME(a2),a0
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+	move.l	(a1)+,(a0)+
+
+	bsr	calc_phlg	;*/insert
+
+; check for 40 track in 80 track drive and double sided in
+; single sided drive
+
+	move.w	fd_mstrk(a2),d1	; is sectors/track
+	sub.w	fd_mscyl(a2),d1	; ... the same as
+				; sectors/cylinder
+	beq.s	fdc_40_side	; ... yes, read from side 0
+	moveq	#1,d1		; ... no, read from side 1
+fdc_40_side
+	bsr.l	fd_side1 	; set side
+	moveq	#2,d1		; goto track 2
+	bsr.l	fd_hwseek
+	bsr	fd_hwraddr	; read address
+	bne.s	fdc_bad_map
+	subq.b	#2,d1		; track should be 2
+	beq.s	fdc_40_ok
+	addq.b	#1,d1		; was it 1?
+	bne.s	fdc_bad_map	; ... no, give up
+	moveq	#1,d1		; ... yes, 40 on 80 track
+fdc_40_ok
+	move.b	d1,fdd_wprt-1(a3,d4.w) ; set write protect
+				     ; positive or zero
+	bsr.l	fd_hwrestore	; restore drive
+
+; test write protect
+
+fdc_wprot
+	tst.b	fdd_wprt-1(a3,d4.w) ; is it a 40 track in an
+				  ; 80?
+	bgt.s	fdc_exok 	; ... yes so implicitly
+				; write protected
+	BSR	fd_hwwpro
+	TST.B	D0
+	sne	fdd_wprt-1(a3,d4.w) ; set if it is write
+				  ; protected
+fdc_exok
+	moveq	#0,d0
+fdc_rst
+	move.w	(sp)+,sr
+	movem.l	(sp)+,d1-d5/a0/a1/a4
+	tst.l	d0
+	rts
+
+fdc_bad_map
+	clr.l	fd_mhead(a2)	; set map header to not
+				; correct format
+fdc_estat
+fdc_fe
+	st	fd_estat(a2)	; set error occurred
+	bsr.l	fd_arel		; release
+	moveq	#ERR.FE,d0
+	bra.s	fdc_rst
+fdc_fo
+	lea	fds_fo_mess(pc),a1
+	bsr.l	fds_err_mess
+	bra.s	fdc_estat
+
+; check if drive defined / disk changed
+
+fdc_check
+	BSR	fd_hwchng
+	TST.B	D0
+	BNE.S	fdc_name
+	tst.b	fdd_chck-1(a3,d4.w) ; has drive been checked?
+	beq.s	fdc_name 	  ;...no
+	MOVEQ	#0,D0		; signal ok if no change
+	RTS
+
+fdc_ckerr
+	moveq	#ERR.FE,d0	; bad or changed medium
+	rts
+
+; Check if the name has changed
+
+fdc_name
+	bsr.l	fd_hwrestore	; restore drive
+	bne.s	fdc_ckerr	; ... error
+	bsr.l	fd_hwraddr	; read address
+	bne.s	fdc_ckerr	; ... error
+
+	tst.b	d1		; track zero?
+	bne.s	fdc_ckerr	; ... no
+
+	sf	fd_estat(a2)	; clear error status
+	move.w	d4,d1
+	sf	fd_mlgph(a2)	; set sector zero
+				; translation to zero
+	tst.l	fd_mstrk(a2)	; is sector allocation set?
+	bne.s	fdc_ckd1
+	subq.l	#1,fd_mstrk(a2)	; ensure that first fetch
+				; does not div check
+fdc_ckd1
+	sub.w	#$14,sp		; use stack to read name etc
+	move.l	sp,a1
+	move.l	fdd_rbeg(a3),-(sp) ; save current read limits
+	move.l	#$200-$14,fdd_rbeg(a3) ; number of bytes to
+				     ; skip at end of read
+	moveq	#0,d1
+	moveq	#0,d5
+	bsr.l	fd_do_d1 	; and read it
+	sne	d0		; save error return
+	move.l	(sp)+,fdd_rbeg(a3) ; reset record read limits
+	tst.b	d0		; test error return
+	bne.s	fdc_fe14 	; ... oops
+	move.l	sp,a1
+	cmp.l	#fd.fmtid,(a1)	; is it correctly formatted?
+	beq.s	fdc_cknewbit	;*/insert
+	cmp.l	#fd.hdfmtid,(a1)	;*/insert
+	bne.s	fdc_fe14 	; ... no
+fdc_cknewbit			;*/insert
+	lea	fd_mhead(a2),a0	; check against previous
+				; header
+	moveq	#4,d1
+fdc_ckdloop
+	cmp.l	(a1)+,(a0)+
+	dbne	d1,fdc_ckdloop
+	beq.s	fdc_ex14 	; ... name the same
+	moveq	#1,d0		; ... name changed
+	bra.s	fdc_ex14
+fdc_fe14
+	moveq	#ERR.FE,d0	; ... bad medium
+fdc_ex14
+	add.w	#$14,sp
+	rts
+; --------------------------------------------------------------
+; Find the floppy disc definition block  V0.1
+;  1985  Tony Tebby  QJUMP
+
+flp_find
+	moveq	#MT.INF,d0	; find system vars
+	trap	#1
+	move.l	SV_DDLST(a0),a0	; ... and linked list of
+				; directory drivers
+	lea	fd_io(pc),a2	; set entry point for io
+				; routines
+flf_look
+	cmp.l	fdd_iolk-fdd_ddlk(a0),a2 ; the right driver?
+	beq.s	flf_rts		; ... yes
+	move.l	(a0),a0		; ... no, try the next
+	move.l	a0,d1		; ... the last?
+	bne.s	flf_look
+
+	addq.l	#4,sp		; remove return address
+flf_bp
+	moveq	#ERR.BP,d0	; bad, bad, bad
+flf_rts
+	rts
+; --------------------------------------------------------------
+; Open a file on floppy disk   v0.6  1984  Tony Tebby   QJUMP
+; Modified for CST maintenance V 1.15   1986  David Oliver CST
+
+fd_opn
+	BSET	#7,fdd_nset(a3)	; is name set?
+	bne.s	fd_opn1
+	move.l	#fdd.name,fdd_name(a3) ; set to FLP
+fd_opn1
+	move.b	FS_DRIVE(a0),d6	; a2 for phys def and d6 for
+				; empty slave block
+	bsr.l	fd_phys_def
+
+	lea	FS_FNAME(a0),a4
+	moveq	#$ffffffdf,d0	; make second character of
+				; name UC
+	and.l	(a4)+,d0
+	cmp.l	#$00042a44,d0	; is it a '*D..' file name
+	bne.s	fdo_normal
+	tst.b	FS_FILES(a2)	; any files open
+	bne.s	fdo_iu		; ... yes, give up
+
+	moveq	#-$33,d5 	; check digit following
+	add.b	(a4)+,d5
+	bgt.s	fdo_nf1		; ... greater than 3
+	addq.b	#3,d5
+	blt.s	fdo_nf1		; ... less than 0
+	bclr	#5,(a4)		; make next upper case
+	cmp.b	#'D',(a4)	; is it double density
+	sne	d6		; (density flag)
+	beq.s	fdo_dset 	; ... yes
+	cmp.b	#fd.singl,(a4)	; is it single density
+	bne.s	fdo_nf1
+fdo_dset
+	st	fd_sflag(a2)	; say that it is sector
+				; read/writes
+	clr.l	FS_NBLOK(a0)	; set sector/side/track 0
+	bsr.l	fd_ck_sel	; select
+	move.b	d6,fdd_sden-1(a3,d4.w) ; set density
+	clr.b	fdd_wprt-1(a3,d4.w) ; set no protection / not
+				  ; 40 on 80
+	move.b	d5,fdd_slen-1(a3,d4.w) ; set sector length
+	bsr.l	fd_hwrestore	; ... and restore
+	moveq	#0,d0
+fdo_arel
+	bra.l	fd_arel		; release asynch tasks
+
+fdo_iu
+	moveq	#ERR.IU,d0
+	rts
+
+fdo_normal
+	tst.b	fd_sflag(a2)	; check if in use for sector
+				; read/writes
+	bne.s	fdo_iu
+
+	bsr.l	fd_ck_op 	; check for medium changed
+fdo_nf1
+	bne.s	fdo_nf		; ... no medium
+	bsr.s	fdo_arel 	; release interrupt task
+
+	moveq	#1,d0		; check read only access for
+				; delete, new and over
+	add.b	FS_ACCES(a0),d0
+	moveq	#%00011001,d1
+	btst	d0,d1
+	beq.s	fdo_a4		; ro permitted
+	bsr.l	fdio_fro 	; check just the RO flag
+	bne.s	fdo_err		; ... oops
+fdo_a4
+	lea	FS_SPARE(a0),a4	; use spare for io
+	moveq	#fd_deend,d2	; length of entry
+	move.l	d2,FS_NBLOK(a0)	; set start pointer
+	move.l	fd_meodr(a2),FS_EBLOK(a0) ; set end of file
+				        ; for directory
+	cmp.b	#IO.DIR,FS_ACCES(a0) ; if open directory
+	beq.l	fdo_dir		; ... done
+
+	moveq	#0,d4		; first empty slot
+	moveq	#0,d5		; first file number
+	lea	fd_denam+2(a4),a5 ; set up for compare
+
+fdo_find
+	addq.w	#1,d5		; next file
+	bsr.l	fdo_read 	; read directory entry
+	bne.s	fdo_derr 	; ... not there
+	tst.l	fd_delen(a4)	; is entry vacant?
+	beq.s	fdo_empty	; ... yes
+	lea	FS_FNAME(a0),a1	; set address of name
+	move.w	(a1)+,d3 	; and length
+	bsr.l	fdut_cmps	; and compare against (a5)
+	bne.s	fdo_find 	; ... it was not the same
+	bra	fdo_found	; ... it was the same
+fdo_empty
+	tst.w	d4		; have we already found an
+				; empty entry?
+	bne.s	fdo_find 	; ... yes
+	move.w	d5,d4		; ... no, save the pointer
+				; to this one
+	bra.s	fdo_find
+fdo_nf
+	moveq	#ERR.NF,d0
+fdo_err
+	rts
+fdo_df
+	moveq	#ERR.DF,d0
+	rts
+
+; error reading directory
+
+fdo_derr
+	cmp.l	#ERR.EF,d0	; end of file is ok
+	bne	fdo_exit 	; ... anything else is not
+
+; file not found
+
+	move.b	FS_ACCES(a0),d0	; is it delete?
+	blt	fdo_ok		; ... not found is ok
+	subq.b	#IO.NEW,d0	; is it new or overwrite?
+	blt.s	fdo_nf		; ... no!
+	moveq	#0,d6		; genuine new file (eof is
+				; zero)
+	tst.w	fd_mfree(a2)	; any free sectors for new
+				; file?
+	beq.s	fdo_df		; ... no!
+	tst.w	d4		; was an empty entry found
+	beq.s	fdo_new		; ... no put the new entry
+				; at the end
+
+fdo_sdir
+	move.w	d4,d5		; set the file number
+	lsl.l	#fd.desft,d4	; and calculate the byte
+				; position
+	lsl.l	#7,d4		; ... and so block/byte
+	lsr.w	#7,d4
+	move.l	d4,FS_NBLOK(a0)	; set next pointer
+
+; new entry at eof or (d4)
+
+fdo_new
+	move.l	a4,a5		; create new entry in spare
+				; bit
+	move.l	d2,(a5)+ 	; length
+	clr.w	(a5)+		; attribute flags
+	clr.l	(a5)+		; data space
+	clr.l	(a5)+		; extra inf
+	moveq	#18,d0		; copy 19 words (1 word + 36
+				; bytes)
+	lea	FS_FNAME(a0),a1	; of name
+fdo_name
+	move.w	(a1)+,(a5)+
+	dbra	d0,fdo_name
+
+	movem.l	a0/d0-d2,-(sp)
+	moveq	#MT.RCLCK,d0	; get date
+	trap	#1
+
+	move.l	d1,(a5)+ 	; date of last update
+	clr.l	(a5)+
+	move.l	d1,(a5)+ 	; backup date (written once)
+
+	movem.l	(sp)+,a0/d0-d2
+
+	bsr.s	fdo_write	; write directory header
+
+	clr.l	$3C(a4)		; leave date of 1st update
+
+	move.l	FS_EBLOK(a0),fd_meodr(a2) ; reset dir len
+
+	clr.l	FS_NBLOK(a0)	; preset file
+	move.l	d6,FS_EBLOK(a0)
+	move.w	d5,FS_FILNR(a0)
+	bsr.s	fdo_write	; and write header (never to
+				; be updated)
+	bra.s	fdo_exit
+
+fdo_found
+	move.b	FS_ACCES(a0),d0	; check access key
+	blt.s	fdo_del		; ... delete
+	cmp.b	#IO.NEW,d0	; new or overwrite?
+	beq.s	fdo_ex		; ... oops
+	bgt.s	fdo_over 	; ... overwrite
+	move.l	fd_delen(a4),d1	; find end of file
+	lsl.l	#7,d1		; ... in block/byte form
+	lsr.w	#7,d1
+	move.w	d5,FS_FILNR(a0)	; set file number
+	move.l	d2,FS_NBLOK(a0)	; set next
+	move.l	d1,FS_EBLOK(a0)	; set end of file
+fdo_ok
+	moveq	#0,d0
+fdo_exit
+	rts
+fdo_ex
+	moveq	#ERR.EX,d0
+	rts
+
+; open directory
+
+fdo_dir
+	clr.w	FS_FNAME(a0)
+	bra.s	fdo_ok
+
+; overwrite file
+
+fdo_over
+	move.w	d5,d4		; use existing entry as
+				; empty entry
+	moveq	#fd_deend,d6	; end of file at end of
+				; header
+	bsr	fdo_sdir 	; open as if new
+	bra.s	fd_trun1 	; and truncate
+
+; delete file
+
+fdo_del
+	moveq	#0,d4
+	bsr.l	fdo_trunc	; truncate to zero
+
+	lsl.l	#fd.desft,d5	; get byte position of
+				; directory entry
+	lsl.l	#7,d5		; and so block/byte
+	lsr.w	#7,d5
+	move.l	d5,FS_NBLOK(a0)
+	moveq	#$40,d0		; clear $40 bytes
+	lea	$40+FS_SPARE(a0),a4 ; in spare
+fdd_clr
+	clr.l	-(a4)
+	subq.w	#4,d0
+	bgt.s	fdd_clr
+
+	bsr.s	fdo_write	; and write it
+	bra.l	fd_msave 	; and write map
+
+; open file read/write utilities
+
+fdo_read
+	moveq	#IO.FSTRG,d0
+	bra.s	fdo_rdwr
+fdo_write
+	moveq	#IO.SSTRG,d0
+fdo_rdwr
+	move.l	a4,a1
+	bra.l	fd_ior
+
+; compare string (a5) against (a1), lengths in -2(a5) and d3
+; smashes d0,d1,d3
+
+fdut_cmps
+	cmp.w	-2(a5),d3	; number of characters the
+				; same?
+	bne.s	fdut_rts
+	bra.s	fdut_clend
+fdut_cloop
+	bsr.s	fdut_uc		; get upper case char
+	move.b	d1,d0
+	bsr.s	fdut_uc		; and the other
+	cmp.b	d1,d0		; are they different?
+fdut_clend
+	dbne	d3,fdut_cloop
+fdut_rts
+	rts
+fdut_uc
+	exg	a5,a1		; swap registers
+	move.b	0(a5,d3.w),d1	; get char
+	cmp.b	#'a',d1		; between 'a'
+	blt.s	fdut_uc_rts	; ... no
+	cmp.b	#'z',d1		; and 'z'
+	bgt.s	fdut_uc_rts	; ... no
+	sub.b	#$20,d1
+fdut_uc_rts
+	rts
+
+; truncate file d5 to block group d4: remove sectors from map
+
+fd_trunc
+	bsr.l	fdio_ckro	; check if read only
+	bne.s	fdut_rts
+fd_trun1
+	move.l	FS_NBLOK(a0),d4	; get new end of file
+	move.l	d4,FS_EBLOK(a0)	; and set it
+	subq.l	#1,d4		; and get block holding last
+				; byte
+	clr.w	d4
+	swap	d4		; into d4
+	move.w	d4,d0		; block?
+	addq.w	#1,d0
+	divu	fd_mallc(a2),d4	; ... no, block group
+	addq.w	#1,d4
+	swap	d4
+	move.w	d0,d4
+	swap	d4
+	move.w	FS_FILNR(a0),d5	; set file number
+
+fdo_trunc
+	lea	fd_map(a2),a4	; bottom of sector map
+	move.l	fd_mapend(a2),a5	;*/modify lea fd_end(a2),a5
+				; top of sector map
+fdt_mloop
+	moveq	#0,d0
+	move.b	(a4),d0
+	lsl.w	#8,d0
+	move.b	1(a4),d0
+	ror.l	#4,d0
+	cmp.w	d0,d5		; is this the right file
+				; number?
+	bne.s	fdt_mnext	; ... no
+	swap	d0
+	lsr.w	#4,d0
+	move.b	2(a4),d0
+	cmp.w	d0,d4		; is the block off the end
+				; of file?
+	bhi.s	fdt_mnext	; ... no
+	move.b	#$fd,(a4)	; free the sector
+	move.w	fd_mallc(a2),d0
+	add.w	d0,fd_mfree(a2)	; ... one more free
+	st	fd_mupdt(a2)	; map updated
+fdt_mnext
+	addq.l	#3,a4		; next sector
+	cmp.l	a5,a4		; last sector?
+	blt.s	fdt_mloop	; ... no
+
+; clear out the slave blocks
+
+	swap	d4
+	move.b	FS_DRIVE(a0),d1	; get drive id
+	lsl.b	#4,d1		; id /
+	addq.b	#1,d1		; file block
+
+	move.l	SV_BTBAS(a6),a4	; get pointer to base of
+				; slave block area
+fdt_bloop
+	moveq	#$fffffff1,d0	; mask out all but drive id
+				; and file system flag
+	and.b	BT_STAT(a4),d0	; from status
+	cmp.b	d0,d1		; is the the right drive?
+	bne.s	fdt_bnext	; ... no
+	cmp.w	BT_FILNR(a4),d5	; is it the right file?
+	bne.s	fdt_bnext	; ... no
+	cmp.w	BT_BLOCK(a4),d4	; is it off the end?
+	bhi.s	fdt_bnext	; ... no
+	move.b	#BT.EMPTY,BT_STAT(a4)
+fdt_bnext
+	addq.l	#8,a4		; move to next block
+	cmp.l	SV_BTTOP(a6),a4	; off top?
+	blt.s	fdt_bloop	; ... no
+
+	st	FS_UPDT(a0)	; file updated
+	moveq	#0,d0		; and no error
+	rts
+; --------------------------------------------------------------
+;  Close a file on floppy disk      1984   Tony Tebby  QJUMP
+
+fd_clos
+	move.b	FS_DRIVE(a0),d6	; get drive number
+	bsr.l	fd_phys_def	; ... and all else
+
+	tst.b	fd_sflag(a2)	; was it direct sector IO?
+	beq.s	fdc_flush	; ... no
+
+	moveq	#0,d0		; ... yes
+	move.b	FS_DRIVN(a2),d0	; set drive number
+	move.b	#$02,fdd_slen-1(a3,d0.w) ; reset to 512 byte
+				       ; sectors
+	clr.b	fdd_sden-1(a3,d0.w) ; and to double density
+	clr.b	fdd_chck-1(a3,d0.w) ; mark drive not selected
+	clr.l	fd_mhead(a2)	; drive not previously used
+	sf	FS_FILES(a2)	; no files open
+	sf	fd_sflag(a2)	; normal operation
+	bra.s	fdc_unlk
+
+fdc_flush
+	moveq	#FS.FLUSH,d0	; flush out everything
+	bsr.l	fd_ior
+	subq.b	#1,FS_FILES(a2)	; ... one fewer files
+
+fdc_unlk
+;	 clr.l	 fdd_chck(a3)	 ; mark drives not selected
+	move.l	a0,-(sp) 	; save base address of
+				; channel
+	lea	FS_NEXT(a0),a0	; and point to next
+	lea	SV_FSLST(a6),a1	; start of linked list of
+				; channels
+	move.w	UT.UNLNK,a2	; and unlink this one
+	jsr	(a2)
+	move.l	(sp)+,a0 	; restore base address of
+				; channel
+	move.w	MM.RECHP,a2	; and remove
+	jmp	(a2)
+; --------------------------------------------------------------
+; IO routines for the floppy disc system  V1.02
+;  1985  Tony Tebby  QJUMP
+
+;       d0   s scratch / error return
+;       d1 cr  input/output byte
+;       d2 c s number of bytes to transfer / scratch
+;       d6   s drive id * 16 + 1
+;       a0 cr  pointer to channel definition
+;       a1 crs pointer to read/write buffer
+;       a3 cr  pointer to linkage block
+;       a2   s pointer to physical definition
+;       a4   s pointer to slave block tables
+;       a5   s
+
+; scatter load from floppy disk
+
+fd_load
+	move.l	a1,-(sp)
+	bsr.l	fd_flush 	; ensure medium is up to
+				; date (no write ops)
+	move.l	(sp)+,a1
+	bne.l	fdl_rts
+
+	move.l	FS_EBLOK(a0),d7	; get length
+	lsl.w	#7,d7		; ... convert to byte form
+	lsr.l	#7,d7
+	moveq	#FS.HDLEN,d0
+	sub.l	d0,d7		; address offset
+	beq.l	fdl_ok
+	add.l	a1,d7		; end address of load
+	move.l	a1,a4		; start address of load
+
+	moveq	#0,d3		; start looking at track 0
+fdl_tr_loop
+	moveq	#0,d4		; start at physical sector 0
+				; (offset)
+fdl_se_loop
+	move.l	d4,d1		; set pointer to
+				; physical/logical xlate
+	add.b	#fd_mphlog,d1	;*/modify add.b #fd_mphlg,d1
+	move.b	0(a2,d1.w),d1	; logical sector in cylinder
+	move.w	d3,d0		; track * nr of sectors
+	mulu	fd_mscyl(a2),d0	; (upper end d0=0)
+	add.w	d0,d1		; logical sector on drive
+
+	move.l	d1,d2
+	divu	fd_mallc(a2),d2	; position in map (upper end
+				; is posn in group)
+	move.w	d2,d0
+	add.w	d2,d2
+	add.w	d0,d2		; address in map
+
+	lea	fd_map(a2),a1
+	add.w	d2,a1
+	move.b	(a1)+,d0 	; get 12 bits of map
+	lsl.w	#8,d0
+	move.b	(a1)+,d0
+	ror.l	#4,d0
+	cmp.w	FS_FILNR(a0),d0	; is the file the same?
+	bne.s	fdl_se_next	; ... no
+	swap	d0		; ... yes
+	lsr.w	#4,d0
+	move.b	(a1)+,d0 	; get group number
+	mulu	fd_mallc(a2),d0	; as sector number
+	swap	d2
+	add.w	d2,d0		; + sector within group
+	lsl.l	#8,d0
+	add.l	d0,d0		; gives address from base of
+				; load
+
+	bne.s	fdl_sa1		; not the first sector
+	move.w	#FS.HDLEN,fdd_rbeg(a3) ; first sector includes
+				     ; header
+	lea	(a4),a1
+	bra.s	fdl_ckend
+fdl_sa1
+	lea	-FS.HDLEN(a4,d0.l),a1 ; set start address
+				    ; (less header)
+fdl_ckend
+	cmp.l	d7,a1		; is start of sector off end
+				; of file?
+	bge.s	fdl_se_next	; ... yes
+	add.l	a4,d0
+	add.l	#$200-FS.HDLEN,d0
+	sub.l	d7,d0		; is end of sector off end
+				; of file?
+	ble.s	fdl_read 	; ... no
+	move.w	d0,fdd_rend(a3)	; ... yes, skip bytes at the
+				; end
+fdl_read
+	moveq	#0,d5
+	bsr.l	fd_do_sd1	; read sector
+	sne	d0		; save error return
+	clr.l	fdd_rbeg(a3)	; and clear part read flags
+	tst.b	d0
+	bne.l	fdio_fe		; ... oops
+
+fdl_se_next
+	addq.l	#1,d4		; next physical sector
+	cmp.w	fd_mscyl(a2),d4	; off end?
+	blt.l	fdl_se_loop	; ... no
+
+	addq.l	#1,d3		; next track (cylinder)
+	cmp.w	fd_mtrak(a2),d3	; off end?
+	blt.l	fdl_tr_loop	; ... no
+
+	move.l	d7,a1
+fdl_ok
+	moveq	#0,d0
+fdl_rts
+	rts
+
+; rename a file (atomic)
+
+fd_renam
+	bsr.l	fdio_ckro	; check read only
+	bne.s	fdrn_rts1
+	move.w	(a1)+,d4
+	subq.w	#5,d4		; is name too short?
+	bls.s	fd_bn
+	cmp.w	#FS.NMLEN+5,d4	; is name too long?
+	bhi.s	fd_bn		; ... yes
+	move.l	#$dfdfdfff,d0	; mask out lc bits from name
+	and.l	(a1)+,d0
+	sub.b	FS_DRIVN(a2),d0	; and take away drive number
+	cmp.l	fdd_name(a3),d0	; is it now FLP0?
+	bne.s	fd_bn		; ... no, bad
+	cmp.b	#'_',(a1)+	; is it FLP0_?
+	beq.s	fdrn_1		; ... yes, good
+fd_bn
+	moveq	#ERR.BN,d0
+fdrn_rts1
+	rts
+fdrn_1
+	lea	FS_SPARE(a0),a4	; set up working addresses
+	lea	fd_denam+2(a4),a5
+	move.l	a1,d7		; and the new name pointer
+	move.w	FS_FILNR(a0),d5	; save the file number
+	clr.w	FS_FILNR(a0)	; and clear it
+fdrn_dup
+	addq.w	#1,FS_FILNR(a0)	; look at next file
+	moveq	#FS.HEADR,d0
+	moveq	#fd_deend,d2
+	move.l	a4,a1		; use spare area to ...
+	bsr.s	fd_ior		; read the next header
+	beq.s	fdrn_cname	; found
+	cmp.w	#ERR.EF,d0	; end of directory?
+	beq.s	fdrn_sname	; ... off end
+	bra.s	fdrn_rest
+fdrn_cname
+	move.w	d4,d3		; set length
+	move.l	d7,a1		; and new name pointer
+	bsr.l	fdut_cmps	; compare the strings
+	bne.s	fdrn_dup 	; not the same, try the next
+
+	moveq	#ERR.EX,d0	; otherwise error exists
+fdrn_rest
+	move.w	d5,FS_FILNR(a0)	; restore the file number
+	rts
+
+fdrn_sname
+	lea	FS_FNAME+FS.NMLEN+2(a0),a2 ; set up to clear
+					; the name
+	moveq	#FS.NMLEN/2,d0
+fdrn_clr
+	clr.w	-(a2)
+	dbra	d0,fdrn_clr
+	move.l	a2,a1		; save start pointer
+
+	move.l	d7,a5		; now set the new filename
+				; in channel
+	move.w	d4,(a2)+ 	; set length
+fdrn_snlp
+	move.b	(a5)+,(a2)+	; copy a char at a time
+	sub.w	#1,d4
+	bgt.s	fdrn_snlp
+
+	move.w	d5,FS_FILNR(a0)	; restore the file number
+	moveq	#fd_denam,d1	; offset of name in header
+	moveq	#FS.NMLEN+2,d2
+	move.b	FS_UPDT(a0),-(sp) ; rename does not set update
+				; flag
+	bsr.s	fd_ihds
+	move.b	(sp)+,FS_UPDT(a0)
+	rts
+
+; internal header set
+
+fd_ihds
+	moveq	#-1,d0
+
+; routine version of fd_io for internal calls from fd_op & fd_cl
+
+fd_ior
+	movem.l	d0/d2-d7/a4/a5,-(sp)
+fdior_loop
+	movem.l	(sp),d0/d2	; restore d0/d2
+				; operation/count
+	moveq	#1,d3		; all calls are treated as
+				; initial entry
+	bsr.s	fd_io
+	addq.l	#-ERR.NC,d0	; is it ERR.NC?
+	beq.s	fdior_loop	; ... yes try again
+	subq.l	#-ERR.NC,d0	; restore error code
+	addq.l	#4,sp		; and skip action
+	movem.l	(sp)+,d2-d7/a4/a5
+	rts
+fd_io
+
+; set up address of physical definition
+
+	move.b	FS_DRIVE(a0),d6
+	bsr.l	fd_phys_def
+
+	tst.b	fd_sflag(a2)	; is it sector reads?
+	bne.l	fd_sectio
+
+; clear the error status
+
+	move.l	d0,d4		; save action
+	tst.b	fd_estat(a2)	; has it errored?
+	beq.s	fdio_action	; no
+	tst.b	d3		; initial entry?
+	bne.s	fdio_fe2 	; no, (or internal)
+	bsr.l	fd_ck_rw 	; check the drive again
+fdio_fe2
+	bne.l	fdio_fe		; not ok
+
+; look at action
+
+fdio_action
+	move.l	d4,d0		; is it internal header set?
+	blt.l	fd_hdsx		; ... yes
+	cmp.b	#FS.CHECK,d0	; is it a file operation?
+	bcs.l	fd_serw		; ... no, simple serial
+	cmp.b	#FS.TRUNC,d0	; is it valid?
+	bhi.s	fdio_bp		; ... no
+
+	add.w	d0,d0
+	move.w	fd_op_tab-2*FS.CHECK(pc,d0.w),d0 ; branch to
+					      ; file op.
+	jmp	fd_op_tab(pc,d0.w)
+fd_op_tab
+	dc.w	fd_check-fd_op_tab
+	dc.w	fd_flush-fd_op_tab
+	dc.w	fd_posab-fd_op_tab
+	dc.w	fd_posre-fd_op_tab
+	dc.w	fdio_bp-fd_op_tab
+	dc.w	fd_mdinf-fd_op_tab
+	dc.w	fd_heads-fd_op_tab
+	dc.w	fd_headr-fd_op_tab
+	dc.w	fd_load-fd_op_tab
+	dc.w	fd_save-fd_op_tab
+	dc.w	fd_renam-fd_op_tab
+	dc.w	fd_trunc-fd_op_tab
+err_bp
+fdio_bp
+	moveq	#ERR.BP,d0
+	rts
+
+fd_check
+fd_cf_ok
+	moveq	#0,d0
+fd_cf_rts
+	rts
+fd_flush
+	tst.b	FS_UPDT(a0)	; is the file updated?
+	beq.s	fd_cf_ok 	; ... no, done
+
+	move.l	FS_EBLOK(a0),d0	; find end of file
+	lsl.w	#7,d0		; in block/byte form
+	lsr.l	#7,d0
+
+	lea	FS_SPARE(a0),a1	; put in spare
+	move.l	d0,(a1)
+	moveq	#0,d1		; write to start of header
+	moveq	#4,d2		; 4 bytes
+	bsr	fd_ihds		;*/mend bsr hdsx - set header
+	bne.s	fd_cf_rts
+	move.l	a0,-(sp)
+	moveq	#MT.RCLCK,d0	; get date
+	trap	#1
+	move.l	(sp)+,a0
+	move.l	d1,(a1)
+	moveq	#fd_deupd,d1	; put in update date
+	moveq	#4,d2		; 4 bytes
+	bsr	fd_ihds		;*/mend bsr hdsx - set header
+	bne.s	fd_cf_rts
+
+	sf	FS_UPDT(a0)	; now not updated
+	bsr.l	fd_msave 	; slave and update map
+	bra.s	fd_cf_ok
+
+fd_posab
+	bsr.l	fd_spt		; set pointer
+	bra.s	fd_pos
+fd_posre
+	tst.l	d3		; do not move pointer if it
+				; is re-entry
+	blt.s	fd_pos
+	bsr.l	fd_apt		; adjust pointer
+fd_pos
+	moveq	#IO.PEND,d0	; do a pending to prefetch
+	bra.s	fd_ser_1
+
+fd_mdinf
+	lea	FS_MNAME(a2),a5	; copy name
+	move.l	(a5)+,(a1)+
+	move.l	(a5)+,(a1)+
+	move.w	(a5)+,(a1)+
+
+	move.l	fd_mfree(a2),d1	; set free/good sectors
+	moveq	#0,d0
+	rts
+fd_save
+	moveq	#IO.SSTRG,d0	; use send string
+fd_ser_1
+	bra.l	fd_serio
+
+; read and set header calls are assumed to complete in one
+; operation as the header is all in one block
+
+fd_headr
+	moveq	#IO.FSTRG,d5	; to read header - read
+				; string
+	cmp.w	#fd_deend,d2	; max length is header
+				; length
+	bgt.s	fdio_or
+	move.l	a1,-(sp) 	; save pointer to start
+	bsr.s	fd_head_do	; read header from directory
+	move.l	(sp)+,a2 	; get start pointer
+	sub.l	#fd_deend,(a2)	; and take away header
+				; length
+	rts
+fdio_or
+	moveq	#ERR.OR,d0	; ... oops
+	rts
+
+; internal set header
+
+fd_hdsx
+	moveq	#IO.SSTRG,d5	; send string
+	bra.s	fd_dir_do
+
+fd_heads
+	moveq	#IO.SSTRG,d5	; to set header - send
+				; string
+	moveq	#$e,d2		; of 14 bytes
+fd_head_do
+	moveq	#0,d1		; header starts at first
+				; entry
+
+fd_dir_do
+	moveq	#0,d4		; get file number
+	move.w	FS_FILNR(a0),d4
+	beq.l	fdio_bp		; ... cant do header of dir
+	move.w	d4,-(sp) 	; save it
+	move.l	FS_EBLOK(a0),-(sp) ; and eof
+	move.l	FS_NBLOK(a0),-(sp) ; and next
+	clr.w	FS_FILNR(a0)	; set file zero
+	move.l	fd_meodr(a2),FS_EBLOK(a0) ; and eof
+				        ; (directory)
+	subq.w	#1,d4
+	lsl.l	#fd.desft,d4	; and next (64xnumber-1)
+	add.l	d4,d1		; plus offset from start
+	bsr.l	fd_spt		; set pointer
+
+	move.l	d5,d0		; set action
+	moveq	#0,d1		; ... nothing moved so far
+	bsr.s	fd_serw		; and do serial op
+
+	move.l	(sp)+,FS_NBLOK(a0) ; restore next
+	move.l	(sp)+,FS_EBLOK(a0) ; and eof
+	move.w	(sp)+,FS_FILNR(a0) ; and file number
+	tst.l	d0
+	rts
+; --------------------------------------------------------------
+;  Serial IO operations for floppy disk  1984  Tony Tebby QJUMP
+
+;       d0   s scratch / error return
+;       d1 cr  input/output byte
+;       d2 c s number of bytes to transfer / scratch
+;       d3   s action -ve send, 0 check, +ve fetch
+;	    ($a fetch line)
+;       d4   s block number msw, byte number lsw
+;       d5   s file number msw, block number lsw
+;       d6 cr  drive id * 16 + 1
+;       a0 cr  pointer to channel definition
+;       a1 crs pointer to read/write buffer
+;       a3 cr  pointer to linkage block
+;       a2   s pointer to physical definition
+;       a4   s pointer to slave block tables
+;       a5   s
+
+fdio_ckro
+	move.b	FS_ACCES(a0),d3	; check for access
+	subq.b	#IO.SHARE,d3	; is it share?
+	beq.s	fdio_ro		; ... yes
+	subq.b	#IO.DIR-IO.SHARE,d3 ; is it dir?
+	beq.s	fdio_ro
+fdio_fro
+	moveq	#0,d3		; get drive number
+	move.b	FS_DRIVN(a2),d3
+	tst.b	fdd_wprt-1(a3,d3.w) ; is it write protected?
+	beq.s	fdio_rt1 	; ... no
+fdio_ro
+	moveq	#ERR.RO,d0	; read only
+fdio_rt1
+	rts
+
+fd_serw
+	ext.l	d1		; normal io calls use bottom
+				; word of D2
+	ext.l	d2
+fd_serio
+	cmp.b	#IO.SSTRG,d0	; is operation serial?
+	bhi.l	err_bp
+	moveq	#0,d7		; set d7 to end of string to
+				; be read
+	tst.l	d3		; is it reentry?
+	bge.s	fd_ser_do	; ... no
+	sub.l	d1,d7		; ... yes, take away bytes
+				; read
+fd_ser_do
+	subq.b	#IO.EDLIN,d0	; check operation
+fdio_bpe
+	beq.l	err_bp		; ... oops
+	blt.s	fdio_fetch	; ... it's a read
+	bsr.s	fdio_ckro	; ... it's a write, check
+				; read only
+	bne.s	fdio_rt1 	; ... no
+
+fdio_send
+	moveq	#-1,d3		; a send operation
+	subq.b	#6-IO.EDLIN,d0	; which send?
+	beq.s	fdio_bpe 	; ... undefined
+	blt.s	fdio_byte	; sbyte
+	bgt.s	fdio_string	; sstrg
+
+fdio_fetch
+	moveq	#0,d3		; a fetch, assume pending
+	addq.b	#IO.EDLIN,d0	; restore key
+	beq.s	fdio_byte	; ... zero is pending
+	moveq	#$a,d3		; now assume fline
+				; (terminator $a)
+	subq.b	#IO.FLINE,d0
+	beq.s	fdio_string	; ... it is
+	blt.s	fdio_fbyte	; ... no, it's byte
+	lsl.w	#8,d3		; ... no, it's a string
+
+fdio_string
+	add.l	a1,d7		; find start of string
+	move.l	d7,-(sp) 	; and save it
+	add.l	d2,d7		; find end of string
+	bsr.s	fdio_buf
+	move.l	a1,d1		; find length written
+	sub.l	(sp)+,d1
+	rts
+
+fdio_fbyte
+	lsl.w	#8,d3		; lsbyte =0
+fdio_byte
+	move.l	d1,-(sp) 	; put pointer/write byte on
+				; stack
+	lea	3(sp),a1 	; ... and point to byte
+	move.l	a1,d7		; fetch / write 1 byte
+	addq.l	#1,d7
+	bsr.s	fdio_buf
+	move.l	(sp)+,d1 	; get byte read/restore
+				; pointer
+	rts
+
+;       buffer/unbuffer strings, start a1 end d7
+
+fdio_buf
+	tst.b	fd_estat(a2)	; is medium ok?
+	bne.s	fdio_fe		; ... oops
+	move.l	FS_FILNR(a0),d5	; get file number/block
+				; number
+	move.l	FS_NBLOK(a0),d4	; get block number/byte
+				; number
+	cmp.l	FS_EBLOK(a0),d4	; end of file?
+	blt.s	fd_get_block	; no, get the slave block
+				; for this operation
+
+	bgt.s	fdio_ef		; yes, pointer is beyond eof
+	tst.b	d3		; is operation fetch or
+				; inquire?
+	blt.s	fdio_eof 	; ... no
+fdio_ef
+	moveq	#ERR.EF,d0	; end of file
+	rts
+fdio_fe
+	moveq	#ERR.FE,d0	; file error
+fdio_rts
+	rts
+
+fdio_eof
+	tst.w	d4		; the first byte in a new
+				; block?
+	beq.s	fdio_ext_block	; ... yes
+
+fd_get_block
+	bsr.l	fdb_find 	; get the slave block for
+				; this sector
+	bne.s	fdio_rts 	; ... no room (or error)
+; put prefetch here
+	bra.s	fdio_cblk
+
+fdio_ext_block
+	cmp.l	a1,d7		; is there actually anything
+				; to go in block?
+	bls.l	fdio_ok		; ... no so exit
+	bsr.l	fdb_new		; find space for a new block
+	bne.s	fdio_rts
+	bsr.l	fdas_new 	; find new sector
+	bne.s	fdio_rts
+	move.w	d2,BT_SECTR(a4)	; set sector number
+	or.b	#BT.TRUE,BT_STAT(a4) ; ... and say it is a
+				   ; true buffer
+fdio_cblk
+	move.l	a4,FS_CBLOK(a0)	; ... set pointer to this
+				; slave block
+	btst	#BT..ACCS,BT_STAT(a4) ; are contents
+				    ; accessible
+	beq.l	fdb_ncs		; ... not complete
+
+	tst.w	d3		; was it just IO.PEND?
+	beq.s	fdio_ok		; ... yes, done
+
+	move.l	a4,d0		; get address of next block
+	sub.l	SV_BTBAS(a6),d0	; - base of tables
+	lsl.l	#6,d0		; * 512/8
+	move.l	d0,a5
+	add.l	a6,a5		; + base of sysvar
+	add.w	d4,a5		; + byte pointer
+
+	tst.w	d3		; fetch bytes?
+	bgt.s	fdio_get 	; ... yes
+
+fdio_put
+	cmp.l	a1,d7		; end of string?
+	bls.s	fdio_pexit
+	move.b	(a1)+,(a5)+	; put a byte in the block
+
+	addq.w	#1,d4		; add 1 to byte pointer
+	btst	#9,d4		; off end of block?
+	beq.s	fdio_put 	; ... no
+	addq.w	#1,d5		; add 1 to block
+	add.l	#$fe00,d4	; add 1 to block, take 512
+				; off byte
+fdio_pexit
+	st	FS_UPDT(a0)	; mark file updated
+	bsr.s	fdio_swrit	; set pending op to write
+
+	cmp.l	FS_EBLOK(a0),d4	; is this new eof?
+	blt.s	fdio_sptr	; ... no
+	move.l	d4,FS_EBLOK(a0)	; ... yes, update eof
+	bra.s	fdio_sptr
+
+fdio_get
+	moveq	#0,d0		; we need to compare words
+fdio_gloop
+	cmp.l	a1,d7		; end of string?
+	bls.s	fdio_sptr	; ... yes
+	cmp.l	FS_EBLOK(a0),d4	; beyond end of file?
+	bge.s	fd_ex_eof	; ... yes
+	move.b	(a5)+,d0 	; get a byte
+	move.b	d0,(a1)+ 	; and put it in buffer
+	cmp.w	d0,d3		; is it terminating
+				; character?
+	bne.s	fdio_gnext	; ... no,
+	move.l	a1,d7		; reset end pointer to stop
+				; loop
+fdio_gnext
+	addq.w	#1,d4		; add 1 to byte pointer
+	btst	#9,d4		; off end of block?
+	beq.s	fdio_gloop	; ... no
+	addq.w	#1,d5		; add 1 to block
+	add.l	#$fe00,d4	; add 1 to block, take 512
+				; off byte
+fdio_sptr
+	move.l	d4,FS_NBLOK(a0)	; set next block / byte
+				; pointer
+	cmp.l	a1,d7		; any more bytes to
+				; transfer?
+	bhi.l	fdio_buf 	; ... yes, go back to Buffer
+				; to get new slave
+
+	cmp.w	#$a,d3		; was it fetch line?
+	bne.s	fdio_ok		; ... no
+	cmp.b	d0,d3		; was new line read?
+	beq.s	fdio_ok		; ... yes
+fdio_bo
+	moveq	#ERR.BO,d0	; buffer overflow
+	rts
+fdio_ok
+	moveq	#0,d0
+	rts
+fd_ex_eof
+	move.l	d4,FS_NBLOK(a0)	; set current block / byte
+				; pointer
+	bra.l	fdio_ef
+
+; routines to initiate slaving
+
+fdio_swrit
+	moveq	#BT.UPDT,d0	; get update bits
+	or.b	d6,d0		; put drive id in
+	move.b	d0,BT_STAT(a4)	; set status
+
+	sub.l	SV_BTBAS(a6),a4	; calculate slave block
+				; pointer
+	lea	fd_pend(a2),a5
+	moveq	#fd.npend-1,d0
+fd_sw_dup
+	cmp.L	(a5)+,a4 	; check for block already in
+				; list
+	beq.s	fd_sw_rts	; ... it is, all is OK
+	dbra	d0,fd_sw_dup
+
+	lea	fd_pend(a2),a5
+	moveq	#fd.npend-1,d0
+fd_sw_empty
+	tst.L	(a5)+		; check for hole in list
+	beq.s	fd_sw_set	; ... found one
+	dbra	d0,fd_sw_empty
+
+	bsr.s	fd_slavr 	; list is full, empty it
+	lea	fd_pend+4(a2),a5
+fd_sw_set
+	move.L	a4,-(a5) 	; put this block into list
+	st	fdd_pend(a3)	; and set pending operation
+fd_sw_rts
+	rts
+; --------------------------------------------------------------
+; Routines for slaving	       V2.1    1984 Tony Tebby QJUMP
+; Modified for maintenance by CST V 1.15  1986 David Oliver CST
+
+; internal forced slaving (from formt/serio)
+
+fd_slavf
+	tst.b	fdd_pend(a3)
+	beq.s	fd_slrts
+fd_slavr
+	bsr.s	fd_slave
+fd_slavw
+	tst.b	fdd_pend(a3)
+	bne.s	fd_slavw
+fd_slrts
+	rts
+
+; external slaving entry
+
+fd_slave
+	sf	fdd_wait(a3)	; do not wait
+	st	fdd_pend(a3)	; force pending operations
+	rts
+
+; hold asynch task
+
+fd_ahold
+	st	fdd_wait(a3)	; hold up
+	rts
+
+; release asynch task
+
+fd_arel
+	move.b	#fdd.wait,fdd_wait(a3)
+	st	fdd_time(a3)
+	BCLR	#7,fdd_pact(a3)
+	rts
+
+; save the map
+
+fd_msave
+	tst.b	fd_mupdt(a2)	; is map updated?
+	beq.s	fds_ms_rts
+	st	fd_mwrit(a2)	; mark map to be written
+	st	fdd_pend(a3)	; ... force pending ops
+	bsr	fd_do_all
+;	 bsr	 FLUSHALL
+	tst.b	fdd_scty(a3)	; check security level
+	bgt.s	fd_slavr 	; clear out all
+fds_ms_rts
+	rts
+
+; do a read operation directly, a4 is pointer to slave block
+
+fds_read
+	movem.l	d5/a1,-(sp)
+	moveq	#0,d5		; do a read operation
+	bsr.l	fd_do_a4
+	movem.l	(sp)+,d5/a1	; restore the registers
+	rts
+; --------------------------------------------------------------
+; Sector IO  (position read/write)	V0.3  1985 Tony Tebby QJUMP
+; Modified for maintenance by CST V 1.15  1986 David Oliver CST
+
+fd_sectio
+	subq.b	#IO.FSTRG,d0	; is it fetch string?
+	beq.s	sio_read
+	subq.b	#IO.SSTRG-IO.FSTRG,d0 ; is it send string?
+	beq.s	sio_write
+	sub.b	#FS.POSAB-IO.SSTRG,d0 ; is it position?
+	beq.l	sio_posab
+	subq.b	#FS.POSRE-FS.POSAB,d0
+	beq.l	sio_posre
+	moveq	#ERR.BP,d0	; ... no
+	rts
+
+; read a sector
+
+sio_read
+	move.l	a1,-(sp) 	; save pointer
+
+	lea	fd_hwread(pc),a5	; load address of read
+				; routine
+
+	bclr	#1,d2		; is there a word length at
+				; the start?
+	beq.s	sio_set
+
+	moveq	#0,d0		; find the drive
+	move.b	FS_DRIVN(a2),d0
+	move.b	fdd_slen-1(a3,d0.w),d0 ; ... thus sector
+				     ; length
+	clr.w	(a1)
+	bset	d0,(a1)		; set length * 2
+	lsr.w	(a1)+		; set length
+	bra.s	sio_length
+
+; write a sector
+
+sio_write
+	move.l	a1,-(sp) 	; save pointer
+	lea	fd_hwwrite(pc),a5
+	bclr	#1,d2		; is there a word length at
+				; the start?
+	beq.s	sio_set
+	addq.l	#2,a1		; skip it
+sio_length
+	tst.w	d2		; was it just length?
+	beq.s	sio_a1_ok
+
+; set up for read/write
+
+sio_set
+	bsr.l	fd_ck_sel	; select it and set
+				; registers
+
+	bsr	noints		; sv mode, ints off **MSW**
+
+	move.b	FS_NBLOK+2(a0),d1 ; set side
+	bsr.l	fd_side1
+; move.b FS_SPARE(a0),fd_trakr(a4)	; set old track
+	move.w	FS_NBLOK(a0),d1	; set new track
+	move.b	d1,FS_SPARE(a0)	; and save it
+	bsr.l	fd_seekr 	; seek or restore
+	bne.s	sio_fe1
+; move.b d1,fd_trakr(a4)	; and set the track we are on!!!
+	move.b	FS_NBLOK+3(a0),d1 ; read/write sector
+;*	  subq.b   #1,d1		  ; ... allowing for internal
+				; offset
+	move.b	d1,d6		; save pointers
+	move.l	a1,d7
+	jsr	(a5)		; do it
+	TST.B	D2
+	beq.s	sio_fe1		; ... ok
+	move.b	d6,d1		; ... bad, restore pointers
+	move.l	d7,a1
+	jsr	(a5)		; and do again
+sio_fe1
+	sne	d0
+	bsr.l	fd_arel		; release asynchronous task
+	tst.b	d0
+	beq.s	sio_a1_ok	; check for errors
+sio_fe
+	lea	fds_rw_mess(pc),a2 ; set error message
+	move.l	a2,d0
+	bset	#31,d0
+	bra.s	sio_a1
+sio_a1_ok
+	moveq	#0,d0
+sio_a1
+	move.l	a1,d1		; set d1 to difference in a1
+	move.w	(sp)+,sr 	; restore interrupts
+	sub.l	(sp)+,d1
+	rts
+
+; set the file position
+
+sio_posab
+	move.l	d1,FS_NBLOK(a0)	; set position
+sio_posre
+	move.l	FS_NBLOK(a0),d1	; read position
+	moveq	#0,d0
+	rts
+; --------------------------------------------------------------
+; Physical layer for floppy disc	V2.1  1985 Tony Tebby QJUMP
+; Modified for maintenance by CST. V1.14  1986 David Oliver CST
+
+; do all pending write operations
+
+;       d6   s  empty status for drive
+;       a2   s  pointer to physical definition
+;       a3 c p  pointer to linkage block
+
+;       smashes d0,d1,d2,d3,d6,a1,a2,a4
+
+fd_do_all:
+	MOVEM.L	D0-D3/A1-A2/A4/A6,-(A7)
+	BSR.S	HILF_DO_ALL
+	MOVEM.L	(A7)+,D0-D3/A1-A2/A4/A6
+	RTS
+HILF_DO_ALL:
+	move.l	a5,-(sp)
+	move.b	fdd_driv(a3),d1
+	bsr.l	fd_selct
+	moveq	#$f,d6		; look at all 16 drives
+fd_do_drive
+	bsr	fd_phys_def
+	lea	fdd_ddlk(a3),a1
+	cmp.l	FS_DRIVR(a2),a1	; is this the right type of
+				; device?
+	bne.s	fd_do_ndrive
+	bsr.s	fd_do_1		; all ops for this drive
+fd_do_ndrive
+	lsr.w	#4,d6		; restore drive number
+	dbra	d6,fd_do_drive	; next drive
+	sf	fdd_pend(a3)	; clear pending flag
+	bsr.l	fd_arel		; and reset the timers
+	move.l	(sp)+,a5
+	rts
+
+; do write operations for one drive
+;       d5   s  -1 (write)
+;       d6 c p  empty status for drive
+
+;       smashes d0,d1,d2,d3,d5,a1,a4,a5
+
+fd_do_1
+	lea	fd_pend(a2),a5	; get address of pending
+				; list
+	moveq	#fd.npend-1,d3	; max number of pending
+				; operations
+fd_do_loop
+	move.L	(a5),d0		; get slave block offset
+	beq.s	fd_do_map	; ... no more operations
+	move.l	SV_BTBAS(a6),a4	; base of sb tables
+	add.L	d0,a4		; + offset
+	btst	#BT..WREQ,BT_STAT(a4) ; is a write operation
+				    ; required?
+	beq.s	fd_do_lend	; ... no (so why is it in
+				; the list?)
+	moveq	#-1,d5		; set write operation
+	bsr	fd_do_a4 	; ... and do it
+fd_do_lend
+	clr.L	(a5)+		; clear pending
+	dbra	d3,fd_do_loop
+fd_do_map
+	tst.b	fd_mwrit(a2)	; is map required to be
+				; written?
+	beq.s	fd_do_rts
+	sf	fd_mwrit(a2)	; clear flag
+	bsr.l	fd_ck_rw 	; check read/write ok
+	bne.s	fd_do_rts
+
+	addq.l	#1,fd_mdupd(a2)	; increment update count
+fd_do_mw
+	moveq	#-1,d5		; write sectors
+fd_do_ms
+	lea	fd_mhead(a2),a1	; set address to save map
+				; from
+	moveq	#0,d3		; put sector 0
+fdp_msloop
+	move.l	d3,d1
+	MOVE.L	A1,-(A7) 	; save pointer to map
+	bsr	fd_do_d1 	; (number in d1)
+	MOVE.L	(A7)+,A1 	; restore pointer to map
+	TST.B	D0
+	bne.s	fd_do_rts
+
+	tst.b	d3		;*/begininsert
+	bne.s	fdp_next
+
+	bsr.s	calc_phlg
+
+fdp_next
+	addq.l	#1,d3		; next sector number in d3
+
+	moveq	#0,d0		; find the drive
+	move.b	FS_DRIVN(a2),d0
+	move.b	fdd_slen-1(a3,d0.w),d0 ; sector len 0/1/2
+	addq.b	#7,d0
+	moveq	#0,d1
+	bset	d0,d1		; sector length 128/256/512
+	add.l	d1,a1		; next sector of map
+
+	cmp.l	fd_mapend(a2),a1	;*/endinsert
+;	 cmp.b	 #3,d3
+	blt.s	fdp_msloop
+	sf	fd_mupdt(a2)	; say map is up to date
+	moveq	#0,d0
+	tst.l	d0
+fd_do_rts
+	rts
+
+;*/begininsert
+
+; calculate size of map and physical to logical table
+
+calc_phlg:
+	moveq	#0,d1
+	move.w	fd_mtotl(a2),d1
+	add.w	fd_mallc(a2),d1
+	subq.w	#1,d1
+	divu	fd_mallc(a2),d1
+	mulu	#3,d1
+	add.l	#fd_map,d1
+	add.l	a2,d1
+	move.l	d1,fd_mapend(a2)	; calc. last byte in map
+
+	move.w	fd_mscyl(a2),d1
+	bra.s	fdp_phlg_next
+
+fdp_phlg_loop:
+	move.w	d1,d0
+	add.w	#fd_mlgph,d0
+	move.b	0(a2,d0.w),d0
+	bclr	#7,d0
+	beq.s	fdp_phlg_skip
+
+	add.w	fd_mstrk(a2),d0
+
+fdp_phlg_skip:
+	move.b	d1,fd_mphlog(a2,d0.w)
+
+fdp_phlg_next:
+	dbra	d1,fdp_phlg_loop
+
+	rts
+
+;*/endinsert
+
+; set physical definitions
+;       d6 c r  drive id / empty status for drive
+;       a2   r  address of physical definition block for drive
+
+fd_phys_def
+	ext.w	d6
+	lsl.w	#2,d6
+	lea	SV_FSDEF(a6),a2
+	move.l	0(a2,d6.w),a2
+	lsl.w	#2,d6
+	addq.w	#BT.EMPTY,d6
+	rts
+
+; read or write one sector using slave blocks
+;       d5 c p  =0 read, <>0 write
+;       d6 c p  empty status for drive
+;       a1   s  pointer to read/write buffer
+;       a2   p  pointer to physical definition block
+;       a3   p  pointer to linkage block
+;       a4 c p  pointer to slave block tables
+
+;       smashes d0,d1,d2,a1
+
+fd_do_a4
+	move.l	a4,d0		; calculate base of block
+	sub.l	SV_BTBAS(a6),d0
+	lsl.l	#6,d0
+	lea	0(a6,d0.l),a1	; in a1
+
+	move.w	BT_SECTR(a4),d1	; set sector number
+	mulu	fd_mallc(a2),d1
+	moveq	#0,d0		; plus block MOD alloc
+	move.w	BT_BLOCK(a4),d0
+	divu	fd_mallc(a2),d0
+	swap	d0
+	add.w	d0,d1
+	bsr.s	fd_do_sd1
+	beq.s	fd_do_ok
+
+	and.b	#BT.NACTN,BT_STAT(a4) ; clear actions but do
+				    ; not set access
+	lea	fds_rw_mess(pc),a1 ; write message
+	bsr.l	fds_err_mess
+	move.b	#1,fd_estat(a2)	; and set status read/write
+				; failure
+	rts
+
+fd_do_ok
+	move.b	d6,BT_STAT(a4)	; set status
+	bset	#BT..ACCS,BT_STAT(a4) ; ... ok
+	moveq	#0,d0
+	rts
+
+; select and do one read/write
+
+fd_do_sd1
+	bsr.l	fd_ck_rw 	; select (and hold)
+	bne	fd_do_rts	; (released on error)
+
+; do one read/write
+
+fd_do_d1
+	clr.w	-(sp)		; clear failure count
+fd_do_again
+	movem.l	d1/d3/a2/a4/a5,-(sp) ; save registers
+	move.l	a1,a5		; save BUffer pointer
+	ext.l	d1
+	divu	fd_mscyl(a2),d1	; get track
+	move.w	d1,-(sp)
+	move.w	d1,d3
+	mulu	fd_msoff(a2),d3	; get track*offset
+	clr.w	d1
+	swap	d1
+	addi.w	#fd_mlgph,d1	;*/insert
+	move.b	0(a2,d1.w),d1	;*/modify move.b fd_mlgph(a2,d1.w),d1
+	bclr	#7,d1
+	sne	d2		; side
+	add.w	d3,d1		; sector
+	divu	fd_mstrk(a2),d1
+	swap	d1		; MOD mscyl
+	move.w	d1,-(sp)
+
+	moveq	#1,d1
+	and.w	d2,d1
+	bsr.l	fd_side1 	; set side
+	move.w	2(sp),d1 	; get track
+;   cmp.b   fd_trakr(a4),d1 is it the right track?
+;   beq.s   fd_do_rw
+	bsr.l	fd_seek40
+
+fd_do_rw
+
+	bsr	noints		; sv mode, ints off **MSW**
+
+	moveq	#$1f,d1		; get physical sector (-1)
+	and.w	2(sp),d1
+	addq.w	#1,d1		;*/insert
+	tst.b	d5
+	beq.s	fd_do_rd
+	bsr.l	fd_hwwrite	; write
+	bra.s	fd_do_rint
+fd_do_rd
+	bsr.l	fd_hwread
+fd_do_rint
+	move.w	(sp)+,sr 	; restore interrupts
+	move.w	(sp)+,d0 	; dump sector
+	move.w	(sp)+,d0 	; dump track
+	movem.l	(sp)+,d1/d3/a2/a4/a5 ; restore registers
+	move.b	d2,d0		; get error return
+	ble.s	fd_do_x8 	; operation ok or timed out
+; subq.b #1,d2		; seek error?
+; bne.s	fd_inc_fail ;... not a seek error
+; tst.b	(sp)		;... seek error, first one?
+; beq.s	fd_inc_fail ;... yes
+
+fd_inc_fail
+; addq.b #1,(sp)		;increment failure count
+; cmp.b	#3,(sp)
+; ble.l	fd_do_again	;and retry up to three times
+	NOP
+
+fd_do_x8
+	bsr.l	fd_arel		; release asynch task
+	addq.l	#2,sp		; remove failure count
+
+	tst.b	d0		; and test error return
+
+	rts
+; --------------------------------------------------------------
+; Set the next byte pointers     1985  Tony Tebby   QJUMP
+;
+;       d0   s  scratch
+;       d1 cr   byte pointer to file (returned absolute)
+;       a0 c p  channel definition block
+
+; adjust pointer by d1
+
+fd_apt
+	move.l	FS_NBLOK(a0),d0	; get current pointer
+
+; calculate pointer
+
+fd_cpt
+	lsl.w	#7,d0		; in byte pointer form
+	lsr.l	#7,d0
+	sub.l	#fd_deend,d0	; relative to start
+	add.l	d0,d1		; add to offset
+	bvs.s	fd_pt_eof
+
+; set pointer to d1
+
+fd_spt
+	move.l	d1,d0		; preserve updated address
+				; (in d1)
+	bmi.s	fd_pt_bof	; ... it's off the beginning
+	add.l	#fd_deend,d0
+	bvs.s	fd_pt_eof
+	asl.l	#6,d0		; shift most of the way
+	bvs.s	fd_pt_eof	; ... to check for sign
+				; change
+	add.l	d0,d0		; and the last little bit
+	lsr.w	#7,d0		; ... it's now in block/byte
+				; form
+	cmp.l	FS_EBLOK(a0),d0	; but is it within the file?
+	ble.s	fd_setnb 	; ... yes
+fd_pt_eof
+	moveq	#0,d1		; if off the end of file
+	move.l	FS_EBLOK(a0),d0	; ... set it to eof
+	bra.s	fd_cpt
+fd_pt_bof
+	moveq	#fd_deend,d0	; beginning of file is at
+				; end of header
+	moveq	#0,d1		; but appears to be zero
+fd_setnb
+	move.l	d0,FS_NBLOK(a0)
+	rts
+; --------------------------------------------------------------
+; Format medium. Changed in some aspects to support amiga
+; hardware
+; at increased speed.
+; --------------------------------------------------------------
+; Format procedure for floppy disks  V2.3    1985  Tony Tebby
+;
+;       d1 cr   drive number / good sectors
+;       d2  r   total sectors
+;       a0 c    medium name
+;       a3 c    linkage block
+
+fdf.group equ	3
+
+fd_format
+	move.l	a0,a5		; save call params
+	move.w	d1,d6
+
+	move.l	a3,-(sp) 	; save base of linkage block
+	moveq	#MT.ALCHP,d0	; and allocate space
+	move.l	#fd_end+$200,d1	; $28+3*512 bytes + one
+				; sector
+	moveq	#0,d2
+	trap	#1
+	move.l	(sp)+,a3
+	tst.l	d0
+	beq.s	fdf_set		; ... ok
+	rts	...		; oops
+fdf_set
+	bsr.l	fd_slavf 	; do all pending ops and
+				; stop interrupt task
+	move.l	a0,a2		; set base of pseudo
+				; definition block
+	bsr	noints		; sv mode, ints off **MSW**
+
+	move.b	d6,FS_DRIVN(a2)	; set drive number
+	move.l	#$00120009,-(sp)	;... and set number of sectors track/cylinder
+	bsr.l	fd_ck_sel	; select (and hold) drive,
+				; set registers
+	sf	fdd_wprt-1(a3,d6.w) ; clear 40/80 flag
+	sf	fdd_chck-1(a3,d6.w) ; clear the checked flag
+	move.b	#$02,fdd_dens-1(a3,d6.w) ; set density (dd)
+
+	bsr.l	fd_hwrestore	; and restore drive
+
+	moveq	#0,d3		; clear quick flag
+	moveq	#0,d4
+	move.b	fdd_ntrk(a3),d4	; get number of tracks
+	bne.s	fdf_sets 	; ... it is set
+	moveq	#80,d4		; 80 track on amiga
+
+
+; set number of sides
+
+fdf_sets
+	cmp.w	#5+10,(a5)	; is name at least 11
+				; characters long?
+	ble.s	fdf_blank	; ... no
+	cmp.b	#'*',2+5+10(a5)	; is it forced single sided?
+	bne.s	fdf_setd 	; ... no
+
+	lsr.w	(sp)		; decrement number of sides
+
+fdf_setd
+	and.b	#%11011111,2+5+10(a5)
+	cmp.b	#'H',2+5+10(a5)	; is it forced HD
+	bne.s	fdf_setq 	; ... no
+
+	clr.b	fdd_dens-1(a3,d6.w) ; set density (hd)
+	lsl.w	(sp)
+	lsl.w	2(sp)
+	bra.s	fdf_blank
+
+fdf_setq
+	and.b	#%11011111,2+5+10(a5)
+	cmp.b	#'Q',2+5+10(a5)	; is it quick format
+	bne.s	fdf_blank	; ... no
+
+	bsr	fd_hwraddr
+	bne	fdf_exit
+
+	st	d3		; set quick flag
+
+	tst.b	fdd_dens-1(a3,d6.w) ; check density
+	bne.s	fdf_blank
+
+	lsl.w	(sp)
+	lsl.w	2(sp)
+
+; set up blank map
+
+fdf_blank
+	move.w	#(fd_end-fd_mhead-1),d0 ; fill medium header
+				      ; buffer with $ff
+	lea	fd_end(a0),a1
+fdf_bloop
+	st	-(a1)
+	dbra	d0,fdf_bloop
+
+	move.l	#fd.fmtid,d0
+
+	cmp.w	#9,2(sp)
+	ble.s	fdf_headr
+
+	move.l	#fd.hdfmtid,d0
+
+fdf_headr
+	move.l	d0,(a1)+ 	; set format id
+	move.w	(a5)+,d0 	; length of medium name
+	addq.l	#5,a5		; less fdkn_
+	subq.w	#5,d0
+	moveq	#10,d1
+	sub.w	d0,d1		; >10?
+	bge.s	fdf_snend
+	moveq	#9,d0		; yes, take first 10
+fdf_snloop
+	move.b	(a5)+,(a1)+	; copy it into map
+fdf_snend
+	dbra	d0,fdf_snloop
+
+	bra.s	fdf_spend
+fdf_sploop
+	move.b	#' ',(a1)+	; now pad with spaces
+fdf_spend
+	subq.w	#1,d1
+	bge.s	fdf_sploop
+
+	move.w	SV_RAND(a6),(a1)+ ; random number
+	clr.l	(a1)+		; update count
+	move.w	(sp),d1		; calculate total sectors
+	mulu	d4,d1
+	move.w	#0,(a1)+ 	; number of sectors free
+	move.w	#0,(a1)+ 	; good
+	move.w	d1,(a1)+ 	; total
+	move.w	2(sp),(a1)+	; sectors per track
+	move.w	(sp),(a1)+	; sectors per cylinder
+	move.w	d4,(a1)+ 	; number of tracks
+	move.w	#fdf.group,(a1)+	; sectors per allocation
+				; group
+	move.l	#fd_deend,(a1)+	; length of directory
+	moveq	#18,d0
+	lea	fdf_ddtrans(pc),a5 ; sector translate table
+
+	cmp.w	#9,2(sp)
+	ble.s	fdf_stran
+
+	lea	fdf_hdtrans(pc),a5 ; HD sector translate table
+
+fdf_stran
+	move.w	(a5)+,(a1)+
+	dbra	d0,fdf_stran
+
+; now format and check all the tracks
+
+	moveq	#0,d6		; start at track 0
+	move.w	(sp),d4		; number of sectors /
+				; cylinder
+	lea	fd_map(a0),a5	; set address of map
+
+fdf_tr_loop
+	tst.b	d3
+	bne.s	fdf_tr_gud	; skip check if quickformat
+
+	cmp.w	2(sp),d4
+	beq.s	fdf_tr_s0
+
+	moveq	#1,d7		; side 1
+	bsr	fdf_fmt_chk	; format and check
+fdf_tr_s0
+	moveq	#0,d7		; side 0
+	bsr	fdf_fmt_chk	; format and check
+fdf_tr_gud
+	moveq	#$fffffffd,d0	; ... good cylinder, mark
+				; vacant
+	add.w	d4,fd_mfree(a0)	; increment sector counts
+	add.w	d4,fd_mgood(a0)
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00010000+'. ',d0 ; signal OK
+;	 bsr	 IOD0
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+fdf_mset
+	moveq	#0,d1		; set number of map entries
+				; per cylinder
+	move.w	d4,d1
+	divu	#fdf.group,d1
+fdf_msloop
+	move.b	d0,(a5)		; and set all good or bad
+	addq.l	#3,a5
+	subq.w	#1,d1
+	bgt.s	fdf_msloop
+
+	addq.w	#1,d6		; move on one track
+	cmp.w	fd_mtrak(a0),d6	; end of map?
+	blt.s	fdf_tr_loop	; ... no
+
+	lea	fd_map(a0),a5
+	cmp.l	#$fdfffffd,(a5)	; are first two groups free?
+	bne.s	fdf_ff		; ... no
+
+	move.w	#$f800,(a5)+	; set medium header &
+	clr.l	(a5)		; directory for dd disks
+	sub.w	#6,fd_mfree(a0)	; decrement sector count
+
+	cmp.w	#9,2(sp) 	; is this a hd disk?
+	ble.s	fdf_cont 	; ... no
+
+	move.l	#$00f80001,(a5)+	; 2nd medium header for hd
+	cmp.w	#$fdff,(a5)	; is the next group free?
+	bne.s	fdf_ff		; ... no
+
+	clr.w	(a5)+		; directory for hd disks
+	clr.b	(a5)
+	sub.w	#3,fd_mfree(a0)	; decrement sector count
+
+fdf_cont
+
+	lea	(a0),a2		; set pseudo definition
+				; block pointer
+	bsr.l	fd_do_mw 	; write map sectors
+	bne.s	fdf_ff		; ... oops
+	moveq	#0,d0
+	bra.s	fdf_exit
+
+; error returns
+
+fdf_ff
+	moveq	#ERR.FF,d0
+fdf_exit
+	st	fdd_driv(a3)	; change the drive so next
+				; open reads header
+	bsr.l	fd_arel		; release asynch tasks
+	move.l	fd_mgood(a0),d7	; save sector counts
+	move.l	d0,d4		; save error flag
+	moveq	#MT.RECHP,d0	; return space to common
+				; heap
+	trap	#1
+	move.l	d4,d0		; restore error flag
+	move.w	d7,d2		; set sector counts
+	swap	d7
+	move.w	d7,d1
+	addq.l	#4,sp
+	move.w	(a7)+,sr
+	rts
+
+; subroutine to format and write a track
+
+fdf_fmt_chk
+	bsr.s	fdf_sk_trk	; seek and write track
+	bne.s	fdf_wr_err	; ... oops
+	moveq	#1,d5
+fdf_read
+	move.b	d5,d1		; read next sector
+	lea	fd_end(a0),a1	; ... into spare bit at end
+	bsr.l	fd_hwread
+	bne.s	fdf_rd_err	; ... oops
+	addq.w	#1,d5
+	cmp.w	6(sp),d5 	; done all sectors?
+	ble.s	fdf_read 	; ... no
+
+	rts			; all ok
+
+; read / verify failed
+
+fdf_rd_err
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00010000+'R ',d0 ; signal read error
+;	 bsr	 IOD0
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	addq.l	#4,sp		; remove return
+	moveq	#$fffffffe,d0	; bad track
+	bra	fdf_mset 	; and set map entries
+
+; write track failed
+
+fdf_wr_err
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00010000+'W ',d0 ; signal write error
+;	 bsr	 IOD0
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	addq.l	#4,sp		; remove return
+	bra	fdf_ff		; format failed (short?)
+; write a track
+
+fdf_sk_trk
+	move.b	d6,d1		; seek to track
+	bsr.l	fd_hwseek
+fdf_track
+	move.b	d7,d1		; select side in d1
+	bsr.l	fd_hwside
+
+	bsr.l	fd_hwftrack
+
+fdf_trkx
+	tst.b	d0
+
+	rts
+
+fdf_ddtrans
+	dc.w	5
+	dc.b	$00,$03,$06,$01,$04,$07,$02,$05,$08
+	dc.b	$80,$83,$86,$81,$84,$87,$82,$85,$88
+	dc.b	$00,$03,$06,$01,$04,$07,$02,$05,$08
+	dc.b	$09,$0c,$0f,$0a,$0d,$10,$0b,$0e,$11
+fdf_hdtrans
+	dc.w	5
+	dc.b	$00,$06,$0C,$01,$07,$0D,$02,$08,$0E
+	dc.b	$03,$09,$0F,$04,$0A,$10,$05,$0B,$11
+	dc.b	$80,$86,$8C,$81,$87,$8D,$82,$88,$8E
+	dc.b	$83,$89,$8F,$84,$8A,$90,$85,$8B,$91
+
+*******************************************************************
+*
+*  Enter supervisor, disable ints, return with old sr on stack.
+*
+*  Use in a routine that could be called from
+*  either user or supervisor mode as follows:
+*
+*	bsr noints	; turn of ints
+*	...		; do something with ints off
+*	move.w (a7)+,sr	; restore mode/ints
+*
+noints:
+	move.l	a0,-(a7)
+	move.l	a7,a0
+	trap	#0
+	move.w	sr,-(a7)
+	or.w	#$0700,sr	; disable interrupts
+	subq.l	#2,a0
+	cmpa.l	a0,a7
+	beq.s	noints_sv
+noints_um:
+	bclr	#5,(a7)		; Entered in User mode
+	move.l	6(a0),-(a7)	; move return address
+	add.l	#10,a0		; drop everything
+	move.l	a0,usp		; ... from user stack
+	move.l	-8(a0),a0	; restore a0
+	bra.s	noints_x
+noints_sv:
+	move.l	2(a7),a0 	; restore a0
+	move.w	6(a7),4(a7)	; move return address.l
+	move.w	8(a7),6(a7)	; move return address.h
+	move.w	(a7),8(a7)	; move sr
+	addq.l	#4,a7		; restore stack
+noints_x:
+	rts
+
+; --------------------------------------------------------------
+;
+;      BASIC extensions start here
+;
+; --------------------------------------------------------------
+prog_use
+	moveq	#$00,d5
+	bra.s	xxx_use
+
+data_use
+	moveq	#$04,d5
+	bra.s	xxx_use
+
+dest_use
+	moveq	#$08,d5
+	bra.s	xxx_use
+
+spl_use
+	move.w	#$88,d5
+
+xxx_use
+	bsr.l	ut_stos		; get a string
+	bne.s	xxx_rts		; ... oops
+	cmp.w	#30,0(a6,a1.l)	; <=30 characters long
+	bgt	flp_bp		; ... oops
+
+	moveq	#MT.INF,d0	; find the system variables
+	trap	#1
+	lea	SV_PROGD(a0),a0	; and set the pointers to
+				; the defaults
+	move.w	d5,d0
+	andi.b	#$7F,d0
+	move.l	0(a0,d0.w),a4
+
+	move.w	0(a6,a1.l),d1
+	addq.l	#2,a1
+	move.w	d1,(a4)+
+
+	tst.b	d5
+	bmi.s	xxx_dec
+
+	lea	-1(a1,d1.w),a2
+	cmpi.b	#'_',0(a6,a2.l)
+
+	beq.s	xxx_dec
+
+	cmpi.w	#30,d1
+	beq	flp_bp		; name too long
+
+	move.b	#'_',0(a4,d1.w)	; append underline
+
+	addq.w	#1,d1
+	move.w	d1,-2(a4)	; increment length
+	subq.w	#1,d1
+
+	bra.s	xxx_dec
+
+xxx_lup
+	move.b	0(a6,a1.l),d0
+	addq.l	#1,a1
+	move.b	d0,(a4)+
+
+xxx_dec
+	dbra	d1,xxx_lup
+
+	moveq	#0,d0
+
+xxx_rts
+	rts
+
+prog_d$
+	moveq	#0,d5
+	bra.s	xxx_d$
+
+data_d$
+	moveq	#4,d5
+	bra.s	xxx_d$
+
+dest_d$
+	moveq	#8,d5
+	bra.s	xxx_d$
+
+spl_d$
+	moveq	#8,d5
+
+xxx_d$
+	cmp.l	a3,a5
+	bne.s	flp_bp		; ... oops
+
+	moveq	#MT.INF,d0	; find the system variables
+	trap	#1
+	lea	SV_PROGD(a0),a0	; and set the pointers to
+				; the defaults
+	move.l	0(a0,d5.w),a4
+
+	move.w	(a4)+,d4
+
+	move.l	d4,d1
+	addq.l	#1,d1
+	and.b	#$FE,d1
+	move.w	BV.CHRIX,a2
+	jsr	(a2)
+
+	sub.l	d1,BV_RIP(a6)
+	move.l	BV_RIP(a6),a1
+
+	move.w	d4,0(a6,a1.l)
+	addq.l	#2,a1
+	bra.s	xxx_dec$
+
+xxx_lup$
+	move.b	(a4)+,d0
+	move.b	d0,0(a6,a1.l)
+	addq.l	#1,a1
+
+xxx_dec$
+	dbra	d4,xxx_lup$
+
+	move.l	BV_RIP(a6),a1
+	moveq	#1,d4
+	moveq	#0,d0
+	rts
+
+; Set the name of the floppy disk system  1985 Tony Tebby QJUMP
+;       bra.s   dev_use	    * Go to it.		** 1.17 **
+
+flp_use
+	lea	fd_io(pc),a4	; Get entry point for io
+				; routines       ** 1.17 **
+dev_use
+	bsr.l	ut_stos		; get a string
+	bne.s	flp_rts		; ... oops
+	subq.w	#3,0(a6,a1.l)	; 3 characters long
+	bne.s	flp_bp		; ... oops
+	move.l	2(a6,a1.l),d6	; get new name
+	and.l	#$5f5f5f00,d6	; in upper case
+	add.b	#'0',d6		; ending with '0'
+
+	moveq	#MT.INF,d0	; find system vars
+	trap	#1
+	move.l	SV_DDLST(a0),a0	; ... and linked list of
+				; directory drivers
+
+flp_look
+	cmp.l	fdd_iolk-fdd_ddlk(a0),a4 ; the right driver?
+				       ;    ** 1.17 **
+	beq.s	flp_set		; ... yes
+	move.l	(a0),a0		; ... no, try the next
+	move.l	a0,d1		; ... the last?
+	bne.s	flp_look
+flp_bp
+	moveq	#ERR.BP,d0
+flp_rts
+	rts
+flp_set
+	move.l	d6,fdd_name-fdd_ddlk(a0) ; set new name
+	BSET	#7,fdd_nset-fdd_ddlk(a0) ; flag name as set
+	rts
+
+; --------------------------------------------------------------
+flp_opt
+	move.w	CA.GTINT,a2
+	jsr	(a2)
+	bne.s	flo_rts
+	subq.w	#1,d3
+	blt.s	flo_rts
+	bsr	flp_find
+	movem.w	0(a6,a1.l),d4/d5/d6 ; get 3 parameters
+
+	subq.b	#1,d4
+	move.b	d4,fdd_scty-fdd_ddlk(a0) ; set security level
+
+	subq.w	#1,d3
+	blt.s	flo_rts
+	move.b	d5,fdd_stim-fdd_ddlk(a0) ; set start up time
+
+	subq.w	#1,d3
+	blt.s	flo_rts
+	move.b	d6,fdd_ntrk-fdd_ddlk(a0) ; set number of
+				       ; tracks
+flo_rts
+	rts
+flp_sec
+	moveq	#fdd_scty-fdd_ddlk,d7 ; set security level
+	bsr.s	flo_int
+	subq.b	#1,(a0)		; -1 to 1
+	rts
+
+flp_start
+	moveq	#fdd_stim-fdd_ddlk,d7 ; set start up time
+	bra.s	flo_dcall
+
+flp_track
+	moveq	#fdd_ntrk-fdd_ddlk,d7 ; set number of tracks
+flo_dcall
+	bsr.s	flo_int
+	rts
+
+flo_int
+	move.l	(sp)+,a4 	; remove return address
+	move.w	CA.GTINT,a2	; get an integer
+	jsr	(a2)
+	bne.s	flo_rts
+	subq.w	#1,d3		; just one
+	bne	flf_bp
+	bsr	flp_find 	; find the definition block
+	add.w	d7,a0		; and the item to set
+	move.b	1(a6,a1.l),(a0)	; and set the byte
+	jmp	(a4)
+
+; --------------------------------------------------------------
+; Get a string on the stack V0.2  1985 Tony Tebby QJUMP
+; Modified to accept numbers and expressions
+; (C) 1986 David Oliver CST V 4.00
+
+ut_stos
+	tst.w	2(a6,a3.l)	; Get name of parameter. If
+				; none, it must be exprssn.
+	bmi.s	get_string	; ... so convert the value
+				; to a string.  ** 4.00 **
+	moveq	#$0f,d0		; extract type of parameter.
+	and.b	1(a6,a3.l),d0
+	subq.b	#1,d0		; is it a string?
+	bne.s	ut_gtnam 	; ... no, get the name
+				; instead
+get_string
+	move.l	a5,-(sp) 	; ... yes, save the top
+				; pointer
+	lea	8(a3),a5 	; get just one string
+	move.w	CA.GTSTR,a2
+	jsr	(a2)
+	move.l	(sp)+,a5 	; restore top pointer
+	bne.s	utils_rts
+	moveq	#3,d1		; get total length of string
+	add.w	0(a6,a1.l),d1
+	bclr	#0,d1
+	add.l	d1,BV_RIP(a6)	; and reset ri stack pointer
+	bra.s	utils_ok
+ut_gtnam
+	moveq	#ERR.BP,d0	; assume bad parameter
+	moveq	#0,d1
+	move.w	2(a6,a3.l),d1	; get the pointer to the
+				; real entry
+	bmi.s	utils_rts	; ... expression is no good
+	lsl.l	#3,d1		; in multiples of 8 bytes
+	add.l	BV_NTBAS(a6),d1
+ut_ntnam
+	moveq	#0,d6
+	move.w	2(a6,d1.l),d6	; thus the pointer to the
+				; name
+	add.l	BV_NLBAS(a6),d6
+	moveq	#0,d1		; get the length of the name
+				; as a long word
+	move.b	0(a6,d6.l),d1
+	addq.l	#1,d1		; rounded up
+	bclr	#0,d1
+	move.w	d1,d4		; and save it
+	addq.l	#2,d1		; space required is +2 bytes
+	move.w	BV.CHRIX,a2	; on ri stack
+	jsr	(a2)
+	move.l	BV_RIP(a6),a1
+
+	add.w	d4,d6		; move to end of string
+				; (ish)
+ut_nam_loop
+	subq.l	#1,a1		; and copy one byte at a
+				; time
+	move.b	0(a6,d6.l),0(a6,a1.l)
+	subq.l	#1,d6
+	dbra	d4,ut_nam_loop	; including the (byte) name
+				; length
+	subq.l	#1,a1		; put a zero on to make it a
+				; word
+	clr.b	0(a6,a1.l)
+utils_ok
+	moveq	#0,d0
+utils_rts
+	rts
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad2:
+	DCB.w ((0-(NOPpad2-rom_base))&$3)/2,$4E71
+
+*******************************************************************
+
+	END

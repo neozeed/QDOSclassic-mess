@@ -1,0 +1,65 @@
+100 REMark ------------------------------
+110 REMark  XCHPATCH_bas - Mark J Swift
+120 REMark  Fixes CACHE problems for
+130 REMark  Xchange on 68040 and 68060
+140 REMark ------------------------------
+150 :
+160 InFile$="Flp1_XCHANGE":OutFile$="Flp1_XCHANGE"
+170 OPEN_IN#6;InFile$
+180 fd=0:fl=FLEN(#6):ft=FTYP(#6):IF ft THEN fd=FDAT(#6)
+190 CLOSE#6
+200 IF fl=0 THEN 
+210  PRINT\"File empty!"
+220  IF InFlg%=0 THEN EXIT main_loop
+230 ELSE 
+240  IF fd=0 THEN 
+250   PRINT\"Not an executable task!"
+260  ELSE 
+270   pl=84:ad=ALCHP(fl+pl):a=ad
+280   LBYTES InFile$,a+pl
+290   h=PEEK(a+pl+1)+2:IF h=0 THEN h=PEEK_W(a+pl+2)
+300   IF (PEEK_W(a+pl+72+h+402)=HEX("4EBA")) AND (PEEK_W(a+pl+72+h+404)=-394-72) THEN 
+310    PRINT\"Removing earlier patch"
+320    FOR i=h-1 TO 0 STEP -1
+330     POKE a+pl+72+i,PEEK(a+pl+i)
+340    END FOR i
+350    POKE_L a+pl+72+h+402,HEX("4EAD0438")
+360    a=a+72:fl=fl-72
+370   END IF 
+380   FOR i=0 TO h-1
+390    POKE a+i,PEEK(a+pl+i)
+400   END FOR i
+410   RESTORE 590
+420   FOR i=0 TO pl-2 STEP 2
+430    READ d$
+440    POKE_W a+h+i,HEX(d$)
+450   END FOR i
+460   IF PEEK_L(a+pl+h+402)=HEX("4EAD0438") THEN 
+470    POKE_W a+pl+h+402,HEX("4EBA"):POKE_W a+pl+h+404,-394-pl
+480    DELETE OutFile$:SEXEC OutFile$,a,fl+pl,fd
+490    PRINT\"TASK successfully patched"
+500   ELSE 
+510    PRINT\"Sorry, I don't recognise this task"
+520   END IF 
+530  RECHP ad
+540  END IF 
+550 END IF 
+560 STOP
+570 :
+580 REMark m/c patches
+590 DATA "7054","DDC0","99C0","9BC0"
+600 DATA "604A","4E40","007C","0700"
+610 DATA "6108","027C","D8FF","4EED"
+620 DATA "0438","48E7","E080","7000"
+630 DATA "4E41","0C28","0010","00A1"
+640 DATA "6F24","4E7A","0002","0040"
+650 DATA "0808","0C28","0030","00A1"
+660 DATA "6310","4A40","6A04","F4B8"
+670 DATA "F498","4A80","6A04","F478"
+680 DATA "F458","4E7B","0002","4CDF"
+690 DATA "0107","4E75"
+700 :
+710 DEFine PROCedure sav
+720  DELETE flp1_XCHPATCH_bas
+730  SAVE flp1_XCHPATCH_bas
+740 END DEFine 

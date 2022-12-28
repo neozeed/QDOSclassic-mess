@@ -1,0 +1,652 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_BEEP_inc'
+
+	SECTION	BEEP
+
+	XREF	HW_RESET,HW_ENABLE
+	XREF	POLL_SERver
+
+	XREF	HW_VCTR_BEG
+	XREF.S	HW_VCTR.LEN
+
+	XREF.L	HARDTAG
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; SND_asm - QDOS classic BEEP routines
+;	 - originated July 98 - Mark Swift
+;	 - last modified 16/09/99 (MSW)
+
+; The necessary sound related sources, required to
+; implement QDOS sound routines on QDOS classic
+
+; BEEP <dur>,<pitch>
+;
+;   lasts (<dur>*72)/1000000 seconds and has a
+;   frequency approx to 11447/(10.6+<pitch>) hz
+
+VERSTAG	EQU	'1.13'
+THNGTAG	EQU	'aBLP'
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  ROM header
+
+BASE:
+	dc.l	$4AFB0001	; ROM recognition code
+	dc.w	0
+	dc.w	ROM_START-BASE
+
+	dc.b	0,23
+	dc.l	HARDTAG
+	dc.b	'BEEP routines '
+	dc.l	VERSTAG
+	dc.b	$A,0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  start of ROM code
+
+ROM_START:
+
+; --------------------------------------------------------------
+;  enter supervisor mode and disable interrupts
+
+	trap	#0
+	ori.w	#$0700,sr	; disable interrupts
+
+; --------------------------------------------------------------
+;  save register entry values
+
+	movem.l	d0-d3/d6-d7/a0-a4/a6,-(a7)
+
+; --------------------------------------------------------------
+;  initialise relevant hardware
+
+	bsr	HW_RESET
+
+; --------------------------------------------------------------
+;  allocate a THING entry for local variables
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+	bsr.s	MAKE_THG 	; a3 now points to vars
+	bne.s	ROM_EXIT
+
+; --------------------------------------------------------------
+;  disable caches on '020 and above
+
+	bsr	CACHOFF		; disable caches
+	move.l	d0,d7		; save cacr value
+
+; --------------------------------------------------------------
+;  get address of system vectors
+
+	suba.l	a0,a0		; a handy reference point
+
+	tst.b	161(a6)
+	beq.s	NOVBR
+
+	dc.w	$4E7A,$8801	; movec vbr,a0 (010+)
+
+NOVBR:
+
+; --------------------------------------------------------------
+;  Copy custom vector routines into THING
+
+	move.l	#VCTR.LEN+HW_VCTR.LEN,d2	; will always be multiple of 4
+	lsr.w	#2,d2
+	subq.w	#1,d2
+	lea	VCTR_BEG(pc),a2
+	lea	THNG.VCTR(a3),a4
+
+CPY_VCTR:
+	move.l	(a2)+,(a4)+
+	dbra	d2,CPY_VCTR
+
+; --------------------------------------------------------------
+;  Redirect TRAP 1 routine
+
+	move.l	$84(a0),THNG.VCTR+VCTR.TRP1_OLD(a3) ; save old address
+
+	lea	THNG.VCTR+VCTR.TRP1_NEW(a3),a1
+	move.l	a1,$84(a0)			; redirect TRAP 1
+
+; --------------------------------------------------------------
+;  Redirect RESET routine
+
+	move.l	$04(a0),THNG.VCTR+VCTR.RSET_OLD(a3) ; save old address
+
+	lea	THNG.VCTR+VCTR.RSET_NEW(a3),a1
+	move.l	a1,$04(a0)			; redirect RESET
+
+; --------------------------------------------------------------
+;  link in poll interrupt
+
+	lea	POLL_SERver(pc),a1 ; address of routine
+	lea	SV_LPOLL(a3),a0
+	move.l	a1,4(a0) 	; address of polled task
+	moveq	#MT.LPOLL,d0
+	trap	#1
+
+; --------------------------------------------------------------
+;  initialise relevant hardware
+
+; --------------------------------------------------------------
+;  restore caches
+
+	move.l	d7,d0
+	bsr.s	SETCACH
+
+; --------------------------------------------------------------
+;  restore register entry values
+
+ROM_EXIT:
+	movem.l	(a7)+,d0-d3/d6-d7/a0-a4/a6
+
+;  enable interrupts and re-enter user mode
+
+	andi.w	#$D8FF,sr
+
+; --------------------------------------------------------------
+;  initiate a sound process
+
+	movem.l	a3/d1/d5/d7,-(a7)
+
+	lea	BLIP(pc),a3
+	moveq	#$11,d0
+	trap	#1
+
+	movem.l	(a7)+,a3/d1/d5/d7
+
+	rts
+
+*******************************************************************
+*
+*  make 'THING' for me
+*
+*  enter a6 = system variables
+*  exit	a3 = address of your private variables
+*
+*  corrupts = d0,d2,a1 - etc...
+*
+*  11/08/99 Make the THING but do not add it to the THING list.
+*	   We will thus keep it private.
+
+MAKE_THG:
+;	 lea	 SV_THINGL(a6),a3  ; start of THING list
+;
+;NEXT_THG:
+;	 move.l	 (a3),d0
+;	 beq.s	 ALOC_THG
+;
+;	 move.l	 d0,a3
+;
+;	 cmp.w	 #4,$2A(a3)
+;	 bne.s	 NEXT_THG
+;
+;	 cmp.l	 #THNGTAG,$2C(a3)
+;	 bne.s	 NEXT_THG
+;
+;	 bra.s	 OKAY_THG
+;
+ALOC_THG:
+	moveq	#0,d2		; owner is superBASIC
+	move.l	#$38+VAR.LEN+VCTR.LEN+HW_VCTR.LEN,d1  ; length
+	moveq	#MT.ALCHP,d0
+	trap	#1		; allocate space
+
+	tst.l	d0
+	bne.s	EXIT_THG 	; exit if error
+
+	move.l	a0,a3
+
+INIT_THG:
+	move.l	#VERSTAG,$26(a3)	; version number
+	move.w	#4,$2A(a3)	; name length
+	move.l	#THNGTAG,$2C(a3)	; name
+	move.l	#'THG%',$30(a3)	; thing variables follow
+	move.l	#2,$34(a3)	; freeform shared code
+
+	lea	$30(a3),a1	; ptr to thing data area
+	move.l	a1,$10(a3)	; store ptr to variables
+
+;	 lea	 SV_THINGL(a6),a1
+;	 move.l	 (a1),(a3)	 ; extend thing list
+;	 move.l	 a3,(a1) 	 ; put THIS thing at start
+
+OKAY_THG:
+	move.l	$10(a3),a3	; address of data area
+	addq.l	#8,a3		; return with a3 pointing
+				; to first variable
+
+EXIT_THG:
+	tst.l	d0
+	rts
+
+*******************************************************************
+*
+* routine to disable the instruction & data caches
+* Exit:	d0 = previous CACR value
+*
+CACHOFF:
+	move.l	d1,-(a7)
+
+	moveq	#0,d0
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to set the CACR
+* Entry: d0 = value to write to CACR
+* Exit:	d0 = previous CACR value
+*
+SETCACH:
+	move.l	d1,-(a7)
+
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to alter the state of the CACR
+* callable from user or supervisor modes
+* Entry: d0 = bits to set
+*	d1 = bits to clear/alter
+* Exit:	d0 = previous CACR value
+*
+DOCACH:
+	movem.l	d2/a0/a6,-(a7)
+	movea.l	a7,a0
+	trap	#0
+	move.w	sr,-(a7)
+	ori.w	#$0700,sr	interrupts off
+
+	subq.l	#2,a0
+	cmpa.l	a0,a7
+	beq.s	DOCACHSV 	entered routine as supervisor
+
+	bclr	#5,(a7)		otherwise sr on exit = user mode
+
+DOCACHSV:
+	move.l	a7,d2		Calculate start of
+	andi.w	#-$8000,d2	system variables
+	move.l	d2,a6
+
+	and.l	d1,d0
+	not.l	d1
+
+	cmpi.b	#$10,$A1(a6)
+	bls.s	DOCACHX		exit if 010 or less
+
+	dc.w	$4E7A,$2002	movec	cacr,d2
+	and.l	d2,d1		mask off changed bits
+	or.l	d0,d1		or in set bits
+
+	move.l	d2,d0		store old cacr value
+
+	ori.w	#$0808,d1	always clear caches on 020/030
+
+	cmpi.b	#$30,$A1(a6)
+	bls.s	DOCACHSET
+
+	tst.w	d0		check 040 bits
+	bpl.s	DOCACHDCHK	branch if instruction cache off
+	dc.w	$F4B8		cpusha	ic
+				; otherwise update memory from cache
+
+DOCACHDCHK:
+	tst.l	d0		check 040 bits
+	bpl.s	DOCACHDINV	branch if data cache off
+	dc.w	$F478		cpusha	dc
+				; otherwise update memory from cache
+
+	tst.l	d1		check 040 bits
+	bmi.s	DOCACHIINV	branch if leaving data cache on
+
+DOCACHDINV:
+	dc.w	$F458		cinva	dc
+				; invalidate cache
+
+DOCACHIINV:
+	dc.w	$F498		cinva	ic
+				; invalidate cache
+
+DOCACHSET:
+	dc.w	$4E7B,$1002	movec	d1,cacr
+				; set the cache
+
+DOCACHX:
+	move.w	(a7)+,sr
+	movem.l	(a7)+,d2/a0/a6
+	rts
+
+*******************************************************************
+*
+*  IPC10 BEEP sound process... a short blip
+
+BLIP:
+	DC.B $0A,$08,$AA,$AA,$55,$55
+	DC.B $01,$01,$00,$00,$00,$04,$00,$00
+
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad1:
+	DCB.w ((0-(NOPpad1-BASE))&$3)/2,$4E71
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+VCTR_BEG:
+
+*******************************************************************
+*
+*  Custom TRAP 1 routine to handle calls to:
+*  MT_IPCOM (d0=$11)
+
+TRP1:
+
+VCTR.TRP1_NEW EQU TRP1-VCTR_BEG
+
+	cmp.b	#MT.IPCOM,d0
+	bne.s	TRP1JMP
+
+MT_IPCOM:
+	cmp.b	#10,(a3) ; is IPC command initiate sound ?
+	beq.s	MT_IPC10
+
+	cmp.b	#11,(a3) 	; is it kill sound ?
+	beq.s	MT_IPC11 	; no
+
+; --------------------------------------------------------------
+;  Call old TRAP #1 routine
+
+TRP1JMP:
+
+VCTR.TRP1_OLD EQU (TRP1JMP-VCTR_BEG)+2
+
+	DC.W	$4EF9,$0000,$0000  ; filled in later
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; initialise A5 and A6 prior to performing a TRAP routine
+
+INI_A5A6
+	SUBQ.L	#8,A7
+	MOVE.L	8(A7),-(A7)
+	MOVEM.L	D7/A5/A6,4(A7)
+
+	move.l	a7,d7
+	andi.l	#$FFFF8000,d7
+	move.l	d7,a6		; Calc address of sys vars
+
+	LEA	4(A7),A5 	; A5 points to saved
+				; Registers D7,A5,A6
+	MOVEQ	#$7F,D7
+	AND.L	D7,D0
+	RTS
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  A patch to replace TRAP#1 calls to: MT_IPCOM (d0=$11)
+
+MT_IPC11:
+	bsr.s	INI_A5A6
+
+	bsr	HW_RESET
+
+	moveq	#0,d0
+	bra	TRP1X		; exit
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  A patch to replace TRAP#1 calls to: MT_IPCOM (d0=$10)
+
+MT_IPC10:
+	bsr.s	INI_A5A6
+
+	movem.l	d1-d2/a0-a4,-(a7)
+
+	move.l	a3,a2
+
+	cmp.b	#8,1(a3)
+	beq.s	IPC_SKP0
+
+; --------------------------------------------------------------
+; change 16 parameter sound into an 8 parameter one
+
+	move.b	$6(a3),$6(a2)
+	move.b	$8(a3),$7(a2)
+	move.w	$A(a3),$8(a2)
+	move.w	$C(a3),$A(a2)
+	move.b	$E(a3),d0
+	lsl.b	#4,d0
+	move.b	$10(a3),d1
+	andi.b	#$F,d1
+	or.b	d1,d0
+	move.b	d0,$C(a2)
+	move.b	$12(a3),d0
+	lsl.b	#4,d0
+	move.b	$14(a3),d1
+	andi.b	#$F,d1
+	or.b	d1,d0
+	move.b	d0,$D(a2)
+
+; --------------------------------------------------------------
+
+	bsr	HW_RESET
+
+; --------------------------------------------------------------
+IPC_SKP0:
+	lea	VCTR_BEG-THNG.VCTR(pc),a3
+
+	moveq	#0,d1
+	move.b	$6(a2),d1
+	subq.b	#1,d1		; get PITCH1
+	mulu.w	#10000,d1
+	add.l	#106000,d1
+
+	moveq	#0,d2
+	move.b	$7(a2),d2
+	subq.b	#1,d2		; get PITCH2
+	mulu.w	#10000,d2
+	add.l	#106000,d2
+
+; --------------------------------------------------------------
+
+	move.b	$9(a2),d0	; gradient hi
+	lsl.w	#8,d0
+	move.b	$8(a2),d0	; gradient lo
+	mulu	#25,d0
+	divu	#18,d0
+
+	move.w	#0,VAR.GRDVAL(a3)
+	bvc.s	IPC_DIV1
+
+	move.w	#1,VAR.GRDVAL(a3)
+
+IPC_DIV1:
+	move.w	d0,VAR.GRDVAL+2(a3)
+
+; --------------------------------------------------------------
+	move.b	$B(a2),d0	; duration hi
+	lsl.w	#8,d0
+	move.b	$A(a2),d0	; duration lo
+	mulu	#25,d0
+	divu	#18,d0
+
+	move.w	#0,VAR.DURVAL(a3)
+	bvc.s	IPC_DIV2
+
+	move.w	#1,VAR.DURVAL(a3)
+
+IPC_DIV2:
+	move.w	d0,VAR.DURVAL+2(a3)
+
+; --------------------------------------------------------------
+	moveq	#0,d0
+	move.b	$C(a2),d0	; repeats
+	andi.b	#$0F,d0
+	move.w	d0,VAR.REPVAL(a3)
+
+	move.w	d0,VAR.REPCNT(a3)
+
+; --------------------------------------------------------------
+	move.b	$C(a2),d0	; get pitch increment
+	beq.s	IPC_SKP1
+
+	cmp.l	d1,d2
+	bge.s	IPC_SKP1
+
+	exg	d1,d2
+
+IPC_SKP1:
+	move.l	d1,VAR.PITCH1(a3)
+	move.l	d2,VAR.PITCH2(a3)
+
+	lsr.b	#4,d0
+	cmpi.b	#8,d0
+	bne.s	IPC_SKP5
+
+	move.l	d2,d0
+	sub.l	d1,d0		; maximise pitch inc
+	bra.s	IPC_SWP4
+
+IPC_SKP5:
+	lsl.b	#4,d0
+	ext.w	d0
+	ext.l	d0
+	asr.l	#4,d0		; sign extend
+
+	mulu.w	#10000,d0
+
+; --------------------------------------------------------------
+IPC_SWP4:
+	cmp.w	d1,d2
+	bne.s	IPC_SWP5
+
+	moveq	#0,d0
+
+IPC_SWP5:
+	move.l	d0,VAR.PITINC(a3)
+
+; --------------------------------------------------------------
+	moveq	#0,d0
+	move.b	$D(a2),d0	; fuzz
+	andi.b	#$F,d0
+	subq.w	#$7,d0		; make 0-8
+	bge.s	IPC_SKP3
+
+	clr.w	d0
+
+IPC_SKP3:
+	move.w	d0,VAR.FUZVAL(a3)
+
+; --------------------------------------------------------------
+	moveq	#0,d0
+	move.b	$D(a2),d0	; randomness
+	lsr.b	#4,d0
+	subq.w	#$7,d0		; make 0-8
+	bge.s	IPC_SKP4
+
+	clr.w	d0
+
+IPC_SKP4:
+	move.w	d0,VAR.RNDVAL(a3)
+
+; --------------------------------------------------------------
+
+	bsr	HW_ENABLE
+
+; --------------------------------------------------------------
+
+	movem.l	(a7)+,d1-d2/a0-a4
+	moveq	#0,d0
+
+; --------------------------------------------------------------
+;  exit from TRAP call
+
+TRP1X:
+	movem.l	(a7)+,d7/a5/a6	; exit from exception
+	rte
+
+*******************************************************************
+*
+*  Custom RESET routine to put vectors back as they were
+
+RSET:
+
+VCTR.RSET_NEW EQU RSET-VCTR_BEG
+
+	ori.w	#$0700,sr	; disable further interrupts
+
+	bsr	HW_RESET
+
+	movem.l	d0/a0/a3/a6,-(a7)
+
+	lea	VCTR_BEG-THNG.VCTR(pc),a3
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+;  Put back old vectors
+
+	suba.l	a0,a0		; a handy reference point
+
+	tst.b	161(a6)
+	beq.s	RSET68K
+
+	dc.w	$4E7A,$8801	; movec vbr,a0
+
+RSET68K:
+	move.l	THNG.VCTR+VCTR.RSET_OLD(a3),$04(a0) ; restore old RSET
+	move.l	THNG.VCTR+VCTR.TRP1_OLD(a3),$84(a0) ; restore old TRAP 1
+
+RSETX:
+	movem.l	(a7)+,d0/a0/a3/a6
+
+;  Call old RESET routine
+
+RSETJMP:
+
+VCTR.RSET_OLD EQU (RSETJMP-VCTR_BEG)+2
+
+	DC.W	$4EF9,$0000,$0000  ; filled in later
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad2:
+	DCB.w ((0-(NOPpad2-BASE))&$3)/2,$4E71
+
+*******************************************************************
+*
+* End custom vector routines
+
+VCTR_END:
+
+VCTR.LEN EQU VCTR_END-VCTR_BEG
+
+*******************************************************************
+
+; offset into thing for local variables
+
+THNG.VAR 	EQU	$0
+
+; offset into thing for custom vector routines
+
+THNG.VCTR	EQU	THNG.VAR+VAR.LEN
+THNG.HW_VCTR	EQU	THNG.VCTR+VCTR.LEN
+
+*******************************************************************
+
+	END

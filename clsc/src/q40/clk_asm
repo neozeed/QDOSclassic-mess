@@ -1,0 +1,320 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_CLK_inc'
+	INCLUDE	'DEV_ASM_Q40_HW_inc'
+
+	SECTION	CLK
+
+	XDEF	HW_RESET,HW_ENABLE
+	XDEF	RD_CLK,WR_CLK
+	XDEF	XINT_SERver
+
+	XDEF	HW_VCTR_BEG
+	XDEF	HW_VCTR.LEN
+
+	XDEF	HARDTAG
+
+	XREF	L040F6,MULT
+
+*******************************************************************
+*
+* CLK_asm - Q40 specific clock routines
+*	 - originated July 98 - Mark Swift
+*	 - last modified 22/09/99 (MSW)
+
+BASE:
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+HW_VCTR_BEG:
+
+*******************************************************************
+*
+*  subroutine to read the hardware clock
+
+RD_CLK:
+	movem.l	d0/d2/d3,-(a7)
+
+	move.b	#%01000000,CLOCK_BASE+CLOCK_CTRL ; set read mode
+
+	moveq	#0,d2		; fetch year (i.e. 98)
+	move.b	CLOCK_BASE+CLOCK_YEAR,d2
+	lsr.b	#4,d2
+	mulu.w	#10,d2
+	move.b	CLOCK_BASE+CLOCK_YEAR,d3
+	andi.b	#$0F,d3
+	add.b	d3,d2
+
+	subi.b	#61,d2		; years before 1961 should
+	bge.s	RD_CLK1		; be read as 20xx i.e 2061
+
+	addi.b	#100,d2
+
+RD_CLK1:
+	move.l	d2,d0		; make a copy
+
+	mulu.w	#365,d2
+	move.l	d2,d1		; accumulate date in d1
+
+	moveq	#0,d2		; fetch month
+	move.b	CLOCK_BASE+CLOCK_MONTH,d2
+	lsr.b	#4,d2
+	mulu.w	#10,d2
+	move.b	CLOCK_BASE+CLOCK_MONTH,d3
+	andi.b	#$0F,d3
+	add.b	d3,d2
+
+	divu.w	#4,d0		; test for leap year
+
+	swap	d0
+	cmpi.w	#3,d0		; is it a leap year?
+	bne.s	RD_CLK2		; ...no
+
+	cmpi.w	#2,d2		; is it after february?
+	ble.s	RD_CLK2		; ...no
+
+	addq.l	#1,d1		; compensate for extra day
+
+RD_CLK2:
+	clr.w	d0
+	swap	d0		; clear high 16 bits of d0
+
+	add.l	d0,d1		; add in previous leap years
+
+	subq.l	#1,d2		; month number now (0...11)
+	asl.w	#1,d2		; offset into table
+	lea	DAYTBL(pc),a0
+	move.w	0(a0,d2.w),d2	; cumulative total to d2
+
+	add.l	d2,d1		; add it to date
+
+	moveq	#0,d2		; fetch day-in-month
+	move.b	CLOCK_BASE+CLOCK_DATE,d2
+	lsr.b	#4,d2
+	mulu.w	#10,d2
+	move.b	CLOCK_BASE+CLOCK_DATE,d3
+	andi.b	#$0F,d3
+	add.b	d3,d2
+
+	subq.w	#1,d2		; compensate for day zero
+
+	add.l	d2,d1		; add it to date
+
+	moveq	#24,d0		; convert days to hours
+	bsr	MULT
+
+	moveq	#0,d2		; fetch hour
+	move.b	CLOCK_BASE+CLOCK_HOUR,d2
+	lsr.b	#4,d2
+	mulu.w	#10,d2
+	move.b	CLOCK_BASE+CLOCK_HOUR,d3
+	andi.b	#$0F,d3
+	add.b	d3,d2
+
+	add.l	d2,d1		; add it to date
+
+	moveq	#60,d0		; convert hours to minutes
+	bsr	MULT
+
+	moveq	#0,d2		; fetch minute
+	move.b	CLOCK_BASE+CLOCK_MIN,d2
+	lsr.b	#4,d2
+	mulu.w	#10,d2
+	move.b	CLOCK_BASE+CLOCK_MIN,d3
+	andi.b	#$0F,d3
+	add.b	d3,d2
+
+	add.l	d2,d1		; add it to date
+
+	moveq	#60,d0		; convert minutes to secs
+	bsr	MULT
+
+	moveq	#0,d2		; fetch seconds
+	move.b	CLOCK_BASE+CLOCK_SEC,d2
+	lsr.b	#4,d2
+	mulu.w	#10,d2
+	move.b	CLOCK_BASE+CLOCK_SEC,d3
+	andi.b	#$0F,d3
+	add.b	d3,d2
+
+	add.l	d2,d1		; add it to date
+
+	move.l	d1,PC_CLOCK	; set QL h/w date
+
+	move.b	#%00000000,CLOCK_BASE+CLOCK_CTRL ; release clock
+
+	movem.l	(a7)+,d0/d2/d3
+	rts
+
+;  table of cumulative totals of length of each month
+
+DAYTBL:
+	dc.w	0,31,59,90,120,151,181,212,243,273,304,334
+
+*******************************************************************
+*
+*  subroutine to write the hardware clock
+
+WR_CLK:
+	movem.l	d0-d5,-(a7)
+
+	move.l	d1,PC_CLOCK	; set QL h/w date
+
+	bsr	L040F6
+
+	moveq	#10,d5
+
+	move.b	#%10000000,CLOCK_BASE+CLOCK_CTRL ; set write mode
+
+	andi.l	#$0000FFFF,d0	; get weekday
+	divu	d5,d0
+	swap	d0
+	ror.w	#4,d0
+	swap	d0
+	rol.l	#4,d0
+	move.b	d0,CLOCK_BASE+CLOCK_DAY
+
+	moveq	#0,d0
+	move.w	d2,d0		; get year
+
+	sub.w	#2000,d0 	; make year two digits only
+	bge.s	WR_CLK1
+
+	add.w	#100,d0		; pre-millenium
+
+WR_CLK1:
+	divu	d5,d0
+	swap	d0
+	ror.w	#4,d0
+	swap	d0
+	rol.l	#4,d0
+	move.b	d0,CLOCK_BASE+CLOCK_YEAR
+
+	moveq	#0,d0
+	move.w	d4,d0		; get month (0-11)
+	addq.l	#1,d0
+
+	divu	d5,d0
+	swap	d0
+	ror.w	#4,d0
+	swap	d0
+	rol.l	#4,d0
+	move.b	d0,CLOCK_BASE+CLOCK_MONTH
+
+	moveq	#0,d0
+	move.w	d1,d0		; get day
+
+	divu	d5,d0
+	swap	d0
+	ror.w	#4,d0
+	swap	d0
+	rol.l	#4,d0
+	move.b	d0,CLOCK_BASE+CLOCK_DATE
+
+	moveq	#0,d0
+	swap	d2
+	move.w	d2,d0		; get hour
+
+	divu	d5,d0
+	swap	d0
+	ror.w	#4,d0
+	swap	d0
+	rol.l	#4,d0
+	move.b	d0,CLOCK_BASE+CLOCK_HOUR
+
+	moveq	#0,d0
+	move.w	d3,d0		; get minute
+
+	divu	d5,d0
+	swap	d0
+	ror.w	#4,d0
+	swap	d0
+	rol.l	#4,d0
+	move.b	d0,CLOCK_BASE+CLOCK_MIN
+
+	moveq	#0,d0
+	swap	d3
+	move.w	d3,d0		; get seconds
+
+	divu	d5,d0
+	swap	d0
+	ror.w	#4,d0
+	swap	d0
+	rol.l	#4,d0
+	move.b	CLOCK_BASE+CLOCK_SEC,d2
+
+	move.b	#%00000000,CLOCK_BASE+CLOCK_CTRL ; release clock
+
+	movem.l	(a7)+,d0-d5
+	rts
+
+*******************************************************************
+*
+*  HARDWARE RESET : reset clock hardware
+
+HW_RESET:
+
+*******************************************************************
+*
+*  HARDWARE DISABLE : disable clock related interrupts/DMA
+
+HW_DISABLE:
+
+; nothing to do
+
+	rts
+
+*******************************************************************
+*
+* End custom vector routines
+
+NOPpad3:
+	DCB.w ((0-(NOPpad3-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+HW_VCTR_END:
+
+HW_VCTR.LEN	EQU	(HW_VCTR_END-HW_VCTR_BEG)
+
+*******************************************************************
+*
+*  HARDWARE ENABLE : initialise clock hardware to for use,
+*		   enable relevant interrupts/DMA
+
+HW_ENABLE:
+	movem.l	d0-d3/a0/a3,-(a7)
+
+	move.b	CLOCK_BASE+CLOCK_SEC,d1
+	andi.b	#%01111111,d1
+	move.b	d1,CLOCK_BASE+CLOCK_SEC ; start the clock
+
+	bsr	RD_CLK
+
+	movem.l	(a7)+,d0-d3/a0/a3
+	rts
+
+*******************************************************************
+*
+*  external interrupt server to handle clock/timer interrupts
+
+XINT_SERver:
+
+; there are no Q40 clock interrupts, so remove XINT server and exit
+
+	lea	SV_LXINT(a3),a0
+	moveq	#MT.RXINT,d0
+	trap	#1
+
+XINT_EXIt:
+	rts
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad5:
+	DCB.w ((0-(NOPpad5-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+*******************************************************************
+
+	END

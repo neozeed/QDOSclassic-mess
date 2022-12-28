@@ -1,0 +1,149 @@
+Short:    patch old C68 programs to be COPYBACK friendly
+Author:   Mark J Swift
+Version:  1.01
+Uploader: msw@blackpool.ac.uk
+Type:     util/ptch
+
+
+Old versions of C68 have inadequate cache routines. This BASIC program
+patches old C68 and C68 compiled programs to work with 68040 and 68060
+processors with COPYBACK enabled. New versions of C68 are OK (I think).
+
+
+ARCHIVE CONTENTS
+
+ C68PATCH_bas     - The patcher program.
+ C68PATCH_readme  - This file.
+
+
+WHY IS IT NECESSARY?
+
+On machines with 68040 and 68060 processors, enabling the COPYBACK cache
+can give substantial speed increases since memory is only updated from
+the caches when absolutely necessary. Thus with COPYBACK enabled, it is
+ESSENTIAL to flush the caches out to memory before they are cleared or
+disabled.
+
+From a disassembly It can be seen that before the compiler relocates
+itself, the caches are disabled by the following subroutine:
+
+CACHOFF:
+        cmpi.b  #$20,$A1(a6)
+        bls.s   CACHOFX
+*
+        movec   cacr,d0
+*                 1=data cache enable (>=040)
+*                 |               1=instr cache enable (>=040)
+*                 |               |   1=clear data cache (030)
+*                 |               |   |  1=data cache enable (030)
+*                 |               |   |  |    1=clear instr cache (020,030)
+*                 |               |   |  |    |  1=instr cache enable(020,030)
+*                 |               |   |  |    |  |
+        move.l  #%00000000000000000000100000001000,d1
+        movec   d1,cacr
+*
+CACHOFX:
+        rts
+
+On 030 processors this clears (bits 3 and 11 set) the data and
+instruction caches and also disables them (bits 0 and 8 clear).
+
+On the >=040 processors the code simply disables the caches. It
+does not update the memory from the caches.
+
+In most cases on the '040 the code will be sufficient (i.e it usually
+works). However on an '040 with COPYBACK enabled the subroutine always
+fails - usually with a corrupted return stack.
+
+Here is what happens...
+
+The subroutine CACHEOFF is called and the return address is pushed on
+the stack. However with COPYBACK enabled the return address is written
+to the data cache but not written through to memory. Next, the subroutine
+disables the caches but does not flush them to memory beforehand. Now
+memory does not contain up-to-date information and cache contents are
+already lost. This means that the return stack will NOT contain the
+correct return address - so the RTS instruction bombs the machine.
+
+There is also a section of code that sets the cache to a value passed
+in d0. This also fails to flush the caches:
+
+SETCACH:
+        tst.l   d0
+        beq.s   SETCACHX
+
+        cmpi.b  #$40,$A1(a6)
+        blt.s   SETCACH2030
+
+        cinva   ic/dc
+
+SETCACH2030:
+        movec   d0,cacr
+
+SETCACHX:
+        rts
+
+C68 can be fixed by replacing the above routines as follows:
+
+*******************************************************************
+*
+* routine to disable the instruction & data caches
+* Exit: d0 = previous CACR value
+*
+CACHOFF:
+        moveq   #0,d0
+
+*******************************************************************
+*
+* routine to set the CACR
+* Entry: d0 = value to write to CACR
+* Exit: d0 = previous CACR value
+*
+SETCACH:
+        move.l  d1,-(a7)
+
+        cmpi.b  #$10,$A1(a6)
+        bls.s   SETCACHX        exit if 010 or less
+
+        movec   cacr,d1
+        exg     d1,d0           old cacr value => d0
+
+        ori.w   #$0808,d1       on 020/030 always clear caches
+
+        cmpi.b  #$30,$A1(a6)
+        bls.s   SETCACHSET
+
+        tst.w   d0              check 040 bits
+        bpl.s   SETCACHDCHK     branch if instruction cache off
+        cpusha  ic              otherwise update memory from cache
+
+SETCACHDCHK:
+        tst.l   d0              check 040 bits
+        bpl.s   SETCACHDINV     branch if data cache off
+        cpusha  dc              otherwise update memory from cache
+
+        tst.l   d1              check 040 bits
+        bmi.s   SETCACHIINV     branch if leaving data cache on
+
+SETCACHDINV:
+        cinva   dc              invalidate cache
+
+SETCACHIINV:
+        cinva   ic              invalidate cache
+
+SETCACHSET:
+        movec   d1,cacr         set the cache
+
+SETCACHX:
+        move.l  (a7)+,d1
+        rts
+
+*******************************************************************
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

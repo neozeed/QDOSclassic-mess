@@ -1,0 +1,26 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_KBD_inc'
+	INCLUDE	'DEV_ASM_Q40_HW_inc'
+
+	SECTION KEYUK
+
+	XDEF	LNG_KTAB
+	XDEF	KTB_OFFS_CT,KTB_OFFS_SH,KTB_OFFS_GR
+
+	XDEF	HARDTAG
+
+*******************************************************************
+*
+* KEYUK_asm - Q40 UK keyboard routines
+*	   - originated July 98 - Mark Swift
+*	   - last modified 22/09/99 (MSW)
+
+*******************************************************************
+*
+*  Hardware specific routines
+
+	INCLUDE	'CLSC_SRC_ISA_804Xu_asm'  ; UK keyboard tables
+
+*******************************************************************
+
+	END

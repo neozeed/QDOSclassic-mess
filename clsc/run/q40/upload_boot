@@ -1,0 +1,16 @@
+1 REMark Simple boot to upload a new
+2 REMark ROM to the Q40.
+3 :
+100 TK2_EXT
+110 REMark -- BEEP and wait for a key --
+120 BEEP 1000,1
+130 a$=INKEY$(-1)
+140 :
+150 REMark -- SEND LENGTH --
+160 OPEN#4;"SER1H"
+170 PRINT#4;CHR$(0);CHR$(1);CHR$(128);CHR$(0);
+180 CLOSE#4
+190 :
+200 REMark -- UPLOAD ROMs TO Q40 --
+210 COPY "flp1_BIG_ROM" TO "SER1H"
+220 STOP

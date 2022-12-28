@@ -1,0 +1,277 @@
+10  TURBO_objfil "ram1_RESTORE_TAS_task"
+11  TURBO_taskn "RESTORE_TAS"
+12  TURBO_repfil "scr"
+13  TURBO_windo 0
+14  TURBO_diags 'omit'
+15  TURBO_struct "S"
+16  TURBO_model "<"
+17  TURBO_objdat 4
+18  TURBO_optim "R"
+19 :
+1000 REMark ------------------------------
+1010 REMark RESTORE_TAS_bas - Mark J Swift
+1020 REMark ...Turbo tweaks - SNG
+1070 REMark ------------------------------
+1080 :
+1170 DIM InFile$(100),OutFile$(100),Rplc$(1),qry$(1)
+1180 OPEN#3;"Con_456x174a28x12"
+1190 OPEN#4;"Scr_104x12a362x20"
+1210 REPeat main_loop
+1215  RETRY_HERE
+1220  IF COMPILED
+1221   WHEN ERRor 
+1222    PRINT #3\\"Error: "
+1223    REPORT #3,ERNUM
+1224    INPUT #3;\" Press ENTER to re-start.";Rplc$
+1225    RETRY
+1226   END WHEN 
+1227  END IF 
+1229  WINDOW#3;456,174,28,12:PAPER#3;0:INK#3;7:CLS#3:BORDER#3;3,2:BORDER#3;2,0:BORDER#3;1,2:WINDOW#3;438,160,36,19
+1230  CSIZE#3;2,1:PRINT#3;"RESTORE_TAS V1.10":CSIZE#3;0,0
+1240  PRINT#3;"Puts TAS instruction back into files ";
+1250  PRINT#3;"where TAS has been replaced"
+1260  PRINT#3;\"* Note: Do not apply to originals!"
+1270  CLS#4:BORDER#4;1,7:INK#4;4
+1280  INPUT#3;\"Input file name  >";InFile$
+1290  IF InFile$="" THEN EXIT main_loop
+1300  INPUT#3;"Output file name >";OutFile$
+1310  IF OutFile$="" THEN EXIT main_loop
+1320  WINDOW#3;438,60,36,119:CLS#3
+1330  OPEN_IN#6;InFile$
+1340  fl=FLEN(#6):ft=FTYP(#6):IF ft THEN fd=FDAT(#6)
+1350  CLOSE#6
+1360  base=ALCHP(fl)
+1370  IF base>0 THEN 
+1380   LBYTES InFile$,base
+1390  ELSE 
+1400   PRINT#3;\"Out of memory!"
+1410   EXIT main_loop
+1420  END IF 
+1430  REMark do it
+1440  EA_mask=HEX('003F')
+1450  LINEF_mask=HEX('FFC0')-HEX('10000')
+1460  TAS_inst=HEX('4AC0')
+1470  TAS_mask=HEX('FFC0')-HEX('10000')
+1480  BSR_inst=HEX('6100')
+1490  BSR_mask=HEX('FF00')-HEX('10000')
+1500  RTS_inst=HEX('4E75')
+1510  TST_inst=HEX('4A00')
+1520  TST_mask=HEX('FFC0')-HEX('10000')
+1530  BSET_inst=HEX('08C0')
+1540  BSET_mask=HEX('FFC0')-HEX('10000')
+1550  NoRpc%=0:Rplc$=""
+1560  PRINT#3;\"Pass 1...searching for extended CODE fixes"\\
+1570  p=0
+1580  REPeat Restore_loop
+1590   IF p>=fl THEN EXIT Restore_loop
+1600   FOR N=1 TO 256
+1610    pk=PEEK_W(base+p)
+1620    IF ((pk&&BSR_mask)=BSR_inst)THEN 
+1630     disp=PEEK(base+p+1)
+1640     IF NOT(disp&&1) THEN 
+1650     IF disp=0 THEN 
+1660      disp=PEEK_W(base+p+2)
+1670     END IF 
+1680     lb=p+2+disp
+1690     pk=PEEK_W(base+lb)
+1700     IF ((pk&&TST_mask)=TST_inst)THEN 
+1710      ea=pk && EA_mask
+1720      SELect ON ea
+1730      =0 TO 7 : REMark dn - can cope with this!
+1740       IF Restore_ARI THEN 
+1750        PRINT#3;HEX$(p,32);" TAS d";ea&&7;
+1760        Restore_INST
+1770        IF lb<fl THEN fl=lb
+1780       END IF 
+1790      =16 TO 23 : REMark  (an)
+1800       IF Restore_ARI THEN 
+1810        PRINT#3;HEX$(p,32);" TAS (a";ea&&7;")";
+1820        Restore_INST
+1830        IF lb<fl THEN fl=lb
+1840       END IF 
+1850      =24 TO 31 : REMark  (an)+
+1860       IF Restore_ARI THEN 
+1870        PRINT#3;HEX$(p,32);" TAS (a";ea&&7;")+";
+1880        Restore_INST
+1890        IF lb<fl THEN fl=lb
+1900       END IF 
+1910      =32 TO 39 : REMark  -(an)
+1920       IF Restore_ARI THEN 
+1930        PRINT#3;HEX$(p,32);" TAS -(a";ea&&7;")";
+1940        Restore_INST
+1950        IF lb<fl THEN fl=lb
+1960       END IF 
+1970      =40 TO 47 : REMark d(an)
+1980       IF Restore_ARID THEN 
+1990        PRINT#3;HEX$(p,32);" TAS ";HEX$(PEEK_W(base+lb+2),16);"(a";ea&&7;")";
+2000        Restore_INST
+2010        POKE_W base+p+2,PEEK_W(base+lb+2)
+2020        p=p+2
+2030        IF lb<fl THEN fl=lb
+2040       END IF 
+2050      =48 TO 55 : REMark d(an,a/dn)
+2060       IF Restore_ARID THEN 
+2070        PRINT#3;HEX$(p,32);" TAS $";HEX$(PEEK(base+lb+3),8);"(a";ea&&7;",";"da"(1+(INT(PEEK(base+lb+2)/128)&&1));INT(PEEK(base+lb+2)/16)&&7;".";"wl"(1+(INT(PEEK(base+lb+2)/8)&&1));")";
+2080        Restore_INST
+2090        POKE_W base+p+2,PEEK_W(base+lb+2)
+2100        p=p+2
+2110        IF lb<fl THEN fl=lb
+2120       END IF 
+2130      =56 : REMark $.w
+2140       IF Restore_ARID THEN 
+2150        PRINT#3;HEX$(p,32);" TAS $";HEX$(PEEK_W(base+lb+2),16);
+2160        Restore_INST
+2170        POKE_W base+p+2,PEEK_W(base+lb+2)
+2180        p=p+2
+2190        IF lb<fl THEN fl=lb
+2200       END IF 
+2210      =57 : REMark $.l
+2220       IF RESTORE_ABSL THEN 
+2230        PRINT#3;HEX$(p,32);" TAS $";HEX$(PEEK_L(base+lb+2),32);
+2240        Restore_INST
+2250        POKE_L base+p+2,PEEK_L(base+lb+2)
+2260        p=p+4
+2270        IF lb<fl THEN fl=lb
+2280       END IF 
+2290      =REMAINDER : REMark impossible
+2300       REMark ignore illegal modes
+2310      END SELect 
+2320     END IF 
+2330     END IF 
+2340    END IF 
+2350    p=p+2
+2360    IF p>=fl THEN EXIT N
+2370   END FOR N
+2380   IF p>fl THEN 
+2390    BLOCK#4;100,10,0,0,4
+2400   ELSE 
+2410    BLOCK#4;INT((p/fl)*100),10,0,0,4
+2420   END IF 
+2430  END REPeat Restore_loop
+2440  p=0
+2450  IF (NoRpc%=0) THEN 
+2460   CLS#4
+2470   PRINT#3;\"Pass 2...searching for Line-A & Line-F fixes"
+2480   PRINT#3;\"TAS fixed prior to QDOS 3.23";
+2490   qry$=WAITKEY$(3,"yn"):PRINT#3
+2500   IF qry$=="N" THEN 
+2510    LINEF_inst=HEX('AE00')-HEX('10000')
+2520   ELSE 
+2530    PRINT#3;\"TAS fixed prior to QDOS 3.20";
+2540    qry$=WAITKEY$(3,"yn"):PRINT#3
+2550    IF qry$=="Y" THEN 
+2560     LINEF_inst=HEX('F000')-HEX('10000')
+2570    ELSE 
+2580     LINEF_inst=HEX('FE00')-HEX('10000')
+2590    END IF 
+2600   END IF 
+2610   REPeat Restore_loop
+2620    IF p>=fl THEN EXIT Restore_loop
+2630    FOR N=1 TO 256
+2640     pk=PEEK_W(base+p)
+2650     IF ((pk&&LINEF_mask)=LINEF_inst)THEN 
+2660      ea=pk && EA_mask
+2670      SELect ON ea
+2680      =0 TO 7 : REMark dn - can cope with this!
+2690       REMark PRINT#3;HEX$(p,32);" TAS d";ea&&7;
+2700       REMark Restore_TAS
+2710      =16 TO 23 : REMark  (an)
+2720       PRINT#3;HEX$(p,32);" TAS (a";ea&&7;")";
+2730       Restore_TAS
+2740      =24 TO 31 : REMark  (an)+
+2750       PRINT#3;HEX$(p,32);" TAS (a";ea&&7;")+";
+2760       Restore_TAS
+2770      =32 TO 39 : REMark  -(an)
+2780       PRINT#3;HEX$(p,32);" TAS -(a";ea&&7;")";
+2790       Restore_TAS
+2800      =40 TO 47 : REMark d(an)
+2810       PRINT#3;HEX$(p,32);" TAS ";HEX$(PEEK_W(base+p+2),16);"(a";ea&&7;")";
+2820       Restore_TAS:p=p+2
+2830      =48 TO 55 : REMark d(an,a/dn)
+2840       PRINT#3;HEX$(p,32);" TAS $";HEX$(PEEK(base+p+3),8);"(a";ea&&7;",";"da"(1+(INT(PEEK(base+p+2)/128)&&1));INT(PEEK(base+p+2)/16)&&7;".";"wl"(1+(INT(PEEK(base+p+2)/8)&&1));")";
+2850       Restore_TAS:p=p+2
+2860      =56 : REMark $.w
+2870       PRINT#3;HEX$(p,32);" TAS $";HEX$(PEEK_W(base+p+2),16);
+2880       Restore_TAS:p=p+2
+2890      =57 : REMark $.l
+2900       PRINT#3;HEX$(p,32);" TAS $";HEX$(PEEK_L(base+p+2),32);
+2910       Restore_TAS:p=p+4
+2920      =REMAINDER : REMark impossible
+2930       REMark ignore illegal address modes
+2940      END SELect 
+2950      IF Rplc$=="Q" THEN EXIT Restore_loop
+2960     END IF 
+2970     p=p+2
+2980     IF p>=fl THEN EXIT N
+2990    END FOR N
+3000    IF p>fl THEN 
+3010     BLOCK#4;100,10,0,0,4
+3020    ELSE 
+3030     BLOCK#4;INT((p/fl)*100),10,0,0,4
+3040    END IF 
+3050   END REPeat Restore_loop
+3060  END IF 
+3070  IF NoRpc% THEN 
+3080   PRINT#3\\"Saving..."
+3090   IF ft THEN 
+3100    DELETE OutFile$
+3110    SEXEC OutFile$,base,fl,fd
+3120   ELSE 
+3130    DELETE OutFile$
+3140    SBYTES OutFile$,base,fl
+3150   END IF 
+3160  ELSE 
+3170   PRINT#3\\"No changes."
+3180  END IF 
+3190  Rplc$=INKEY$(#3,200)
+3200  CLCHP
+3210 END REPeat main_loop
+3220 CLOSE#3
+3230 CLOSE#4
+3240 STOP
+3250 :
+3260 DEFine FuNction Restore_ARI
+3270  RETurn ((PEEK_W(base+lb+2)&&BSET_mask)=BSET_inst) AND (PEEK_W(base+lb+4)=7) AND (PEEK_W(base+lb+6)=RTS_inst)
+3280 END DEFine 
+3290 DEFine FuNction Restore_ARID
+3300  RETurn ((PEEK_W(base+lb+4)&&BSET_mask)=BSET_inst) AND (PEEK_W(base+lb+6)=7) AND (PEEK_W(base+lb+10)=RTS_inst)
+3310 END DEFine 
+3320 DEFine FuNction RESTORE_ABSL
+3330  RETurn (PEEK_W(base+p+4)=NOP_inst)
+3340 END DEFine 
+3350 DEFine PROCedure Restore_INST
+3360  PRINT#3;" restored."
+3370  POKE_W base+p,TAS_inst||ea
+3380  NoRpc%=NoRpc%+1
+3390 END DEFine 
+3400 DEFine PROCedure Restore_TAS
+3410  LOCal get_loop
+3420  IF NOT(Rplc$=="a")
+3430   Rplc$=WAITKEY$(3,"ynaq")
+3440  ELSE 
+3450   PRINT#3;" restored."
+3460  END IF 
+3470  IF Rplc$=="y" OR Rplc$=="a" THEN 
+3480   POKE_W base+p,TAS_inst||ea
+3490   NoRpc%=NoRpc%+1
+3500  END IF 
+3510 END DEFine 
+3520 DEFine FuNction WAITKEY$(Chan%,i$)
+3530  LOCal K$(1),i,l,prompt_loop,get_loop
+3540  PRINT#Chan%;" (";
+3550  i=1:l=LEN(i$)
+3560  REPeat prompt_loop
+3570   PRINT #Chan%;i$(i);:i=i+1
+3580   IF i>l THEN EXIT prompt_loop
+3590   PRINT#Chan%;"/";
+3600  END REPeat prompt_loop
+3610  PRINT#Chan%;")? >";
+3620  CURSEN#Chan%
+3630  REPeat get_loop
+3640   K$=INKEY$(#Chan%,-1)
+3650   IF K$ INSTR i$ THEN EXIT get_loop
+3660  END REPeat get_loop
+3670  CURDIS#Chan%
+3680  PRINT#Chan%;K$
+3690  RETurn K$
+3700 END DEFine 

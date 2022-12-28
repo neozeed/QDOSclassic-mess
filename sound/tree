@@ -1,0 +1,6 @@
+A description of the directories here
+
+sound        Sound related
+sound/beep   Software using QL standard beep
+sound/sss    Software requiring Sampled Sound System
+

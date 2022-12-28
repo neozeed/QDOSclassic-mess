@@ -1,0 +1,640 @@
+10  TURBO_objfil "ram1_SYSREF_task"
+11  TURBO_taskn "SYS_REF"
+12  TURBO_repfil "scr"
+13  TURBO_windo 0
+14  TURBO_diags 'omit'
+15  TURBO_struct "S"
+16  TURBO_model "<"
+17  TURBO_objdat 10
+18  TURBO_optim "R"
+19 :
+1000 REMark ------------------------------
+1010 REMark    SYSREF_bas - Mark J Swift
+1070 REMark ------------------------------
+1080 :
+1170 DIM InFile$(100),OutFile$(100),Rplc$(1),P$(256),Src$(5),Dst$(40),Name$(40),Space$(40),temp$(40),nam$(64),pch$(256),a$(100),verstag$(4)
+1180 verstag$="1.10"
+1190 Buff=ALCHP(256)
+1200 Rows=14
+1210 DIM D(Rows/2)
+1220 OPEN#3;"Con_456x234a28x12"
+1230 OPEN#4;"Scr_104x12a362x20"
+1240 OPEN#5;"Scr_436x142a38x99"
+1250 InFlg%=0
+1260 REPeat outer_loop
+1262  RETRY_HERE
+1264  IF InFlg%<>0 THEN CLOSE#7:DELETE Dst$&"SYS_REF_dat":InFlg%=0
+1270  IF COMPILED
+1271   WHEN ERRor
+1272    PRINT #3\\"Error: "
+1273    REPORT #3,ERNUM
+1274    INPUT #3;\" Press ENTER to re-start.";Rplc$
+1275    RETRY
+1276   END WHEN
+1277  END IF
+1279  WINDOW#3;456,234,28,12:PAPER#3;0:INK#3;7:CLS#3:BORDER#3;3,2:BORDER#3;2,0:BORDER#3;1,2:WINDOW#3;438,220,36,19:BORDER#5;1,4:INK#5;4:PAPER#5;0
+1280  CSIZE#3;2,1:PRINT#3;"SYS_REF v";verstag$:CSIZE#3;0,0
+1290  PRINT#3;"CODE-PATCHER by MARK J SWIFT";
+1300  CLS#4:BORDER#4;1,7:INK#4;4:CLS#5
+1310  WINDOW#3;438,40,36,59
+1320  IF InFlg%=0 THEN
+1330   INK#5;4
+1340   PRINT#5;" Use SYS_REF to patch tasks & M/C that fail when the system"
+1350   PRINT#5;" variables are moved from the usual $28000 location"
+1360   PRINT#5;" (i.e. under Minerva or Amiga-QDOS with the 2nd screen enabled)."
+1380   PRINT#5;\" If patching CODEGEN_task of the TURBO compiler, patch all references"
+1390   PRINT#5;" EXCEPT the two that refer to $28010. These are not part of the CODEGEN"
+1400   PRINT#5;" code, but are included in all TURBO compiled programs. If patching"
+1410   PRINT#5;" PARSER_task, or any other TURBO program replace ALL references."
+1420   PRINT#5;\" Patched versions of TURBO produce code identical to unpatched"
+1430   PRINT#5;" versions, i.e. compiled tasks still require patching."
+1440   PRINT#5;\" NOTE: SYS_REF makes all TURBO'ed & some QLIB'ed programs 32-bit clean."
+1450   INPUT#3;\"Input FILE or VOLUME name  >";InFile$
+1460   IF InFile$="" THEN EXIT outer_loop
+1470   IF LEN(InFile$)=5 THEN
+1480    InFlg%=INT(((InFile$ INSTR "flp1_flp2_flp3_flp4_ram1_ram2_")+4)/5)
+1490   ELSE
+1500    InFlg%=0
+1510   END IF
+1520   IF InFlg%=0 THEN
+1530    INPUT#3;"         Output FILE name  >";OutFile$
+1540    IF OutFile$="" THEN EXIT outer_loop
+1550   ELSE
+1560    INPUT#3;"       Output VOLUME name  >";OutFile$
+1570    IF OutFile$="" THEN InFlg%=0:EXIT outer_loop
+1580    Src$=InFile$:Dst$=OutFile$
+1590    DELETE Dst$&"SYS_REF_dat"
+1600    OPEN_NEW#7;Dst$&"SYS_REF_dat"
+1610    DIR#7;Src$:CLOSE#7
+1620    OPEN_IN#7;Dst$&"SYS_REF_dat"
+1630    INPUT#7;Name$,Space$
+1640   END IF
+1650   CLS#5
+1660  END IF
+1670  REPeat main_loop
+1680   REPeat in_loop
+1690    CLS#4:CLS#3:RPORT CHR$(10)
+1700    IF InFlg%<>0 THEN
+1710     IF EOF(#7) THEN
+1720      EXIT main_loop
+1730     ELSE
+1740      INPUT#7;InFile$
+1750      OutFile$=Dst$&InFile$
+1760      InFile$=Src$&InFile$
+1770     END IF
+1780    END IF
+1790    OPEN_IN#6;InFile$
+1800    el=0:fd=0:fl=FLEN(#6):ft=FTYP(#6):IF ft THEN fd=FDAT(#6)
+1810    CLOSE#6
+1820    RPORT "File: "&InFile$&CHR$(10)
+1830    IF fl=0 THEN
+1840     RPORT "File empty!"&CHR$(10)
+1850     IF InFlg%=0 THEN EXIT main_loop
+1860    ELSE
+1861     INK#3;4
+1862     IF ft=1 AND fd<>0 THEN
+1864      RPORT "Executable TASK"&CHR$(10)
+1866     ELSE
+1870      temp$=FILE_CLASS$(InFile$)
+1880      IF temp$<>"" THEN
+1890       RPORT "Possible "&temp$&CHR$(10)
+1900      END IF
+1902     END IF
+1904     INK#3;7
+1910     IF InFlg%=0 THEN
+1920      EXIT in_loop
+1930     ELSE
+1940      RPORT "Patch":Rplc$=WAITKEY$(3,"ynq")
+1950      IF Rplc$=="y" THEN EXIT in_loop
+1960      IF Rplc$=="q" THEN EXIT main_loop
+1970     END IF
+1980    END IF
+1990   END REPeat in_loop
+2000   CLS#5
+2010   base=ALCHP(fl)
+2020   IF base>0 THEN
+2030    LBYTES (InFile$(1 TO LEN(InFile$))),base
+2040   ELSE
+2050    PRINT#3;\"Out of memory!"
+2060    EXIT outer_loop
+2070   END IF
+2080   REMark do it
+2090   NoRpc%=0
+2100   fixSYSV
+2110   IF NoRpc% THEN
+2120    RPORT "Saving..."&CHR$(10)
+2125    s=base
+2127    IF el<0 THEN
+2128     s=base-el
+2129    END IF
+2130    IF ft=1 THEN
+2140     DELETE OutFile$
+2150     SEXEC OutFile$,s,fl,fd
+2160    ELSE
+2170     DELETE OutFile$
+2180     SBYTES OutFile$,s,fl
+2190    END IF
+2200   ELSE
+2210    RPORT "No changes."&CHR$(10)
+2220   END IF
+2230   RECHP(base)
+2240   IF (InFlg%=0) OR (NoRpc%=0) THEN
+2250    Rplc$=INKEY$(#3,200)
+2260    IF InFlg%=0 THEN EXIT main_loop
+2270   END IF
+2280  END REPeat main_loop
+2310 END REPeat outer_loop
+2320 RECHP(Buff)
+2330 CLOSE#3
+2340 CLOSE#4
+2350 CLOSE#5
+2360 IF InFlg%<>0 THEN CLOSE#7:DELETE OutFile$&"SYS_REF_dat":InFlg%=0
+2370 STOP
+2380 :
+2390 DEFine PROCedure fixSYSV
+2400  LOCal a,p,i,N,pk,pflg%
+2410  CLS#4
+2420  tskFlg%=((PEEK_W(base+6)=HEX("4AFB")) AND (ft<>0))
+2430  IF tskFlg% THEN
+2440   nam$=""
+2450   pk=PEEK_W(base+8)
+2460   FOR i=0 TO pk-1
+2470    nam$=nam$&CHR$(PEEK(base+10+i))
+2480   END FOR i
+2490   p=base+4+(6+2*INT((LEN(nam$)+1)/2))
+2500  ELSE
+2510   p=base+4
+2520  END IF
+2526  pflg%=0:pch$="":ol=0:versold$=verstag$
+2530  IF PEEK_L(p)=HEX("50544348") THEN
+2531   versold$=LONGINT$(PEEK_L(p+4))
+2532   IF STRINGL(versold$)<STRINGL(verstag$) THEN
+2533    RPORT "...patched by an outdated version of SYS_REF ":p=p+8
+2534    IF versold$>="1.08" THEN
+2535     ol=PEEK_L(p):NoRpc%=PEEK_W(p+4):p=p+6
+2536    ELSE
+2537     NoRpc%=PEEK_W(p):p=p+2
+2542     IF tskFlg% THEN
+2543      ol=78+4*NoRpc%+2*INT((LEN(nam$)+1)/2)
+2544     ELSE
+2545      ol=60+LEN(pch$)
+2546     END IF
+2547     IF versold$=="1.07" THEN
+2549      ol=66+40+ol
+2552     END IF
+2553    END IF
+2554    FOR N=1 TO NoRpc%
+2555     pch$=pch$&LONGINT$(PEEK_L(p)):p=p+4
+2556    END FOR N
+2600   ELSE
+2610    pflg%=1
+2620    RPORT "...already patched by a current version of SYS_REF "
+2630   END IF
+2640   RPORT "(v"&versold$&")"&CHR$(10)
+2650  ELSE
+2660   p=0
+2670   REPeat find_loop
+2680    IF p>fl THEN EXIT find_loop
+2690    FOR N=1 TO 256
+2700     pk=PEEK_L(base+p)
+2710     IF (pk>=HEX("28000")) AND (pk<HEX("28200")) THEN
+2720      DISOUT
+2730      IF NOT(Rplc$=="a") THEN
+2740       RPORT "REPLACE":Rplc$=WAITKEY$(3,"ynaq")
+2750       IF Rplc$=="q" THEN
+2760        pch$="":EXIT find_loop
+2770       END IF
+2780      END IF
+2790      IF (Rplc$=="y") OR (Rplc$=="a") THEN
+2800       pch$=pch$&LONGINT$(p)
+2810       NoRpc%=NoRpc%+1
+2820      END IF
+2830     END IF
+2840     p=p+2
+2850     IF p>=fl THEN EXIT N
+2860    END FOR N
+2870    IF p>fl THEN
+2880     BLOCK#4;100,10,0,0,4
+2890    ELSE
+2900     BLOCK#4;INT((p/fl)*100),10,0,0,4
+2910    END IF
+2920   END REPeat find_loop
+2925  END IF
+2930  IF pch$<>"" THEN
+2940   IF tskFlg% THEN
+2950    xl=56+20+4+78+LEN(pch$)+2*INT((LEN(nam$)+1)/2)
+2960   ELSE
+2970    xl=56+20+4+60+LEN(pch$)
+2980   END IF
+2982   el=xl-ol
+2983   p=0
+2984   IF ol<>0 THEN
+2985    RPORT "removing old patches - $"&HEX$(ol,32)&" bytes"&CHR$(10)
+2987   END IF
+2988   IF xl<>0 THEN
+2989    RPORT "Extending file by $"&HEX$(xl,32)&" bytes"&CHR$(10)
+2990   END IF
+2995   IF el<>0 THEN
+2998    IF el>0 THEN
+2999     RECHP(base):fl=fl+el:base=ALCHP(fl)
+3010     LBYTES InFile$,base+el
+3012    ELSE
+3013     p=-el
+3014     fl=fl+el
+3015    END IF
+3020   END IF
+3030   REMark start:
+3040   po "6000":POKE_W base+p,2+tskFlg%*(2+2+2+2*INT((LEN(nam$)+1)/2))+8+2+LEN(pch$)+4+28*2:p=p+2:REMark bra skip
+3050   IF tskFlg% THEN
+3060    po "0000"
+3070    po "4AFB":REMark dc.w $4afb
+3080    REMark jobname:
+3090    POKE_W base+p,LEN(nam$):p=p+2
+3100    FOR i=1 TO LEN(nam$):POKE base+p+i-1,CODE(nam$(i)):NEXT i:p=p+2*INT((LEN(nam$)+1)/2)
+3110   END IF
+3120   po "5054":po "4348":POKE_L base+p,STRINGL(verstag$):p=p+4:REMark dc.b 'PTCHx.xx'
+3125   POKE_L base+p,xl:p=p+4
+3130   REMark patch_tbl:
+3140   POKE_W base+p,LEN(pch$)/4:p=p+2
+3150   FOR i=1 TO LEN(pch$)-3 STEP 4:POKE_L base+p,STRINGL(pch$(i TO i+3)):p=p+4:NEXT i
+3151   REMark setcach:
+3152   RESTORE 3445
+3153   FOR i=1 TO 28
+3154    READ temp$:po temp$
+3155   END FOR i
+3160   REMark skip:
+3162   po "4E40":REMark trap#0 - supervisor mode
+3164   po "007C":po "0700":REMark ori #$0700,sr - no ints
+3170   po "48E7":po "E3F0": REMark movem.l d0-d2/d6/d7/a0-a3,-(a7)
+3180   po "7000":REMark moveq #0,d0
+3190   po "4E41":REMark trap #1
+3192   po "7000":REMark moveq #0,d0
+3194   po "61B6":REMark bsr.s setcach
+3196   po "2E00":REMark move.l d0,d7
+3200   po "45FA":POKE_W base+p,44+12*tskFlg%:p=p+2:REMark lea patch_end(pc),a2
+3210   po "43FA":POKE_W base+p,HEX("FFF0")-68-LEN(pch$):p=p+2:REMark lea patch_tbl(pc),a1
+3220   po "3219":REMark move.w (a1)+,d1
+3230   po "6012":REMark bra.s svdbra
+3240   REMark svloop:
+3250   po "2419":REMark move.l (a1)+,d2
+3260   po "2032":po "2800":REMark move.l (a2,d2),d0
+3270   po "0280":po "0000":po "7FFF":REMark andi.l #$7FFF,d0
+3280   po "D088":REMark add.l a0,d0
+3290   po "2580":po "2800":REMark move.l d0,(a2,d2)
+3300   REMark svdbra:
+3310   po "51C9":po "FFEC":REMark dbra d1,svloop
+3312   po "2007":REMark move.l d7,d0
+3314   po "618E":REMark bsr.s setcach
+3320   IF tskFlg% THEN
+3330    po "203C":po "0000":POKE_W base+p,xl:p=p+2:REMark move.l #patch_end-start,d0
+3340    po "DDC0":REMark adda.l d0,a6
+3350    po "99C0":REMark suba.l d0,a4
+3360    po "9BC0":REMark suba.l d0,a5
+3370   END IF
+3380   po "4CDF":po "0FC7":REMark movem.l (a7)+,d0-d2/d6/d7/a0-a3
+3382   po "027C":po "D8FF":REMark andi #-$2701,sr - user mode
+3390   REMark patch_end:
+3420  END IF
+3432  IF pflg%=0 THEN
+3435   fixTURBO
+3436   IF RecogFlg%=0 THEN fixQLIB
+3438  END IF
+3440 END DEFine
+3441 :
+3442 REMark DATA CACHE disable subroutine
+3445 DATA "2F01","0C28","0010","00A1","632A","4E7A","1002","C340"
+3446 DATA "0041","0808","0C28","0030","00A1","6314","4A40","6A02"
+3447 DATA "F4B8","4A80","6A06","F478","4A81","6B02","F458","F498"
+3448 DATA "4E7B","1002","221F","4E75"
+3460 DEFine PROCedure fixTURBO
+3470  LOCal p,Q,N,find_loop
+3480  RecogFlg%=0
+3485  p=9984:IF fl<p THEN p=fl
+3490  X=find(LONGINT$(HEX("20087E00"))&LONGINT$(HEX("24790002"))&LONGINT$(HEX("801045EA"))&LONGINT$(HEX("00682A0A")),FILL$(CHR$(255),16),base,0,p)
+3660  IF X<>-1 THEN
+3665   RecogFlg%=-1
+3670   RPORT "TURBO TASK:"&CHR$(10)
+3680   unfixTURBO
+3690   p=0:CLS#4:CLS#5
+3700   REPeat find_loop
+3710    IF p>fl THEN EXIT find_loop
+3720    FOR N=1 TO 256
+3730     temp$=HEX$(PEEK_L(base+p),32)
+3740     IF temp$(1 TO 6)=="422E8A" THEN
+3750      POKE_L base+p,HEX("422E801D"):DISOUT:RPORT "32 bit fix at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+3760     ELSE
+3770      IF temp$(1 TO 6)=="57EE8A" THEN
+3780       POKE_L base+p,HEX("57EE801D"):DISOUT:RPORT "32 bit fix at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+3790      ELSE
+3800       IF temp$(1 TO 6)=="4A2E8A" THEN
+3810        POKE_L base+p,HEX("4A2E801D"):DISOUT:RPORT "32 bit fix at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+3820       END IF
+3830      END IF
+3840     END IF
+3850     p=p+2
+3860     IF p>=fl THEN EXIT N
+3870    END FOR N
+3880    IF p>fl THEN
+3890     BLOCK#4;100,10,0,0,4
+3900    ELSE
+3910     BLOCK#4;INT((p/fl)*100),10,0,0,4
+3920    END IF
+3930   END REPeat find_loop
+3940  END IF
+3950 END DEFine
+3960 :
+3970 DEFine PROCedure fixQLIB
+3980  LOCal l,N,i,X
+3990  RecogFlg%=0
+4000  X=find("Libe"&"rati",FILL$(CHR$(223),8),base,0,fl)
+4020  IF X<>-1 THEN
+4025  RecogFlg%=-1
+4030   REPeat loop
+4040    X=X-1:IF PEEK(base+X)=0 THEN EXIT loop
+4050   END REPeat loop
+4060   l=PEEK_W(base+X)
+4070   RESTORE 4880
+4080   READ N:l=l-N-N:POKE_W base+X,l:POKE_L base+X+2,STRINGL(":-)"&CHR$(10)):X=X+l+2
+4090   FOR i=0 TO N-1
+4100    READ temp$:POKE_W base+X+i+i,HEX(temp$)
+4110   NEXT i
+4120   IF PEEK_W(base+6)<>HEX("4AFB") THEN
+4130    RPORT "QLIB CODE:"&CHR$(10)
+4140   ELSE
+4150    RPORT "QLIB TASK:"&CHR$(10)
+4160   END IF
+4170   p=X+48:CLS#4:CLS#5
+4180   REPeat find_loop
+4190    IF p>fl THEN EXIT find_loop
+4200    FOR N=1 TO 256
+4210     temp$=HEX$(PEEK_L(base+p),32)
+4220     IF temp$=="46FC0000" THEN
+4230      POKE_L base+p,HEX("027CC0FF"):DISOUT:RPORT "tidying code at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+4240     ELSE
+4250      IF (temp$=="20728004") THEN
+4260       POKE_W base+p,HEX("6100"):POKE_W base+p+2,(X+26)-(p+2):DISOUT:RPORT "32 bit fix at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+4270      ELSE
+4280       IF (temp$=="26725004") THEN
+4290        POKE_W base+p,HEX("6100"):POKE_W base+p+2,(X+12)-(p+2):DISOUT:RPORT "32 bit fix at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+4300       ELSE
+4310        IF (temp$=="26722004") THEN
+4320         POKE_W base+p,HEX("6100"):POKE_W base+p+2,X-(p+2)
+4330         IF (HEX$(PEEK_W(base+p+4),32)=="200B") THEN
+4340          POKE_W base+p+4,HEX("4E71")
+4350         END IF
+4360         DISOUT:RPORT "32 bit fix at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+4370        ELSE
+4380         IF (temp$=="26724004") THEN
+4390          POKE_W base+p,HEX("6100"):POKE_W base+p+2,(X+6)-(p+2)
+4400          IF PEEK(base+p+18)=HEX("67") THEN
+4410           IF PEEK(base+p+20)=HEX("65") THEN
+4420            i=p+22+PEEK(base+p+21)
+4430            IF (PEEK_W(base+i)==HEX("2A0B")) THEN
+4440             POKE_W base+i,HEX("2A00")
+4450            END IF
+4460           END IF
+4470          END IF
+4480          DISOUT:RPORT "32 bit fix at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+4490         ELSE
+4500          IF (temp$=="20322004") THEN
+4510           POKE_W base+p,HEX("6100"):POKE_W base+p+2,(X+32)-(p+2)
+4520           IF (PEEK_W(base+p+6)==HEX("2040")) THEN
+4530            POKE_W base+p+6,HEX("4E71")
+4540           END IF
+4550           DISOUT:RPORT "32 bit fix at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+4560          ELSE
+4570           IF (temp$=="24321004") THEN
+4580            IF (HEX$(PEEK_L(base+p+4),32)=="6A080C82") AND (HEX$(PEEK_L(base+p+8),32)=="FFFFFFFF") AND (HEX$(PEEK_W(base+p+12),16)=="6710") THEN
+4590             p=p+4:POKE_L base+p,HEX("70FFB480"):POKE_L base+p+4,HEX("6714E98A"):POKE_W base+p+8,HEX("E88A")
+4600            END IF
+4610            DISOUT:RPORT "32 bit fix at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+4620           ELSE
+4630            IF (temp$=="2640586B") THEN
+4640             IF (HEX$(PEEK_L(base+p+4),32)=="00120800") AND (HEX$(PEEK_L(base+p+8),32)=="001D6714") THEN
+4650              POKE_W base+p,HEX("6100"):POKE_W base+p+2,(X+16)-(p+2):POKE_L base+p+4,HEX("586B0012"):POKE_L base+p+8,HEX("E5886A14")
+4660              DISOUT:RPORT "32 bit fix at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+4670             END IF
+4680            END IF
+4690           END IF
+4700          END IF
+4710         END IF
+4720        END IF
+4730       END IF
+4740      END IF
+4750     END IF
+4760     p=p+2
+4770     IF p>=fl THEN EXIT N
+4780    END FOR N
+4790    IF p>fl THEN
+4800     BLOCK#4;100,10,0,0,4
+4810    ELSE
+4820     BLOCK#4;INT((p/fl)*100),10,0,0,4
+4830    END IF
+4840   END REPeat find_loop
+4850  END IF
+4860 END DEFine
+4870 :
+4880 DATA 24
+4890 DATA "2032","2004","600A","2032","4004","6004","2032","5004"
+4900 DATA "2640","E988","E888","C18B","4E75","2032","8004","6004"
+4910 DATA "2032","2004","2040","E988","E888","C188","4A80","4E75"
+4920 :
+4930 DEFine PROCedure unfixTURBO
+4935  IF STRINGL(versold$)<STRINGL("1.05") THEN
+4940   RPORT "removing old patches..."&CHR$(10)
+4950   p=0:CLS#4:CLS#5
+4960   REPeat find_loop
+4970    IF p>fl THEN EXIT find_loop
+4980    FOR N=1 TO 256
+4990     temp$=HEX$(PEEK_L(base+p),32)
+5000     IF temp$=="08920007" THEN
+5010      POKE_L base+p,HEX("422E8AD4"):DISOUT:RPORT "old fix removed at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+5020     ELSE
+5030      IF temp$=="660203D2" THEN
+5040       POKE_L base+p,HEX("57EE8AD4"):DISOUT:RPORT "old fix removed at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+5050      ELSE
+5060       IF temp$(1 TO 6)=="8AD46D" THEN
+5070         p=p+2:POKE base+p,HEX("66"):DISOUT:RPORT "old fix removed at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+5080       END IF
+5090      END IF
+5100     END IF
+5110     p=p+2
+5120     IF p>=fl THEN EXIT N
+5130    END FOR N
+5140    IF p>fl THEN
+5150     BLOCK#4;100,10,0,0,4
+5160    ELSE
+5170     BLOCK#4;INT((p/fl)*100),10,0,0,4
+5180    END IF
+5190   END REPeat find_loop
+5195  END IF
+5200 END DEFine
+5210 :
+5220 DEFine PROCedure po(a$)
+5230  POKE_W base+p,HEX(a$):p=p+2
+5240 END DEFine
+5250 :
+10000 DEFine PROCedure DISOUT
+10010  LOCal loop, preLoop, disLoop
+10020  LOCal r, Ds, Q, N, c, i
+10030  r=Rows/2
+10040  Ds=0
+10050  FOR i=1 TO r
+10060   D(i)=0
+10070  END FOR i
+10080  Q=p-8*r
+10090  IF Q<0 THEN Q=0
+10100  REPeat preLoop
+10110   N=D68K(base+Q,Q\Buff)
+10120   Q=Q+N
+10130   Ds=Ds-D(i)+N
+10140   D(i)=N
+10150   REPeat loop
+10160    i=1+(i MOD r)
+10170    N=N-6
+10180    IF N<=0 THEN EXIT loop
+10190    Ds=Ds-D(i)
+10200    D(i)=0
+10210   END REPeat loop
+10220   IF Q>=p THEN EXIT preLoop
+10230  END REPeat preLoop
+10240  CLS#5
+10250  Q=Q-Ds
+10260  r=Rows
+10270  dflag=0
+10280  REPeat disLoop
+10290   N=D68K(base+Q,Q\Buff)
+10300   i=0:P$=" "
+10310   REPeat loop
+10320    c=PEEK(Buff+i)
+10330    IF c=0 THEN EXIT loop
+10340    i=i+1
+10350    P$=P$(1 TO LEN(P$))&CHR$(c)
+10360   END REPeat loop
+10370   IF (Q<=p) AND ((Q+N)>p) THEN
+10380    IF dflag AND NOT("tas" INSTR P$(1 TO LEN(P$)))
+10390     P$=P$(1 TO 14)&"         dc.w      $"&P$(11 TO 14)&CHR$(10):dflag=1:N=2
+10400     INK#5;4
+10410    ELSE
+10420     INK#5;7
+10430    END IF
+10440   ELSE
+10450    INK#5;4
+10460     dflag="dc." INSTR P$(1 TO LEN(P$))
+10470   END IF
+10480   Q=Q+N
+10490   r=r-((N+5) DIV 6)
+10500   IF r<0 THEN EXIT disLoop
+10510   PRINT#5;P$(1 TO LEN(P$));
+10520  END REPeat disLoop
+10530 END DEFine
+10540 :
+10550 DEFine FuNction FILE_CLASS$(i$)
+10560  i=0
+10570  REPeat check_loop
+10580   j="_" INSTR i$(i+1 TO LEN(i$))
+10590   IF j=0 THEN EXIT check_loop
+10600   i=i+j
+10610   IF i=LEN(i$) THEN RETurn ""
+10620  END REPeat check_loop
+10630  IF i=0 THEN
+10640   j=-1
+10650  ELSE
+10660   IF (i=5) AND (i$(1 TO i) INSTR "ram1_ram2_flp1_flp2_mdv1_mdv2_") THEN
+10670    j=-1
+10680   END IF
+10690  END IF
+10700  IF j<>0 THEN
+10710   j="_"&i$(i+1 TO LEN(i$))&"_" INSTR "_BOOT_"
+10720   SELect ON j
+10730   =1:a$="SuperBASIC boot program"
+10740   =REMAINDER :a$=""
+10750   END SELect
+10760   RETurn a$
+10770  ELSE
+10780   a$=""
+10790   j=(i$(i TO LEN(i$))&"_") INSTR "_c_h_bas_fth_asm_list_txt_text_scr_doc_aba_prg_grf_hob_arc_zip_font_fnt_boot_asc_screen_dbf_scn_log_task_job_bin_code_rext_inc_"
+10800   SELect ON j
+10810   =1:a$="C source"
+10820   =3:a$="C header file"
+10830   =5:a$="SuperBASIC program"
+10840   =9:a$="FORTH program"
+10850   =13:a$="Assembler source"
+10860   =17:a$="Assembler list file"
+10870   =123:a$="Assembler include file"
+10880   =22,26,77,96:a$="ASCII text file"
+10890   =31,81:a$="Screen-save"
+10900   =35:a$="QUILL wordprocess document"
+10910   =39:a$="ABACUS spreadsheet document"
+10920   =43:a$="ARCHIVE program document"
+10930   =88:a$="ARCHIVE database file"
+10940   =92:a$="ARCHIVE screen layout"
+10950   =47:a$="EASEL chart document"
+10960   =51:a$="Psion help file"
+10970   =55:a$="ARC file archive"
+10980   =59:a$="ZIP file archive"
+10990   =63,68:a$="Alternative character set"
+11000   =72:a$="SuperBASIC boot program"
+11010   =100,105:a$="executable TASK"
+11020   =109,113:a$="Machine code"
+11030   =118:a$="Resident extension code"
+11040   =REMAINDER :a$=""
+11050   END SELect
+11060  END IF
+11070  RETurn a$
+11080 END DEFine
+11090 :
+11100 DEFine FuNction WAITKEY$(Chan%,i$)
+11110  LOCal K$(1),i,l,prompt_loop,get_loop
+11120  RPORT " ("
+11130  i=1:l=LEN(i$)
+11140  REPeat prompt_loop
+11150   RPORT i$(i):i=i+1
+11160   IF i>l THEN EXIT prompt_loop
+11170   RPORT "/"
+11180  END REPeat prompt_loop
+11190  RPORT ")? >"
+11200  CURSEN#Chan%
+11210  REPeat get_loop
+11220   K$=INKEY$(#Chan%,-1)
+11230   IF K$ INSTR i$ THEN EXIT get_loop
+11240  END REPeat get_loop
+11250  CURDIS#Chan%
+11260  RPORT K$&CHR$(10)
+11270  RETurn K$
+11280 END DEFine
+11290 :
+11300 DEFine PROCedure RPORT(temp$)
+11310  PRINT#3;temp$;
+11320 END DEFine
+11330 :
+11340 DEFine FuNction find(txt$,msk$,base,s,e)
+11350  LOCal i,j,K,l
+11360  CLS#4
+11370  l=-1
+11380  i=s
+11390  REPeat i_loop
+11400   j=0
+11410   REPeat j_loop
+11420    K=0
+11430    REPeat k_loop
+11440     IF (PEEK(base+i+j+K)&&CODE(msk$(K+1)))<>(CODE(txt$(K+1))&&CODE(msk$(K+1))) THEN EXIT k_loop
+11450     K=K+1
+11460     IF K=LEN(txt$) THEN
+11470      l=i+j:EXIT i_loop
+11480     END IF
+11490    END REPeat k_loop
+11500    j=j+1
+11510    IF j=256 THEN EXIT j_loop
+11520   END REPeat j_loop
+11530   IF i>=e THEN
+11540    BLOCK #4,100,10,0,0,4
+11550   ELSE
+11560    BLOCK#4;((i-s)/(e-s))*100,10,0,0,4
+11570   END IF
+11580   i=i+256
+11590   IF (i-e)>=256 THEN EXIT i_loop
+11600  END REPeat i_loop
+11610  RETurn l
+11620 END DEFine
+11630 :

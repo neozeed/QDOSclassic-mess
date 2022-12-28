@@ -1,0 +1,30 @@
+Short:    simple program to display the QL memory map
+Author:   Mark J Swift
+Version:  1.04
+Uploader: msw@blackpool.ac.uk
+Type:     util/misc
+
+This program displays a memory map that includes COMMON HEAP,
+FREE SPACE, SUPERBASIC AREA, TRANSIENT PROGRAM AREA and
+RESIDENT PROCEDURE AREA.
+
+
+ARCHIVE CONTENTS
+
+ MEMORYMAP_bas     - simple program to display a memory map
+ MEMORYMAP_readme  - this file
+
+
+FEATURES
+
+* simple and small
+* FREEWARE
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

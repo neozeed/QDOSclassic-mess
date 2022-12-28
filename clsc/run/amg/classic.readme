@@ -1,0 +1,109 @@
+Short:    QL clone (binaries and documentation)
+Type:     misc/emu
+Uploader: msw@blackpool.ac.uk
+Author:   Rainer Kowallik & Mark J Swift
+Version:  3.25
+Replaces: misc/emu/QDOS4amiga1.lha
+  ___   ___    ___   ___    ___  _      ___    ___  ___  _   ___
+ / _ \ |   \  / _ \ / __|  / __|| |    / _ \  / __|/ __|| | / __|
+| | | || |\ \| | | |\ \   | /   | |   | |_| | \ \  \ \  | || /
+| |/  \| |/ /| |_| |_\ \  | \__ | |__ |  _  | _\ \ _\ \ | || \__
+ \__/\/|___/  \___/|___/   \___||____||_| |_||___/|___/ |_| \___|
+
+  N A T I V E   Q D O S   O N   N O N - Q L   P L A T F O R M S
+
+This is a major reworking of Rainer Kowallik's QL emulator.
+Although originally Amiga-Only, QDOS CLASSIC now aims to provide
+a JS-like QL O/S that will run on any 680X0 hardware.
+
+Most of the new features (including support for the Q40 computer)
+have been added by Mark J Swift (e-mail: msw@blackpool.ac.uk)
+Rainer is no-longer involved in the project.
+The full release includes assembler source and QDOS support disk.
+
+
+QDOSCLASSIC v3.25 FEATURES
+
+*  FASTER than the original QL
+*  LOADS/SAVES to QL floppy disks
+*  Hard disk support via QubIDE ROM
+*  SOUND supported in full (all possible convolutions of BEEP)
+*  SYSTEM VARIABLES movable (even into FAST RAM).
+*  2ND-SCREEN fully usable (like MINERVA ROM)
+*  SCREEN modes 4 and 8 BOTH supported
+*  KEYBOARD history from standard <ALT><ENTER> combination
+*  ALL known amigas supported A500, A500+, A600, A1200, A4000 etc
+*  FOR COMPATIBILITY, processor caches can be enabled/disabled
+*  QDOS utilties disk included with release
+*  BASED ON a JS ROM with many JS ROM bug fixes.
+*  SOURCE included
+*  QDOS ROM relocatable into FAST RAM
+
+
+WHAT'S NEW IN VERSION 3.25
+
+*  sources & binaries for Q40 computer
+*  some bug fixes
+
+
+THE SINCLAIR QL...
+
+      ,-------------------------------------/|/|/|/|/|/|/|/|/|/|
+     / /_//_//_//_//_//_//_//_//_//_//_//_//                   /|
+    / /_//__//_//_//_//_//_//_//_//_//_/ //                   / /
+   / /_//____//_//_//_//_//_//_//_//____//                   / /
+  / /_//__//_//_________________//_//__//___________________/ /
+ /_'___________________________________/|__.=====  .===== __|/
+|______________________________________:====================/
+  |_______________________________________________________|/
+
+The Sinclair QL is a black slab-like computer based around
+Motorola's 68008 micro-processor. The QL was launched as the
+follow-up to the ZX Spectrum, aimed at the business market rather
+than the games market and was supplied with wordprocessor,
+spreadsheet, database and charting programs.
+
+It features a fully multi-tasking operating system (QDOS) and a
+very good built-in BASIC. The QL failed to achieve the
+mass-market appeal of its predecessor, but nevertheless attracted
+a large dedicated  user-base... which is still going strong.
+
+
+INSTALLING THE EMULATOR
+
+1. Create a directory on your destination volume for the QDOS
+   CLASSIC sources, binaries and documentation.
+
+2. Make an assignment to this directory as "CLASSIC:". Consider
+   making the same assignment in your start-up sequence.
+
+3. Copy the contents of the archive QDOS4amiga1.lha to CLASSIC:
+
+4. Move the contents of CLASSIC:AMG/c to your own 'c' directory.
+
+
+CREATING THE QDOS SUPPORT DISK
+
+Creating the QDOS support disk on an Amiga requires that the xfs
+filesystem is mounted. XFS allows access to a multitude of disk
+formats including QL (QDOS) disks. XFS is can be found on the
+aminet in disk/misc.
+
+1. Mount the xfsd filesystem.
+
+2. Copy QDOS4amiga3.zip to RAM:
+
+3. Double-click on the 'QLdisk.unZIP' script icon.
+   Insert a blank disk into DF0: at the appropriate moment...
+   then wait. Rename the resultant QDOS (QL) disk as 'QLutils:'
+
+   Alternatively you may launch 'QLdisk.unZIP' with
+   QDOS4amiga3.zip SHIFT-selected - or you could follow the
+   instructions in the file QDOS4amiga3.readme
+
+
+STARTING THE EMULATOR
+
+1. Double-click on the 'CLASSIC_UK' icon.
+
+2. Insert QLutils: into DF0: and at the F1/F2 prompt and press F1.

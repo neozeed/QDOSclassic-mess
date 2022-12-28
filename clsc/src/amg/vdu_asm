@@ -1,0 +1,1014 @@
+	INCLUDE	'DEV/ASM/QDOS/DEFINES_inc'
+	INCLUDE	'DEV/ASM/AMG/HW_inc'
+	INCLUDE	'CLSC/SRC/AMG/CLSC_inc'
+
+	SECTION VDU
+
+*******************************************************************
+*
+* VDU_asm - VDU routines
+*	 - These are all the necessary screen related sources,
+*	   required to implement a QL-like screen
+*	   on the Amiga computer.
+*	 - Amiga-QDOS sources originated by Rainer Kowallik
+*	 - last modified 23/02/99 (MSW)
+
+VERSTAG	EQU	'1.27'
+THNGTAG	EQU	'aVDU'
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; local variables
+
+** Define some variables local to VDU routines **
+
+VAR.XINTLink EQU	$00	; (long) ptr to next link
+			; (long) address of EXT INT routine
+
+VAR.POLLLink EQU	$08	; (long) ptr to next link
+			; (long) address of POLLed INT routine
+
+VAR.PRIINc   EQU	$38	; (byte)
+VAR.PRIBNd   EQU	$39	; (byte)
+VAR.PRIACc   EQU	$3A	; (word)
+VAR.PRICNt   EQU	$3C	; (word)
+
+VAR.STAT     EQU	$3E	; (byte)
+
+VAR.4COL0    EQU	$40	; (word)
+VAR.4COL1    EQU	$42	; (word)
+VAR.4COL2    EQU	$44	; (word)
+VAR.4COL3    EQU	$46	; (word)
+
+VAR.8COL0    EQU	$48	; (word)
+VAR.8COL1    EQU	$4A	; (word)
+VAR.8COL2    EQU	$4C	; (word)
+VAR.8COL3    EQU	$4E	; (word)
+
+VAR_LEN	    EQU	$50	; length of vars
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  ROM header
+
+BASE:
+	dc.l	$4AFB0001	; ROM recognition code
+	dc.w	PROC_DEF-BASE	; add BASIC procs here
+	dc.w	ROM_START-BASE
+
+	dc.b	0,25
+	dc.l	HARDTAG
+	dc.b	'QL-like screen  '
+	dc.l	VERSTAG
+	dc.b	$A,0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  start of ROM code
+
+ROM_START:
+
+; --------------------------------------------------------------
+;  enter supervisor mode and disable interrupts
+
+	trap	#0
+	ori.w	#$0700,sr	; disable interrupts
+
+; --------------------------------------------------------------
+;  save register entry values
+
+	movem.l	d0-d3/d6-d7/a0-a4/a6,-(a7)
+
+; --------------------------------------------------------------
+;  initialise relevant hardware
+
+	bsr	HW_RESET
+
+; --------------------------------------------------------------
+;  allocate a THING entry for local variables
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+	bsr	MAKE_THG 	; a3 now points to vars
+
+; -------------------------------------------------------------
+; link in external interrupt to act on keyboard press
+
+	lea	XINT_SERver(pc),a1 ; address of routine
+	lea	VAR.XINTLink(a3),a0
+	move.l	a1,4(a0)
+	moveq	#MT.LXINT,d0
+	trap	#1
+
+; --------------------------------------------------------------
+;  link in polled task routine to handle keyboard
+
+	lea	POLL_SERver(pc),a1 ; address of routine
+	lea	VAR.POLLLink(a3),a0
+	move.l	a1,4(a0) 	; address of polled task
+	moveq	#MT.LPOLL,d0
+	trap	#1
+
+; --------------------------------------------------------------
+;  initialise relevant hardware
+
+	bsr	HW_ENABLE
+
+; --------------------------------------------------------------
+;  restore register entry values
+
+ROM_EXIT:
+	movem.l	(a7)+,d0-d3/d6-d7/a0-a4/a6
+
+;  enable interrupts and re-enter user mode
+
+	andi.w	#$D8FF,sr
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  make 'THING' for me
+;
+;  enter a6 = system variables
+;  exit	a3 = address of your private variables
+;
+;  corrupts = d0,d2,a1 - etc...
+
+MAKE_THG:
+	lea	SV_THINGL(a6),a3	; start of THING list
+
+NEXT_THG:
+	move.l	(a3),d0
+	beq.s	ALOC_THG
+
+	move.l	d0,a3
+
+	cmp.w	#4,$2A(a3)
+	bne.s	NEXT_THG
+
+	cmp.l	#THNGTAG,$2C(a3)
+	bne.s	NEXT_THG
+
+	bra.s	OKAY_THG
+
+ALOC_THG:
+	moveq	#0,d2		; owner is superBASIC
+	move.l	#$38+VAR_LEN,d1	; length of thing area
+	moveq	#MT.ALCHP,d0
+	trap	#1		; allocate space
+
+	tst.l	d0
+	bne.s	EXIT_THG 	; exit if error
+
+	move.l	a0,a3
+
+INIT_THG:
+	move.l	#VERSTAG,$26(a3)	; version number
+	move.w	#4,$2A(a3)	; name length
+	move.l	#THNGTAG,$2C(a3)	; name
+	move.l	#'THG%',$30(a3)	; thing variables follow
+	move.l	#2,$34(a3)	; freeform shared code
+
+	lea	$30(a3),a1	; ptr to thing data area
+	move.l	a1,$10(a3)	; store ptr to variables
+
+	lea	SV_THINGL(a6),a1
+	move.l	(a1),(a3)	; extend thing list
+	move.l	a3,(a1)		; put THIS thing at start
+
+OKAY_THG:
+	move.l	$10(a3),a3	; address of data area
+	addq.l	#8,a3		; return with a3 pointing
+				; to first variable
+
+EXIT_THG:
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  find 'THING' for me
+;
+;  enter a6 = system variables
+;  exit	a3 = address of your private variables
+;
+;  corrupts = d0
+
+FIND_THG:
+	lea	SV_THINGL(a6),a3	; start of THING list
+
+FIND_NXTTHG:
+	move.l	(a3),d0
+	beq.s	DEAD_THG
+
+	move.l	d0,a3
+
+	cmp.w	#4,$2A(a3)
+	bne.s	FIND_NXTTHG
+
+	cmp.l	#THNGTAG,$2C(a3)
+	bne.s	FIND_NXTTHG
+
+	move.l	$10(a3),a3	; address of data area
+	addq.l	#8,a3		; return with a3 pointing
+				; to first variable
+
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  No thing entry! - won't happen, surely?
+
+DEAD_THG:
+	bra.s	DEAD_THG
+
+*******************************************************************
+*
+*  Hardware specific routines
+
+*******************************************************************
+*
+*  HARDWARE RESET : initialise screen parameters
+
+HW_RESET:
+	movem.l	d0/a0/a1,-(a7)
+
+INIT_BZY:
+	btst	#6,DMACONR	; wait for blitter
+	bne.s	INIT_BZY
+
+	move.w	#%0000001111100000,DMACON ; disable cop, blt...
+
+	move.w	#$20,BEAMCON0	; set PAL bit, reset ECS bit
+	move.w	#0,FMODE 	; set for no sprite or
+				; bitplane scan doubling, plus
+				; sprite and bitplane fetch by
+				; 2 bytes (as pre AGA).
+	move.w	#0,BPLCON3	; select lower color bank
+				; from palette
+
+	lea	SPRNULL,a0
+	lea	SPRTBL(PC),a1
+	move.w	#((SPREND-SPRTBL)/4),d0
+
+SPR_LUP:
+	move.l	(a1)+,(a0)+
+	dbra	d0,SPR_LUP
+
+	lea	COPLST,a0
+	lea	COPTBL(PC),a1
+	move.w	#((COPEND-COPTBL)/4),d0
+
+COP_LUP:
+	move.l	(a1)+,(a0)+
+	dbra	d0,COP_LUP
+
+
+	lea	COPLST,a0	; start of copper list
+	move.l	a0,COP1LC	; Set copper start address
+	move.l	a0,COP2LC
+
+	move.w	#0,COPCON	; inhibit blitter control by
+				; copper
+	move.w	#0,COPJMP1	; set copper PC
+
+;  allow DMA by video, blitter, copper.
+
+	move.w	#%1000001111100000,DMACON ; DMA for copper,
+				        ; blitter, video.
+	move.w	#%0000010000000000,DMACON ; clear blitter
+				        ; priority.
+	movem.l	(a7)+,d0/a0/a1
+	rts
+
+*******************************************************************
+*
+*  HARDWARE ENABLE : initialise variables that control
+*		   screen blitter
+
+HW_ENABLE:
+	bclr.b	#7,AV.FLGS1
+	bclr.b	#6,AV.FLGS1
+
+	move.w	#0,VAR.PRICNt(a3) ; initialise screen count
+	move.w	#0,VAR.PRIACc(a3) ; initialise accumulated pri
+	move.b	#1,VAR.PRIBNd(a3) ; set screen priority to
+	move.b	#4,VAR.PRIINc(a3) ; move (4/1)*(1/16)th QL
+				; screen every 1/50th sec
+
+	bset	#MC..M256,VAR.STAT(a3)
+
+	move.w	#BLACK,VAR.4COL0(a3)
+	move.w	#RED,VAR.4COL1(a3)
+	move.w	#GREEN,VAR.4COL2(a3)
+	move.w	#WHITE,VAR.4COL3(a3)
+
+	move.w	#BLACK,VAR.8COL0(a3)
+	move.w	#$0B44,VAR.8COL1(a3)
+	move.w	#$04B4,VAR.8COL2(a3)
+	move.w	#$08FF,VAR.8COL3(a3)
+
+	move.w	VAR.8COL0(a3),COLOR00
+	move.w	VAR.8COL1(a3),COLOR01
+	move.w	VAR.8COL2(a3),COLOR02
+	move.w	VAR.8COL3(a3),COLOR03
+
+	rts
+
+; -------------------------------------------------------------
+SPRTBL:
+
+; null sprite
+	dc.w	$FF00,$FF66
+	dc.w	0,0
+
+; pointer sprite
+	dc.w	(($2C&$FF)<<8)|($A0>>1)
+	dc.w	((($2C+$10)&$FF)<<8)|($2C&1)<<2|(($2C+$10)&1)<<1|($A0&1)
+
+	dc.w	%1100000000000000,%0100000000000000
+	dc.w	%0111000000000000,%1011000000000000
+	dc.w	%0011110000000000,%0100110000000000
+	dc.w	%0011111100000000,%0100001100000000
+	dc.w	%0001111111000000,%0010000011000000
+	dc.w	%0001111111000000,%0010000000000000
+	dc.w	%0000111100000000,%0001000100000000
+	dc.w	%0000110110000000,%0001001010000000
+	dc.w	%0000010011000000,%0000100101000000
+	dc.w	%0000010001100000,%0000100010100000
+	dc.w	%0000000000100000,%0000000001000000
+	dc.w	%0000000000000000,%0000000000000000
+	dc.w	%0000000000000000,%0000000000000000
+	dc.w	%0000000000000000,%0000000000000000
+	dc.w	%0000000000000000,%0000000000000000
+	dc.w	%0000000000000000,%0000000000000000
+
+	dc.w	0,0
+
+SPREND:
+; -------------------------------------------------------------
+COPTBL:
+	; move #0,BPL1PTH
+	dc.w	BPL1PTH&$1FE,0
+
+	; move	#$FFFF,DIWSTRT
+	dc.w	DIWSTRT&$1FE,$FFFF
+
+	; move	#%1000001000000000,BPLCON0
+	; Hires, 0 planes, colour
+	dc.w	BPLCON0&$1FE,%1000001000000000
+
+	; move	#BLACK,COLOR00
+	; dc.w	  COLOR00&$1FE,BLACK
+COPSPR0:
+	; move SPRNULL.hi,SPR0PTH
+	dc.w	SPR0PTH&$1FE,SPRNULL>>16
+
+	; move SPRNULL.lo,SPR0PTL
+	dc.w	SPR0PTL&$1FE,SPRNULL&$FFFF
+
+	; move SPRNULL.hi,SPR1PTH
+	dc.w	SPR1PTH&$1FE,SPRNULL>>16
+
+	; move SPRNULL.lo,SPR1PTL
+	dc.w	SPR1PTL&$1FE,SPRNULL&$FFFF
+
+	; move SPRNULL.hi,SPR2PTH
+	dc.w	SPR2PTH&$1FE,SPRNULL>>16
+
+	; move SPRNULL.lo,SPR2PTL
+	dc.w	SPR2PTL&$1FE,SPRNULL&$FFFF
+
+	; move SPRNULL.hi,SPR3PTH
+	dc.w	SPR3PTH&$1FE,SPRNULL>>16
+
+	; move SPRNULL.lo,SPR3PTL
+	dc.w	SPR3PTL&$1FE,SPRNULL&$FFFF
+
+	; move SPRNULL.hi,SPR4PTH
+	dc.w	SPR4PTH&$1FE,SPRNULL>>16
+
+	; move SPRNULL.lo,SPR4PTL
+	dc.w	SPR4PTL&$1FE,SPRNULL&$FFFF
+
+	; move SPRNULL.hi,SPR5PTH
+	dc.w	SPR5PTH&$1FE,SPRNULL>>16
+
+	; move SPRNULL.lo,SPR5PTL
+	dc.w	SPR5PTL&$1FE,SPRNULL&$FFFF
+
+	; move SPRNULL.hi,SPR6PTH
+	dc.w	SPR6PTH&$1FE,SPRNULL>>16
+
+	; move SPRNULL.lo,SPR6PTL
+	dc.w	SPR6PTL&$1FE,SPRNULL&$FFFF
+
+	; move SPRNULL.hi,SPR7PTH
+	dc.w	SPR7PTH&$1FE,SPRNULL>>16
+
+	; move SPRNULL.lo,SPR7PTL
+	dc.w	SPR7PTL&$1FE,SPRNULL&$FFFF
+
+	; wait vpos $0C hpos $00
+	dc.w	(($0C00)&$FFFE)+1,$FFFE
+
+	; wait vpos $2B hpos $00
+	dc.w	(($2B00)&$FFFE)+1,$FFFE
+
+	; move	#BLACK,COLOR00
+	; dc.w	  COLOR00&$1FE
+COPCOL0:
+	; dc.w	  BLACK
+
+	; move	#RED,COLOR01
+	; dc.w	  COLOR01&$1FE
+COPCOL1:
+	; dc.w	  RED
+
+	; move	#GREEN,COLOR02
+	; dc.w	  COLOR02&$1FE
+COPCOL2:
+	; dc.w	  GREEN
+
+	; move	#WHITE,COLOR03
+	; dc.w	  COLOR03&$1FE
+COPCOL3:
+	; dc.w	  WHITE
+
+	; move	#$0E44,COLOR16
+	dc.w	COLOR16&$1FE,$0E44
+
+	; move	#$0E44,COLOR17
+	dc.w	COLOR17&$1FE,$0E44
+
+	; move	#$0000,COLOR18
+	dc.w	COLOR18&$1FE,$0000
+
+	; move	#$0EEC,COLOR19
+	dc.w	COLOR19&$1FE,$0EEC
+
+	; move BPLANE1.hi,BPL1PTH
+	dc.w	BPL1PTH&$1FE,BPLANE1>>16
+
+	; move BPLANE1.lo,BPL1PTL
+	dc.w	BPL1PTL&$1FE,BPLANE1&$FFFF
+
+	; move BPLANE2.hi,BPL2PTH
+	dc.w	BPL2PTH&$1FE,BPLANE2>>16
+
+	; move BPLANE2.lo,BPL2PTL
+	dc.w	BPL2PTL&$1FE,BPLANE2&$FFFF
+
+	; move BPLANE3.hi,BPL3PTH
+	dc.w	BPL3PTH&$1FE,BPLANE3>>16
+
+	; move BPLANE3.lo,BPL3PTL
+	dc.w	BPL3PTL&$1FE,BPLANE3&$FFFF
+
+	; move	#$2CA1,DIWSTRT	 V & H start (44,161)
+	dc.w	DIWSTRT&$1FE,$2CA1
+
+	; move	#$2CA1,DIWSTOP  V&H stop (256+44+1,256+161+1)
+	dc.w	DIWSTOP&$1FE,$2CA1
+
+	; (Hstart/2-4.5) AND $FFF8 = ($A1/2-4.5) AND $FFF8
+	; move	#$004C,DDFSTRT
+	dc.w	DDFSTRT&$1FE,$004C
+
+	; DDFSTRT + (pixels per line/4 -8) = $4C+(512/4-8)
+	; move	#$00C4,DDFSTOP
+	dc.w	DDFSTOP&$1FE,$00CC
+
+	; move	#0,BPL1MOD
+	dc.w	BPL1MOD&$1FE,$FFFC
+
+	; move	#0,BPL2MOD
+	dc.w	BPL2MOD&$1FE,$FFFC
+
+	; move $2100,diwhigh ; upper bits for display window
+			   ; start, stop	 (ECS only)
+	dc.w	DIWHIGH&$1FE,$2100
+
+	; move	#%0100100,BPLCON2
+	dc.w	BPLCON2&$1FE,%0100100
+
+	; move	#0,BPLCON1
+	dc.w	BPLCON1&$1FE,$0000
+
+COPCON0:
+	; move	#%1010001000000000,BPLCON0
+	; Hires, 2 planes, colour
+	dc.w	BPLCON0&$1FE,%1010001000000000
+
+	; wait vpos $2C hpos $00
+	dc.w	(($2C00)&$FFFE)+1,$FFFE
+
+	; wait forever
+	dc.w	$FFFF,$FFFE
+
+COPEND:
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  external interrupt server
+
+XINT_SERver:
+	movem.l	d7/a0,-(a7)
+
+	move.w	INTENAR,d7	; read interrupt enable reg
+	btst	#6,d7		; branch if BLIT ints not on
+	beq	XINT_OTHer
+
+	move.w	INTREQR,d7	; read interrupt request reg
+	btst	#6,d7		; blitter ready interrupt?
+	bne	BLIT_SERver
+
+
+; --------------------------------------------------------------
+;  otherwise let another external interrupt server handle it
+
+XINT_OTHer:
+	movem.l	(a7)+,d7/a0
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  server for blitter interrupt
+
+BLIT_SERver:
+	movem.l	a3,-(a7)
+
+	move.w	VAR.PRICNt(a3),d7
+	bclr	#15,d7		; decide if my blitter int
+	bne	BLIT_MINe
+
+	movem.l	(a7)+,a3
+	bra	XINT_OTHer	; ...not my problem
+
+BLIT_MINe:
+	move.w	#%0000000001000000,INTENA ; disable blitter
+				        ; interrupt
+	move.w	#%0000000001000000,INTREQ ; clear interrupts
+
+	move.w	d7,VAR.PRICNt(a3) ; signal no longer my blitr
+
+	bclr.b	#6,AV.FLGS1	; signal blitter now free
+
+	bsr	TRY_BLIT
+
+BLIT_EXIt:
+	movem.l	(a7)+,a3
+
+; -------------------------------------------------------------
+XINT_EXIt:
+	bra.s	XINT_OTHer
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; Start screen refresh if blitter free
+
+TRY_BLIT:
+	movem.l	d0/d6-d7/a4-a6,-(a7)
+
+	move.w	VAR.PRIACc(a3),d6 ; accumulated screen
+				; priority
+	moveq	#0,d7
+	move.b	VAR.PRIBNd(a3),d7 ; Priority bounds
+	sub.w	d7,d6		; decide whether
+	bcs	TRY_EXIt 	; or not to blit again
+
+	btst	#MC..BLNK,MC_STAT ; should we show a screen?
+	bne	TRY_EXIt 	; no.
+
+	move.w	d6,VAR.PRIACc(a3) ; store accumulated priority
+
+	btst.b	#7,AV.FLGS1	; request blit disable?
+	bne	TRY_EXIt 	; ...yes, exit
+
+	bset.b	#6,AV.FLGS1	; try to grab blitter
+	bne	TRY_EXIt 	; ...exit if in use
+
+	move.w	VAR.PRICNt(a3),d7
+	bset	#15,d7		; signal my blitter int
+	move.w	d7,VAR.PRICNt(a3)
+
+; -------------------------------------------------------------
+;  Start screen refresh
+
+BLITSCRN:
+	move.w	VAR.PRICNt(a3),d0
+	btst	#0,d0
+	beq	BLITODD		; plane to show is odd
+
+; --------------------------------------------------------------
+;  show even plane (green)
+
+BLITEVN:
+
+; update priority counter
+
+	move.w	VAR.PRICNt(a3),d0
+	andi.w	#%1000111111111111,d0
+	addq	#1,d0
+	move.w	d0,VAR.PRICNt(a3)
+
+; show first 1024 bytes of even bit plane
+
+	andi.w	#$000E,d0
+	ror.w	#5,d0
+
+	btst	#MC..SCRN,MC_STAT ; should we show screen#2?
+	beq.s	BLITEVN1
+
+	move.l	#HW_SCRN2,a4	; address of second screen
+	bra.s	BLITEVNX
+
+BLITEVN1:
+	move.l	#HW_SCRN1,a4	; address of first screen
+
+BLITEVNX:
+	lea	0(a4,d0.w),a4	; actual source A
+
+	move.l	a4,a5
+	addq	#2,a5		; src B
+
+	move.w	#$0000,d6	; shiftcount for A
+	move.w	#$8000,d7	; shiftcount for B
+
+	lsr.w	#1,d0
+	move.l	#BPLANE2,a6
+	lea	0(a6,d0.w),a6	; destination address
+
+	bsr	BLITBEGIn
+
+	bra.s	TRY_EXIt
+
+; --------------------------------------------------------------
+;  show odd plane (red)
+
+BLITODD:
+
+; update priority counter
+
+	move.w	VAR.PRICNt(a3),d0
+	andi.w	#%1000111111111111,d0
+	addq	#1,d0
+	move.w	d0,VAR.PRICNt(a3)
+
+; show first 1024 bytes of odd bit plane
+
+	andi.w	#$000E,d0
+	ror.w	#5,d0
+
+	btst	#MC..SCRN,MC_STAT ; should we show screen#2?
+	beq.s	BLITODD1
+
+	move.l	#HW_SCRN2,a4	; address of second screen
+	bra.s	BLITODDX
+
+BLITODD1:
+	move.l	#HW_SCRN1,a4	; address of first screen
+
+BLITODDX:
+
+; move a single word so as to initialise blitter data
+
+	lea	4(a4,d0.w),a4	; actual source A
+
+	move.l	a4,a5
+	subq	#2,a5		; src B
+
+	move.w	#$8000,d6	; shiftcount for A
+	move.w	#$0000,d7	; shiftcount for B
+
+	lsr.w	#1,d0
+	move.l	#BPLANE1,a6
+	lea	0(a6,d0.w),a6	; destination address
+
+	bsr	BLITBEGIn	; set registers, start DMA
+
+	move.b	-1(a5),d0	; replace first byte
+	move.b	d0,0(a6)
+
+TRY_EXIt:
+	movem.l	(a7)+,d0/d6-d7/a4-a6
+
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  Control blitter operation
+;
+; a4=src A , a5=src B , a6=dest
+; d6= shift A , d7= shift B
+
+; The blitter takes the three sources A,B & C and performs a
+; number of logical operations to give a result D, which is
+; stored in the destination address. Each operation, (called
+; a miniterm) is enabled via a bit in the bottom eight bits of
+; the register BLTCON0.
+; The operations performed on the source data are as folows:
+
+;(A*B*C) (A*B*c) (A*b*C) (A*b*c) (a*B*C) (a*B*c) (a*b*C) (a*b*c)
+
+; where a lowercase letter denotes a logical inversion of the
+; relavent source data, * denotes a logical AND, + a logical OR.
+
+; We will be using C as a mask, to enable the high or low byte
+; of a data word fetched from the QL screen. C will hold the
+; constant $FF00
+
+; We require (A*C)+(B*c) = ((A*B*C)+(A*b*C))+((A*B*c)+(a*B*c))
+
+;   1	   1	  1	 0	0       1       0       0
+;(A.B.C) (A.B.c) (A.b.C) (A.b.c) (a.B.C) (a.B.c) (a.b.C) (a.b.c)
+
+; so BLTCON0 will hold %xxxxxxxx11100100
+
+BLITBEGIn:
+
+BLITBUSY:
+	move.w	DMACONR,d0
+	btst	#14,d0		; blitter busy?
+	bne	BLITBUSY
+
+	move.l	a4,BLTAPTH	; write source address A to
+				; blitter
+	move.l	a5,BLTBPTH	; write source address B to
+				; blitter
+	move.l	a6,BLTDPTH	; write destination D to
+				; blitter
+
+	move.w	#2,BLTAMOD	; Modulo Source A
+	move.w	#2,BLTBMOD	; same for B
+	move.w	#0,BLTDMOD	; Modulo Destination
+
+	move.w	#$FFFF,BLTAFWM	; Mask for first word
+	move.w	#$FFFF,BLTALWM	; same for last word
+	move.w	#$FF00,BLTCDAT	; We use the C source for
+				; masking A and B
+
+	move.w	d6,d0		; shift count for src A
+	or.w	#%0000110100000000,d0 ; DMA for Src A,B and
+				    ; Dest D
+
+	move.b	#%11100100,d0	; src (A and C) or (B and c)
+				; miniterm
+	move.w	d0,BLTCON0	; initialize Control
+				; register 0
+	move.w	d7,BLTCON1	; shift for source B
+
+	move.w	#$0001,BLTSIZE	; =1024 lines * 64 + 1 Word
+				; per column
+
+	move.w	#%1000000001000000,INTENA ; enable blitter
+				        ; interrupt
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  Polled routine to provide a  QL screen refresh via blitter
+
+POLL_SERver:
+
+	movem.l	d6-d7/a3,-(a7)
+
+	btst.b	#7,AV.FLGS1	; request blit disable?
+	bne	POLL_EXIt	; ...yes, exit
+
+	move.w	VAR.PRIACc(a3),d6  ; accumulated screen
+				; priority
+	moveq	#0,d7
+	move.b	VAR.PRIBNd(a3),d7
+	cmp.w	d7,d6
+	bcc.s	POLL_blnk	; continue
+
+	move.b	VAR.PRIINc(a3),d7  ; Priority increment
+
+	add.w	d7,d6		; increment priority
+	move.w	d6,VAR.PRIACc(a3)  ; store accumulated priority
+
+; blank screen if necessary
+
+POLL_blnk
+	btst	#MC..BLNK,MC_STAT ; check blanking bit
+	beq.s	POLL_son
+
+POLL_soff:
+	bset	#MC..BLNK,VAR.STAT(a3)
+	bne	POLL_EXIt	; already off, so exit
+
+	move.w	#BLACK,COLOR00	; all colours to black
+	move.w	#BLACK,COLOR01
+	move.w	#BLACK,COLOR02
+	move.w	#BLACK,COLOR03
+
+	bra	POLL_EXIt	; ...and exit
+
+POLL_son:
+	bclr	#MC..BLNK,VAR.STAT(a3)
+	beq.s	POLL_mode	; already on
+
+	btst	#MC..M256,MC_STAT ; check screen mode
+	bne.s	POLL_s8
+
+POLL_s4:
+	bclr	#MC..M256,VAR.STAT(a3)
+	bra.s	POLL_do4
+
+POLL_s8:
+	bset	#MC..M256,VAR.STAT(a3)
+	bra.s	POLL_do8
+
+; switch colours if in 8 colour mode ...a compromise.
+
+POLL_mode
+	btst	#MC..M256,MC_STAT ; check screen mode
+	bne.s	POLL_8COl
+
+POLL_4COl:
+	bclr	#MC..M256,VAR.STAT(a3)
+	beq.s	POLL_1
+
+POLL_do4:
+	; move.w   VAR.4COL0(a3),COPLST+COPCOL0-COPTBL
+	; move.w   VAR.4COL1(a3),COPLST+COPCOL1-COPTBL
+	; move.w   VAR.4COL2(a3),COPLST+COPCOL2-COPTBL
+	; move.w   VAR.4COL3(a3),COPLST+COPCOL3-COPTBL
+
+	move.w	VAR.4COL0(a3),COLOR00
+	move.w	VAR.4COL1(a3),COLOR01
+	move.w	VAR.4COL2(a3),COLOR02
+	move.w	VAR.4COL3(a3),COLOR03
+
+	bra	POLL_1		; ...and do it
+
+POLL_8COl:
+	bset	#MC..M256,VAR.STAT(a3)
+	bne.s	POLL_1
+
+POLL_do8:
+	; move.w   VAR.8COL0(a3),COPLST+COPCOL0-COPTBL
+	; move.w   VAR.8COL1(a3),COPLST+COPCOL1-COPTBL
+	; move.w   VAR.8COL2(a3),COPLST+COPCOL2-COPTBL
+	; move.w   VAR.8COL3(a3),COPLST+COPCOL3-COPTBL
+
+	move.w	VAR.8COL0(a3),COLOR00
+	move.w	VAR.8COL1(a3),COLOR01
+	move.w	VAR.8COL2(a3),COLOR02
+	move.w	VAR.8COL3(a3),COLOR03
+
+POLL_1:
+	bsr	TRY_BLIT
+
+POLL_EXIt:
+	movem.l	(a7)+,d6-d7/a3
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  BASIC extensions specific to AMIGA QDOS
+
+PROC_DEF:
+	dc.w	4
+	dc.w	B_SB_PRIority-*
+	dc.b	12,'SCR_PRIORITY',0
+	dc.w	B_PTR_ON-*
+	dc.b	6,'PTR_ON',0
+	dc.w	B_PTR_OFF-*
+	dc.b	7,'PTR_OFF'
+
+	dc.w	0
+
+	dc.w	0
+
+	dc.w	0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  Usage... SCR_PRIORITY inc,bnd
+
+;  allow blitter to move (inc/bnd)*(1/16)th of the screen
+;  every 1/50th of a second.
+
+B_SB_PRIority:
+	bsr	FETCH_W
+	bne.s	B_SB_PRX
+
+	move.w	d1,d2
+
+	bsr	FETCH_W
+	bne.s	B_SB_PRX
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	cmp.w	#256,d1
+	bcc	RPRT_BP
+
+	tst.b	d1
+	beq	RPRT_BP
+
+	cmp.w	#256,d2
+	bcc	RPRT_BP
+
+	tst.b	d2
+	beq	RPRT_BP
+
+	moveq	#MT.INF,d0
+	trap	#1
+
+	move.l	a6,a0
+	bsr	FIND_THG
+	move.l	a0,a6
+
+	move.w	#0,VAR.PRIACc(a3)
+	move.b	d2,VAR.PRIINc(a3)
+	move.b	d1,VAR.PRIBNd(a3)
+
+	moveq	#0,d0
+
+B_SB_PRX:
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+B_PTR_ON:
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	move.w	#SPRLST>>16,COPLST+COPSPR0-COPTBL+2
+	move.w	#SPRLST&$FFFF,COPLST+COPSPR0-COPTBL+6
+	moveq	#0,d0
+	RTS
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+B_PTR_OFF:
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	move.w	#SPRNULL>>16,COPLST+COPSPR0-COPTBL+2
+	move.w	#SPRNULL&$FFFF,COPLST+COPSPR0-COPTBL+6
+	moveq	#0,d0
+	RTS
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; Fetch one Word
+
+FETCH_W:
+	movem.l	a2,-(a7)
+
+	move.w	CA.GTINT,a2
+	bsr.s	GET_ONE
+	bne.s	FETCH_WX
+
+	move.l	a1,BV_RIP(a6)
+	moveq	#0,d1
+	move.w	0(a6,a1.l),d1
+	addq.l	#2,BV_RIP(a6)
+
+FETCH_WX:
+	movem.l	(a7)+,a2
+	tst.l	d0
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  This routine gets one parameter and returns it on the maths
+;  stack, pointed to by (A1).
+;
+; Entry: A2.L   routine to call (i.e. CA.GTINT)
+;	A3.L   pointer to first parameter
+;	A5.L   pointer to last parameter
+;
+; Exit:	A3.L   updated
+;	A5.L   updated
+;	A1.L   updated pointer to top of maths stack
+;	D0.L   error code
+
+GET_ONE:
+	movem.l	d1-d6/a0/a2,-(a7)
+
+	lea	8(a3),a0
+	cmp.l	a0,a5
+	blt.s	GET_ONEBp
+
+	move.l	BV_RIP(a6),a1
+	move.l	a5,-(a7)
+	move.l	a0,a5
+	move.l	a5,-(a7)
+	jsr	(a2)
+	movem.l	(a7)+,a0/a5
+
+	tst.l	d0
+	bne.s	GET_ONEX
+
+	move.l	a0,a3
+	move.l	a1,BV_RIP(a6)
+
+	bra.s	GET_ONEX
+
+GET_ONEBp:
+	moveq	#ERR.BP,d0
+
+GET_ONEX:
+	movem.l	(a7)+,d1-d6/a0/a2
+	tst.l	d0
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+RPRT_BP:
+	moveq	#ERR.BP,d0
+	rts
+
+*******************************************************************
+NOPpadding:
+	DCB.w ((0-(NOPpadding-BASE))&$7F)/2,$4E71
+
+	END

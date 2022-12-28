@@ -1,0 +1,189 @@
+*******************************************************************
+* I/O ADDRESSING FOR ISA EXPANSION CARDS
+*
+* Hardware includes for each hardware platform should define:
+*
+*  IO_BASE  = base address of I/O
+*  IO_PORT  = bit shift factor for port (see below)
+*  IO_REG   = bit shift factor for register (see below)
+*  IO_8BIT  = offset from base for 8 bit I/O
+*  IO_16BIT = offset from base for 16 bit I/O
+*
+* 8 bit I/O is addressed at
+* IO_BASE+IO_8BIT+[port]<<IO_PORT+[register]<<IO_REG
+*
+* 16 bit I/O is addressed at
+* IO_BASE+IO_16BIT+[port]<<IO_PORT+[register]<<IO_REG
+
+*******************************************************************
+* 03F8-03FF ----	serial port
+
+SER_THB		EQU 0<<IO_REG	; (w)(DLAB=0)transmitter holding buffer
+SER_RB		EQU 0<<IO_REG	; (r)(DLAB=0)receiver buffer
+SER_DLLB 	EQU 0<<IO_REG	; (r/w)(DLAB=1)divisor latch low byte
+SER_IER		EQU 1<<IO_REG	; (r/w)(DLAB=0)interrupt enable register
+SER_DLHB 	EQU 1<<IO_REG	; (r/w)(DLAB=1)divisor latch high byte
+SER_IIR		EQU 2<<IO_REG	; (r)interrupt identification register
+SER_FCR		EQU 2<<IO_REG	; (w)FIFO control register
+SER_LCR		EQU 3<<IO_REG	; (r/w)line control register
+SER_MCR		EQU 4<<IO_REG	; (r/w)modem control register
+SER_LSR		EQU 5<<IO_REG	; (r)line status register
+SER_MSR		EQU 6<<IO_REG	; (r)modem status register
+
+*******************************************************************
+* 03F0-03F7 ----	FDC 1  (1st Floppy Disk Controller)
+
+FD_DOR		EQU 2<<IO_REG	;(w)   DOR (Digital Output Register)
+FD_DSR		EQU 4<<IO_REG	;(w)   data rate select register
+FD_STATUS	EQU 4<<IO_REG	;(r)   main status register
+FD_DATA		EQU 5<<IO_REG	;(r/w) data/command register
+FD_DRR		EQU 7<<IO_REG	;(w)   configuration control register
+FD_DIR		EQU 7<<IO_REG	;(r)   DIR (Digital Input Register)
+
+; floppy disk controller commands
+
+FD_GETSTATUS	EQU %00000100
+FD_SEEK		EQU %00001111
+FD_RECALIBRATE	EQU %00000111
+FD_SPECIFY	EQU %00000011
+FD_SENSEI	EQU %00001000
+FD_READID	EQU %01001010
+FD_READDATA	EQU %01000110
+FD_WRITEDATA	EQU %01000101
+FD_FORMATTRACK	EQU %01001101
+
+*******************************************************************
+* 01F0-01F7 ----	HDC 1   (1st Fixed Disk Controller)
+
+HD_DATA	  equ	0<<IO_REG	; r/w  data register (16 bit i/o)
+HD_ERROR   equ	1<<IO_REG	; r    error register
+HD_FEATURE equ	1<<IO_REG	; w    WPC/4  (Write Precompensation Cylinder divided by 4)
+
+HD_NSECTOR equ	2<<IO_REG	; r/w  sector count
+				;      = nr of sectors to read/write
+HD_SECTOR  equ	3<<IO_REG	; r/w  sector number (CHS mode)
+				;      logical block address, bits 0-7 (LBA mode)
+HD_LCYL	  equ	4<<IO_REG	; r/w  cylinder low (CHS mode)
+				;      logical block address, bits 15-8 (LBA mode)
+HD_HCYL	  equ	5<<IO_REG	; r/w  cylinder high (CHS mode)
+				;      logical block address, bits 23-16 (LBA mode)
+HD_CURRENT equ	6<<IO_REG	; r/w  drive/head
+HD_STATUS  equ	7<<IO_REG	; r    status register
+HD_COMMAND equ	7<<IO_REG	; w    command register
+*
+HD_CMD	  equ	(FD_BASE-HD_BASE)+(6<<IO_REG) ; (used for resets)
+				;  r/w	  FIXED disk controller data register
+				;  bit 7-4    reserved
+				;  bit 3 = 0  reduce write current
+				;	  1  head select 3 enable
+				;  bit 2 = 1  disk reset enable
+				;	  0  disk reset disable
+				;  bit 1 = 0  disk initialization enable
+				;	  1  disk initialization disable
+				;  bit 0      reserved
+
+*
+* BIT assignments in HD_ERROR
+*
+*   OPERATION mode errors:
+*
+MARK_ERR   equ %00000001 ; bit 0  = 1  DAM not found
+		       ;        = 0  DAM found (CP-3022 always 0)
+TRK0_ERR   equ %00000010 ; bit 1  = 1  track 000 not found
+		       ;        = 0  track 000 found
+ABRT_ERR   equ %00000100 ; bit 2  = 1  command aborted
+		       ;        = 0  command completed
+		       ; bit 3	   reserved
+		       ;
+ID_ERR	  equ %00010000 ; bit 4  = 1  ID found
+		       ;        = 0  ID not found
+CHNG_ERR   equ %00100000 ; bit 5  = (?) reserved?/disk change error?
+		       ;
+ECC_ERR	  equ %01000000 ; bit 6  = 1  uncorrectable ECC error
+		       ;        = 0  no error
+BBD_ERR	  equ %10000000 ; bit 7  = 1  bad block detected
+		       ;        = 0  block OK
+*
+* BIT assignments in HD_ERROR
+*
+*   DIAGNOSTIC mode errors:
+*
+*	bit 7   =      which drive failed (0 = master, 1 = slave)
+*	bit 6-3	      reserved
+*	bit 2-0 = 001  no error detected
+*	        = 010  formatter device error
+*	        = 011  sector buffer error
+*	        = 100  ECC circuitry error
+*	        = 101  controlling microprocessor error
+*
+*
+* BIT assignments in HD_CURRENT
+*
+*	bit 7   = 1
+*	bit 6   = LBA mode enabled, rather than default CHS mode
+*	bit 5   = 1
+*	bit 4   = 0  drive 0 select
+*	        = 1  drive 1 select
+*	bit 3-0 =    head select bits (CHS mode)
+*		    logical block address, bits 27-24 (LBA mode)
+*
+* BIT assignments in HD_STATUS
+*
+ERR_STAT   equ %00000001 ; bit 0  previous command ended in an error
+INDEX_STAT equ %00000010 ; bit 1  index - set to 1 each disk revolution
+ECC_STAT   equ %00000100 ; bit 2  disk data read successfully error corrected
+DRQ_STAT   equ %00001000 ; bit 3  sector buffer requires servicing
+SEEK_STAT  equ %00010000 ; bit 4  seek complete
+WRERR_STAT equ %00100000 ; bit 5  write fault
+READY_STAT equ %01000000 ; bit 6  drive is ready
+BUSY_STAT  equ %10000000 ; bit 7  controller is executing a command
+*
+*
+* IDE command tokens
+*
+WIN_RESTORE     equ $10  ; $1x	recalibrate
+WIN_FORMAT      equ $50  ; format track
+WIN_INIT        equ $60  ;
+WIN_READ        equ $20  ; read sectors with retry
+*		  $21	read sectors without retry
+*		  $22	read long with retry
+*		  $23	read long without retry
+WIN_VERIFY      equ $40  ; read verify sectors with retry
+*		  $41	read verify sectors without retry
+WIN_WRITE       equ $30  ; write sectors with retry
+*		  $31	write sectors without retry
+*		  $32	write long with retry
+*		  $33	write long without retry
+*		  $3C	write verify	     (IDE)
+WIN_SEEK        equ $70  ; $7x	seek
+WIN_DIAGNOSE    equ $90  ; execute drive diagnostics
+WIN_SPECIFY     equ $91  ; set drive geometry translation
+WIN_IDENTIFY    equ $EC  ; identify drive	     (IDE)
+WIN_DOORLOCK    equ $de  ; lock door on removable drives
+WIN_DOORUNLOCK  equ $df  ; unlock door on removable drives
+WIN_CHANGE      equ $db  ; media change on removable drives (?)
+*
+*		98 E5	check power mode	     (IDE)
+*		97 E3	idle		     (IDE)
+*		95 E1	idle immediate	     (IDE)
+*		E4	read buffer	     (IDE)
+*		C8	read DMA with retry    (IDE)
+*		C9	read DMA without retry (IDE)
+*		C4	read multiplec	     (IDE)
+*		EF	set features	     (IDE)
+*		C6	set multiple mode      (IDE)
+*		99 E6	set sleep mode	     (IDE)
+*		96 E2	standby		     (IDE)
+*		94 E0	standby immediate      (IDE)
+*		E8	write buffer	     (IDE)
+*		CA	write DMA with retry   (IDE)
+*		CB	write DMA with retry   (IDE)
+*		C5	write multiple	     (IDE)
+*		E9	write same	     (IDE)
+*		9A	vendor unique	     (IDE)
+*		C0-C3	vendor unique	     (IDE)
+*		8x	vendor unique	     (IDE)
+*		F0-F4	EATA standard	     (IDE)
+*		F5-FF	vendor unique	     (IDE)
+*
+*******************************************************************

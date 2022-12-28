@@ -1,0 +1,31 @@
+*******************************************************************
+*  HW_inc - QubIDE hardware includes file
+*	 - last modified 22/09/99
+*
+*  Various QL-QubIDE specific hardware addresses
+*******************************************************************
+
+HARDTAG	EQU	'QUB '
+
+*******************************************************************
+* FAKE ISA-LIKE ADDRESSING SCHEME FOR QubIDE HARD DISK ACCESS
+*
+* 8 bit I/O is addressed at
+* IO_BASE+IO_8BIT+[port]<<IO_PORT+[register]<<IO_REG
+*
+* 16 bit I/O is addressed at
+* IO_BASE+IO_16BIT+[port]<<IO_PORT+[register]<<IO_REG
+*
+* (see DEV/ASM/ISA/HW_inc)
+
+IO_BASE		EQU $3f00
+IO_PORT		EQU 0
+IO_REG		EQU 0
+IO_8BIT		EQU 0
+IO_16BIT 	EQU 8
+
+FD_BASE		EQU IO_BASE-(6<<IO_REG)	; fake base for HD_CMD
+
+HD_BASE		EQU IO_BASE
+
+*******************************************************************

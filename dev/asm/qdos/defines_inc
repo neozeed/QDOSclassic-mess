@@ -1,0 +1,1227 @@
+; --------------------------------------------------------------
+;  QDOS_inc - QDOS includes file
+;	    - last modified 30/08/95
+; --------------------------------------------------------------
+
+; --------------------------------------------------------------
+;  Address of screen hardware
+; --------------------------------------------------------------
+
+HW_SCRN1	EQU	$20000	; usual screen
+HW_SCRN2	EQU	$28000	; alternate screen
+
+; --------------------------------------------------------------
+;  SYS.ERR -  error keys
+; --------------------------------------------------------------
+ERR.OK	EQU	0		; no errors, everything fine
+ERR.NC	EQU	-1		; operation not complete
+ERR.NJ	EQU	-2		; not a valid Job
+ERR.OM	EQU	-3		; out of memory
+ERR.OR	EQU	-4		; out of range
+ERR.BO	EQU	-5		; buffer overflow
+ERR.NO	EQU	-6		; channel not open
+ERR.NF	EQU	-7		; file or device not found
+ERR.EX	EQU	-8		; file already exists
+ERR.IU	EQU	-9		; file or device in use
+ERR.EF	EQU	-10		; end of file
+ERR.DF	EQU	-11		; drive full
+ERR.BN	EQU	-12		; bad device name
+ERR.TE	EQU	-13		; transmission error
+ERR.FF	EQU	-14		; format failed
+ERR.BP	EQU	-15		; bad parameter
+ERR.FE	EQU	-16		; file error
+ERR.XP	EQU	-17		; error in expression
+ERR.OV	EQU	-18		; arithmetic overflow
+ERR.NI	EQU	-19		; not implemented (yet)
+ERR.RO	EQU	-20		; read only
+ERR.BL	EQU	-21		; bad line (syntax error in
+*				  BASIC)
+ERR.AT	EQU	-22		; At line message
+ERR.SC	EQU	-23		; sectors message
+ERR.BT	EQU	-24		; boot message
+ERR.CP	EQU	-25		; copyright message
+ERR.PF	EQU	-26		; proc/fn message
+DAYTAB	EQU	27		; days of the week
+MONTAB	EQU	28		; months of the year
+
+; --------------------------------------------------------------
+;  SYS.MT - manager trap keys
+; --------------------------------------------------------------
+MT.INF	EQU	$00		; get system information
+MT.CJOB EQU	$01		; create a job
+MT.JINF EQU	$02		; get information on job
+MT.RJOB EQU	$04		; remove a job
+MT.FRJOB EQU	$05		; force remove a job
+MT.FREE EQU	$06		; find out how much free
+*				  space there is
+MT.TRAPV EQU	$07		; set pointer to trap
+*				  redirection vectors
+MT.SUSJB EQU	$08		; suspend a job
+MT.RELJB EQU	$09		; release a job
+MT.ACTIV EQU	$0A		; activate a job
+MT.PRIOR EQU	$0B		; set a job priority
+MT.ALLOC EQU	$0C		; allocate a bit of a heap
+MT.LNKFR EQU	$0D		; release a bit of a heap
+MT.ALRES EQU	$0E		; allocate resident
+*				  procedure area
+MT.RERES EQU	$0F		; release resident procedure
+*				  area
+MT.DMODE EQU	$10		; set display mode
+MT.IPCOM EQU	$11		; send IPC command
+MT.BAUD EQU	$12		; set baud rate
+MT.RCLCK EQU	$13		; read clock
+MT.SCLCK EQU	$14		; set clock
+MT.ACLCK EQU	$15		; adjust clock
+MT.ALBAS EQU	$16		; allocate Basic area
+MT.REBAS EQU	$17		; release Basic area
+MT.ALCHP EQU	$18		; allocate space in common
+*				  heap
+MT.RECHP EQU	$19		; release space in common
+*				  heap
+MT.LXINT EQU	$1A		; link in external interrupt
+*				  handler
+MT.RXINT EQU	$1B		; remove external interrupt
+*				  handler
+MT.LPOLL EQU	$1C		; link in polled task
+MT.RPOLL EQU	$1D		; remove polled task
+MT.LSCHD EQU	$1E		; link in scheduler task
+MT.RSCHD EQU	$1F		; remove scheduler task
+MT.LIOD EQU	$20		; link in IO driver
+MT.RIOD EQU	$21		; remove IO driver
+MT.LDD	EQU	$22		; link in directory driver
+MT.RDD	EQU	$23		; remove directory driver
+MT.CNTRY EQU	$24		; set up i/o translation
+*				  tables
+
+; --------------------------------------------------------------
+;  SYS.VC - system vector definitions
+; --------------------------------------------------------------
+MM.ALCHP EQU	$C0		; allocate common heap
+MM.RECHP EQU	$C2		; release common heap space
+UT.WINDW EQU	$C4		; create window channel
+UT.CON	EQU	$C6		; create console channel
+UT.SCR	EQU	$C8		; create screen channel
+UT.ERR0 EQU	$CA		; send error msg to chan #0
+UT.ERR	EQU	$CC		; send error message to chan
+UT.MINT EQU	$CE		; print decimal num to chan
+UT.MTEXT EQU	$D0		; send message to channel
+UT.LINK EQU	$D2		; link item into list
+UT.UNLNK EQU	$D4		; unlink item from list
+MM.ALLOC EQU	$D8		; allocate heap space
+MM.LNKER EQU	$DA		; links free space into heap
+IO.QSET EQU	$DC		; set up queue header
+IO.QTEST EQU	$DE		; test queue status
+IO.QIN	EQU	$E0		; put byte into queue
+IO.QOUT EQU	$E2		; get byte from queue
+IO.QEOF EQU	$E4		; put EOF marker into queue
+UT.CSTR EQU	$E6		; string comparison
+IO.SERQ EQU	$E8		; direct queue handling
+IO.SERIO EQU	$EA		; general I/O handling
+CN.DATE EQU	$EC		; get date string
+CN.DAY	EQU	$EE		; get day string
+CN.FTOD EQU	$F0		; convert float to ASCII
+CN.ITOD EQU	$F2		; convert integer to ASCII
+CN.ITOBB EQU	$F4		; binary byte to ASCII
+CN.ITOBW EQU	$F6		; binary word to ASCII
+CN.ITOBL EQU	$F8		; binary long to ASCII
+CN.ITOHB EQU	$FA		; convert hex byte to ASCII
+CN.ITOHW EQU	$FC		; convert hex word to ASCII
+CN.ITOHL EQU	$FE		; convert hex long to ASCII
+CN.DTOF EQU	$100		; convert ASCII to float
+CN.DTOI EQU	$102		; convert ASCII to integer
+CN.BTOIB EQU	$104		; ASCII to binary byte
+CN.BTOIW EQU	$106		; ASCII to binary word
+CN.BTOIL EQU	$108		; ASCII to binary long
+CN.HTOIB EQU	$10A		; ASCII to hex byte
+CN.HTOIW EQU	$10C		; ASCII to hex word
+CN.HTOIL EQU	$10E		; ASCII to hex long
+BP.INIT EQU	$110		; add SuperBASIC procedures
+CA.GTINT EQU	$112		; get integers
+CA.GTFP EQU	$114		; get floating points
+CA.GTSTR EQU	$116		; get strings
+CA.GTLIN EQU	$118		; get long integers
+BV.CHRIX EQU	$11A		; reserve space maths stack
+RI.EXEC EQU	$11C		; do maths operation
+RI.EXECB EQU	$11E		; do list of math operations
+BP.LET	EQU	$120		; return parameter values
+IO.NAME EQU	$122		; decode device name
+MD.READ EQU	$124		; read a microdrive sector
+MD.WRITE EQU	$126		; write a microdrive sector
+MD.VERIN EQU	$128		; verify a microdrive sector
+MD.SECTR EQU	$12A		; read m/drive sector header
+
+; --------------------------------------------------------------
+;  The following vectors are not defined officially, so do not
+;  have official names. They are also not necessarily guaranteed
+;  to exist.
+; --------------------------------------------------------------
+BP.ANALY EQU	$12C		; basic syntax analyser
+BP.CSYNX EQU	$12E		; 1st syntax table
+*				  (commands)
+BP.ESYNX EQU	$130		; 2nd syntax table
+*				  (expressions)
+BP.FMTLN EQU	$132		; format precompiled line
+BP.CPERR EQU	$134		; error when compiling
+BP.STOLN EQU	$136		; store precompiled line
+BP.TKNLS EQU	$138		; convert precompiled line
+*				  to ASCII
+BP.INSTK EQU	$13A		; initialize BASIC stacks
+
+; --------------------------------------------------------------
+;  SYS.SV - system variable definitions
+; --------------------------------------------------------------
+SV_BASE EQU	$28000		; base of system vars
+
+SV_IDENT EQU	$00		; (word) identification word
+SV_CHEAP EQU	$04		; (long) base of common heap
+SV_CHPFR EQU	$08		; (long) first free space in
+*					common heap area
+SV_FREE EQU	$0C		; (long) base of free area
+SV_BASIC EQU	$10		; (long) base of BASIC area
+SV_TRNSP EQU	$14		; (long) base of transient
+*					program area
+SV_TRNFR EQU	$18		; (long) first free space in
+*					transient prog area
+SV_RESPR EQU	$1C		; (long) base of resident
+*					procedure area
+SV_RAMT EQU	$20		; (long) top of ram (+1)
+SV_RAND EQU	$2E		; (word) random number
+SV_POLLM EQU	$30		; (word) count of poll
+*					interupts missed
+SV_TVMOD EQU	$32		; (byte) 0 if not TV display
+SV_SCRST EQU	$33		; (byte) screen status
+*					(0 = active)
+SV_MCSTA EQU	$34		; (byte) current value of MC
+*					status register
+SV_PCINT EQU	$35		; (byte) current value of PC
+*					interrupt register
+SV_NETNR EQU	$37		; (byte) network station no.
+SV_I2LST EQU	$38		; (long) pointer to list of
+*					interrupt 2 drivers
+SV_PLIST EQU	$3C		; (long) pointer to list of
+*					polled tasks
+SV_SHLST EQU	$40		; (long) pointer to list of
+*					scheduler tasks
+SV_DRLST EQU	$44		; (long) pointer to list of
+*					device drivers
+SV_DDLST EQU	$48		; (long) pointer to list of
+*					directory device
+*					drivers
+SV_KEYQ EQU	$4C		; (long) pointer to a
+*					keyboard queue
+SV_TRAPV EQU	$50		; (long) pointer to the trap
+*					redirection table
+
+; --------------------------------------------------------------
+;  Pointers to the resource management tables.
+;  The slave block tables have 8 byte entries, the others 4 byte
+;  entries.
+; --------------------------------------------------------------
+SV_BTPNT EQU	$54		; (long) pointer to most
+*					recent slave block
+*					entry
+SV_BTBAS EQU	$58		; (long) pointer to base of
+*					slave block table
+SV_BTTOP EQU	$5C		; (long) pointer to top of
+*					slave block table
+SV_JBTAG EQU	$60		; (word) current value of
+*					Job tag
+SV_JBMAX EQU	$62		; (word) highest current
+*					Job number
+SV_JBPNT EQU	$64		; (long) pointer to current
+*					Job table entry
+SV_JBBAS EQU	$68		; (long) pointer to base of
+*					Job table
+SV_JBTOP EQU	$6C		; (long) pointer to top of
+*					Job table
+SV_CHTAG EQU	$70		; (word) current value of
+*					channel tag
+SV_CHMAX EQU	$72		; (word) highest current
+*					channel number
+SV_CHPNT EQU	$74		; (long) pointer to last
+*					channel checked
+SV_CHBAS EQU	$78		; (long) pointer to base of
+*					channel table
+SV_CHTOP EQU	$7C		; (long) pointer to top of
+*					channel table
+SV_CAPS EQU	$88		; (word) caps lock
+SV_ARBUF EQU	$8A		; (word) autorepeat buffer
+SV_ARDEL EQU	$8C		; (word) autorepeat delay
+SV_ARFRQ EQU	$8E		; (word) autorepeat 1/freq
+SV_ARCNT EQU	$90		; (word) autorepeat count
+SV_CQCH EQU	$92		; (word) keyboard change
+*					queue char code
+SV_WP	EQU	$94		; (word) write protect
+SV_SOUND EQU	$96		; (word) sound status
+SV_SER1C EQU	$98		; (long) receive	channel 1
+*					queue address
+SV_SER2C EQU	$9C		; (long) receive	channel 2
+*					queue address
+SV_TMODE EQU	$A0		; (byte) ZX8302 transmit
+*					mode
+*					(includes baudrate)
+SV_CSUB EQU	$A2		; (long) Subroutine to jump
+*					to on CAPSLOCK
+SV_TIMO EQU	$A6		; (word) Timeout for
+*					switching transmit
+*					mode
+SV_TIMOV EQU	$A8		; (word) Value of switching
+*					timeout
+*					(two characters)
+SV_FSTAT EQU	$AA		; (word) flashing cursor
+*					status
+SV_PROGD EQU	$AC		; (long) ptr to PROG
+*					drive defaults
+SV_DATAD EQU	$B0		; (long) ptr to DATA
+*					drive defaults
+SV_DESTD EQU	$B4		; (long) ptr to DEST/SPL
+*					drive defaults
+SV_THINGL EQU	$B8		; (long) linked list of
+*					things
+; SV_????? EQU	  $E0		  ; (long) BASICs linked list
+*					of allocations
+SV_MDRUN EQU	$EE		; (byte) which drive is
+*					running?
+SV_MDCNT EQU	$EF		; (byte) microdrive run-up
+*					run-down counter
+SV_MDDID EQU	$F0		; (8 bytes) drive ID*4 of
+*					each microdrive
+SV_MDSTA EQU	$F8		; (8 bytes) status 0= no
+*					pending ops
+SV_FSDEF EQU	$100		; (16 long) pointers to file
+*					system physical
+*					definition
+SV_FSLST EQU	$140		; (long) pointer to list of
+*					file channel
+*					definitions
+SV_TRAN EQU	$144		; (byte) I/O translation
+*					flag (0=translate)
+SV_ICHAR EQU	$145		; (byte) one character input
+*					buffer
+SV_TRTAB EQU	$146		; (long) translation table
+*					adddress
+SV_MGTAB EQU	$14A		; (long) message table
+*					address
+SV_STACB EQU	$180		; (192 long) bottom of stack
+SV_STACT EQU	$480		;	    (to here )
+*				  big stack - no check
+SV_TRAPO EQU	2*($28+2)	; offset of trap vector
+*				  table from (SV_TRAPV)
+
+SV.IDENT EQU	$D254		; green, red, blue and
+*				  black, with flash bits
+
+; --------------------------------------------------------------
+;  device driver definitions
+;  (for the driver's own pseudo system vars)
+; --------------------------------------------------------------
+SV_LXINT EQU	$00		; (long) link to next
+*					external interrupt
+*					service
+SV_AXINT EQU	$04		; (long) address of external
+*					interrupt service
+SV_LPOLL EQU	$08		; (long) link to next
+*					polling interrupt
+*					service
+SV_APOLL EQU	$0C		; (long) address of polling
+*					interrupt service
+SV_LSCHD EQU	$10		; (long) link to next
+*					schedular task
+SV_ASCHD EQU	$14		; (long) address of
+*					schedular task
+SV_LIO	EQU	$18		; (long) link to next I/O
+*					driver
+SV_AIO	EQU	$1C		; (long) address of I/O
+*					routine
+SV_AOPEN EQU	$20		; (long) address of channel
+*					open routine
+SV_ACLOS EQU	$24		; (long) address of channel
+*					close routine
+
+; --------------------------------------------------------------
+;  SYS.RA - RAM size definitions
+; --------------------------------------------------------------
+RA_BOT	EQU	$20000		; Bottom of RAM
+RA_MIN	EQU	$20000		; Minimum RAM size, 128K
+RA_SSIZE EQU	$8000		; Screen size
+
+TRLV_D7 EQU	$00		; (long) address of saved D7
+*					on stack
+TRLV_A5 EQU	$04		; (long) address of saved A5
+*					on stack
+TRLV_A6 EQU	$08		; (long) address of saved A6
+*					on stack
+TRLV_SR EQU	$0C		; (word) address of saved SR
+*					on stack
+TRLV_PC EQU	$0E		; (long) address of saved PC
+*					on stack
+TRLV_TOP EQU	$12
+
+; --------------------------------------------------------------
+;  SYS.BT - memory block table definitions
+; --------------------------------------------------------------
+
+; --------------------------------------------------------------
+;  memory block table entries
+; --------------------------------------------------------------
+BT_STAT EQU	$00		; (byte) drive ID / status
+*					byte - see below
+BT_PRIOR EQU	$01		; (byte) block priority
+
+BT_SECTR EQU	$02		; (word) sector number
+*					(drive*2)
+
+BT_FILNR EQU	$04		; (word) file number
+*					(drive) } logical
+BT_BLOCK EQU	$06		; (word) block number
+*					(drive) } location
+BT_END	EQU	$08
+
+; --------------------------------------------------------------
+;  the most significant 4 bits of the status byte contain the
+;  pointer to the physical device block SV_FSDEF, the least
+;  significant are the status codes:
+; --------------------------------------------------------------
+BT.UNAV EQU	%00000000	; block is unavailable to
+*				  file system
+BT.EMPTY EQU	%00000001	; block is empty
+
+BT.RREQ EQU	%00001001	; block required to be read
+*				  from microdrive
+BT.TRUE EQU	%00000011	; block is a true
+*				  representation of file
+BT.AVER EQU	%00001011	; block is awaiting verify
+BT.UPDT EQU	%00000111	; block is updated
+
+
+; --------------------------------------------------------------
+;  status code masks
+; --------------------------------------------------------------
+BT.ACTN EQU	%00001100	; check for read or write
+*				  request
+BT.NACTN EQU	%11110011
+BT.INUSE EQU	%00001110	; check if a file block in
+*				  use
+
+; --------------------------------------------------------------
+;  bits of status codes
+; --------------------------------------------------------------
+BT..FILE EQU	0		; 1 if a file block
+BT..ACCS EQU	1		; 1 if contents may be
+*				  accessed
+BT..WREQ EQU	2		; 1 if block required to be
+*				  written
+BT..RDVR EQU	3		; 1 if block required to be
+*				  read / verified
+
+; --------------------------------------------------------------
+;  SYS.JB - Job header and save area definitions
+; --------------------------------------------------------------
+JB_LEN	EQU	$00		; (long) length of job
+*					segment
+JB_START EQU	$04		; (long) start address
+JB_OWNER EQU	$08		; (long) owner of this job
+JB_HOLD EQU	$0C		; (long) ptr to byte to be
+*					CLR when job
+*					released
+JB_TAG	EQU	$10		; (word) tag for this job
+JB_PRIOR EQU	$12		; (byte) current accumulated
+*					priority
+JB_PRINC EQU	$13		; (byte) priority increment,
+*					if =0 job inactive
+JB_STAT EQU	$14		; (word) job status
+*				  =0 potentially active
+*				  >0 delay time (frames)
+*				  <0 suspended
+JB_RELA6 EQU	$16		; (byte) MSB set if next
+*					trap #2 or #3 is
+*					relative A6
+JB_WFLAG EQU	$17		; (byte) set if there is a
+*					Job waiting on
+*					completion
+JB_WJOB EQU	$18		; (long) Job ID of waiting
+*					Job
+JB_TRAPV EQU	$1C		; (long) pointer to trap
+*					redirection vectors
+JB_D0	EQU	$20		; save offset of D0
+JB_D1	EQU	$24		; save offset of D1
+JB_D7	EQU	$3C		; save offset of D7
+JB_A1	EQU	$44		; save offset of A1
+JB_A4	EQU	$50		; save offset of A4
+JB_A5	EQU	$54		; save offset of A5
+JB_A6	EQU	$58		; save offset of A6
+JB_A7	EQU	$5C		; save offset of A7
+JB_USP	EQU	$5C		; save offset of USP
+JB_SR	EQU	$60		; save offset of SR
+JB_PC	EQU	$62		; save offset of PC
+JB_END	EQU	$68
+
+
+; --------------------------------------------------------------
+; SYS.CH - channel definition block / driver headers
+; --------------------------------------------------------------
+
+; --------------------------------------------------------------
+;  channel definition header for all channels
+; --------------------------------------------------------------
+CH_LEN	EQU	$00		; (long) length of definition
+*					block
+CH_DRIVR EQU	$04		; (long) address of driver
+CH_OWNER EQU	$08		; (long) owner job
+CH_RFLAG EQU	$0C		; (long) address to be set
+*					when space released
+CH_TAG	EQU	$10		; (word) channel tag
+CH_STAT EQU	$12		; (byte) status
+*				  =0 OK
+*				  <0 waiting
+*				  =-1 A1 abs
+*				  =$80 A1 rel A6
+CH_ACTN EQU	$13		; (byte) stored action for
+*					waiting job
+CH_JOBWT EQU	$14		; (long) ID of job waiting on
+*					I/O
+CH_END	EQU	$18
+
+; --------------------------------------------------------------
+;  extended channel definition for plain serial queues
+; --------------------------------------------------------------
+CH_QIN	EQU	$18		; (long) pointer to input
+*					queue (or zero)
+CH_QOUT EQU	$1C		; (long) pointer to output
+*					queue (or zero)
+CH_QEND EQU	$20
+
+; --------------------------------------------------------------
+;  device driver header
+; --------------------------------------------------------------
+CH_NEXT EQU	$0		; (long) pointer to next
+*					driver
+CH_INOUT EQU	$4		; (long) entry for input
+*					and output
+CH_OPEN EQU	$8		; (long) entry for open
+CH_CLOSE EQU	$C		; (long) entry for close
+
+; --------------------------------------------------------------
+;  the following are for directory devices (file system) only
+; --------------------------------------------------------------
+CH_SLAVE EQU	$10		; (long) entry for slaving
+*					blocks
+CH_RENAM EQU	$14		; (long) entry reserved
+*					for rename
+
+CH_FORMT EQU	$1C		; (long) entry for format
+*					medium
+CH_DFLEN EQU	$20		; (long) length of physical
+*					definition block
+CH_DRNAM EQU	$24		; (2+n byte) drive name
+
+; --------------------------------------------------------------
+;  SYS.HP - common heap header definition
+; --------------------------------------------------------------
+HP_LEN	EQU	$00		; (long) length of
+*					definition block
+HP_DRIVR EQU	$04		; (long) address of driver to
+*					to free block when
+*					owner is deleted
+*					(CH_CLOSE)
+HP_NEXT EQU	$04		; (long) pointer to next free
+*					space
+HP_OWNER EQU	$08		; (long) owner job
+*					(0 if free space)
+HP_RFLAG EQU	$0C		; (long) address to be set
+*					when space released
+HP_END	EQU	$10
+
+HP_CLOSE EQU	$C		; offset of close entry
+*				  point WRT driver add
+
+; --------------------------------------------------------------
+;  SYS.IO - basic IO keys
+; --------------------------------------------------------------
+
+; --------------------------------------------------------------
+;  Trap #2 D0 keys
+; --------------------------------------------------------------
+IO.OPEN EQU	1		; open channel
+IO.CLOSE EQU	2		; close channel
+IO.FORMT EQU	3		; format medium
+IO.DELET EQU	4		; delete file
+
+; --------------------------------------------------------------
+;  Trap #2 D3 keys
+; --------------------------------------------------------------
+IO.OLD	EQU	0		; open old (exclusive) file
+*				  or device
+IO.SHARE EQU	1		; open old (shared) file
+IO.NEW	EQU	2		; open new (exclusive) file
+IO.OVERW EQU	3		; overwrite (or open new)
+*				  file
+IO.DIR	EQU	4		; open directory
+
+; --------------------------------------------------------------
+;  Trap #3 D0 keys
+; --------------------------------------------------------------
+IO.PEND EQU	0		; check for pending input
+IO.FBYTE EQU	1		; fetch a byte
+IO.FLINE EQU	2		; fetch a line of bytes
+IO.FSTRG EQU	3		; fetch a string of bytes
+IO.EDLIN EQU	4		; edit a line
+IO.SBYTE EQU	5		; send a byte
+IO.SSTRG EQU	7		; send a string of bytes
+
+; --------------------------------------------------------------
+;  SYS.FS - file system definitions and keys
+; --------------------------------------------------------------
+
+; --------------------------------------------------------------
+;  file system channel channel definition block
+; --------------------------------------------------------------
+FS_NEXT EQU	$18		; (long) link to next file
+*					system channel
+FS_ACCES EQU	$1C		; (byte) access mode
+FS_DRIVE EQU	$1D		; (byte) drive ID
+FS_FILNR EQU	$1E		; (word) file number
+FS_NBLOK EQU	$20		; (word) block containing
+*					next byte
+FS_NBYTE EQU	$22		; (word) next byte in block
+FS_EBLOK EQU	$24		; (word) end of file (block)
+FS_EBYTE EQU	$26		; (word) end of file
+*					(byte in block)
+FS_CBLOK EQU	$28		; (long) pointer to table
+*					for current slave
+FS_UPDT EQU	$2C		; (byte) set if file is
+*					updated
+FS_FNAME EQU	$32		; (name 2+36) file name
+FS_SPARE EQU	$58		; 72 bytes
+FS_END	EQU	$A0
+FS.NMLEN EQU	$24		; max length of file name
+FS.HDLEN EQU	$40		; length of file system
+*				  header
+
+; --------------------------------------------------------------
+;  the common part of a physical file system definition block
+; --------------------------------------------------------------
+FS_DRIVR EQU	$10		; (long) pointer to driver
+FS_DRIVN EQU	$14		; (byte) drive number
+FS_MNAME EQU	$16		; (word+10bytes) medium name
+FS_FILES EQU	$22		; (byte) number files open
+
+; --------------------------------------------------------------
+;  file system keys
+; --------------------------------------------------------------
+FS.CHECK EQU	$40		; check all pending
+*				  operations
+FS.FLUSH EQU	$41		; flush buffers
+FS.POSAB EQU	$42		; position file pointer
+*				  (absolute)
+FS.POSRE EQU	$43		; position file pointer
+*				  (relative)
+FS.MDINF EQU	$45		; information about medium
+FS.HEADS EQU	$46		; set file header
+FS.HEADR EQU	$47		; read file header
+FS.LOAD EQU	$48		; load file
+FS.SAVE EQU	$49		; save file
+FS.RENAM EQU	$4A
+FS.TRUNC EQU	$4B
+FS.DATE EQU	$4C		; Set file date
+FS.MKDIR EQU	$4D		; Create directory
+FS.WATER EQU	$4E		; Read machine's watermark:
+*				  Thor only.
+
+; --------------------------------------------------------------
+;  SYS.Q - IO queue header definitions
+; --------------------------------------------------------------
+Q_EOFF	EQU	$0		; (bit) end of file flag
+*					(MSbit)
+Q_NEXTQ EQU	$0		; (long) link to next queue
+Q_END	EQU	$4		; (long) pointer to end of
+*					queue
+Q_NEXTIN EQU	$8		; (long) pointer to next
+*					location to put
+*					byte in
+Q_NXTOUT EQU	$C		; (long) pointer to next
+*					location to take
+*					byte from
+Q_QUEUE EQU	$10		; start of queue
+
+; --------------------------------------------------------------
+;  SYS.MC - Master chip registers
+; --------------------------------------------------------------
+MC_STAT EQU	$18063		; Status register
+
+MC..BLNK EQU	$1		; bit 1 blanks display
+MC..M256 EQU	$3		; bit 3 set 256 mode
+MC..SCRN EQU	$7		; bit 7 sets screen number
+
+; --------------------------------------------------------------
+;  SYS.PC - peripheral chip registers
+; --------------------------------------------------------------
+PC_CLOCK EQU	$18000		; real time clock in seconds
+*				  (long word)
+PC_TCTRL EQU	$18002		; transmit control
+PC_MCTRL EQU	$18020		; Microdrive/link control
+*				  register
+PC_IPCRD EQU	$18020		; IPC read is the same
+PC_IPCWR EQU	$18003		; IPC write is not
+PC_INTR EQU	$18021		; interrupt register
+PC_TDATA EQU	$18022		; transmit register
+PC_TRAK1 EQU	$18022		; Microdrive read track1
+PC_TRAK2 EQU	$18023		; Microdrive read track2
+
+PC.INTRG EQU	$01		; gap interrupt register
+PC.INTRI EQU	$02		; interface interrupt
+*				  register
+PC.INTRT EQU	$04		; transmit interrupt
+*				  register
+PC.INTRF EQU	$08		; frame interrupt register
+PC.INTRE EQU	$10		; external interrupt
+*				  register
+PC.MASKG EQU	$20		; gap mask register
+PC.MASKI EQU	$40		; interface mask register
+PC.MASKT EQU	$80		; transmit mask register
+
+; --------------------------------------------------------------
+;  transmit control register values
+; --------------------------------------------------------------
+PC..SERN EQU	3		; serial port number
+PC..SERB EQU	4		; 0=serial IO
+PC..DIRO EQU	7		; direct output
+
+PC.BMASK EQU	%00000111	; baud rate mask
+PC.NOTMD EQU	%11100111	; all bits except mode
+*				  control
+PC.MDVMD EQU	%00010000	; microdrive mode
+PC.NETMD EQU	%00011000	; network mode
+
+; --------------------------------------------------------------
+;  microdrive control register values
+; --------------------------------------------------------------
+
+; --------------------------------------------------------------
+;  write
+; --------------------------------------------------------------
+PC..SEL EQU	0		; microdrive select bit
+PC..SCLK EQU	1		; microdrive select clock
+*				  bit
+PC..WRIT EQU	2		; microdrive write
+PC..ERAS EQU	3		; microdrive erase
+
+; --------------------------------------------------------------
+;  read
+; --------------------------------------------------------------
+PC..TXFL EQU	1		; microdrive Xmit buffer
+*				  full
+PC..RXRD EQU	2		; microdrive read buffer
+*				  ready
+PC..GAP EQU	3		; gap
+PC..DTR1 EQU	4		; DRT on port 1
+PC..CTS2 EQU	5		; CTS on port 2
+
+; --------------------------------------------------------------
+;  write masks
+; --------------------------------------------------------------
+PC.READ EQU	%0010		; read (or idle) microdrive
+PC.SELEC EQU	%0011		; select bit set
+PC.DESEL EQU	%0010		; select bit not set
+PC.ERASE EQU	%1010		; erase on / write off
+PC.WRITE EQU	%1110		; erase and write
+
+; --------------------------------------------------------------
+;  SYS.SD.SA			 window data block definition
+; --------------------------------------------------------------
+SD_XMIN EQU	$18		; (word) window top LHS
+SD_YMIN EQU	$1A		; (word)
+SD_XSIZE EQU	$1C		; (word) window size
+SD_YSIZE EQU	$1E		; (word)
+SD_BORWD EQU	$20		; (word) border width
+SD_XPOS EQU	$22		; (word) cursor position
+SD_YPOS EQU	$24		; (word)
+SD_XINC EQU	$26		; (word) cursor increment
+SD_YINC EQU	$28		; (word)
+SD_FONT EQU	$2A		; (2*long) font addresses
+SD_SCRB EQU	$32		; (long) base address of
+*					screen
+SD_PMASK EQU	$36		; (long) paper colour mask
+SD_SMASK EQU	$3A		; (long) strip colour mask
+SD_IMASK EQU	$3E		; (long) ink colour mask
+SD_CATTR EQU	$42		; (byte) character
+*					attributes
+SD_CURF EQU	$43		; (byte) cursor flag
+*					=0 suppressed,
+*					>0 visible
+SD_PCOLR EQU	$44		; (byte) paper colour byte
+SD_SCOLR EQU	$45		; (byte) strip colour byte
+SD_ICOLR EQU	$46		; (byte) ink colour byte
+SD_BCOLR EQU	$47		; (byte) border colour byte
+SD_NLSTA EQU	$48		; (byte) new line status
+*					>0 implicit,
+*					<0 explicit
+SD_FMOD EQU	$49		; (byte) fill mode
+*					0=off, 1=on
+SD_YORG EQU	$4A		; (float) graphics window
+*					 origin
+SD_XORG EQU	$50		; (float) graphics window
+*					 origin
+SD_SCAL EQU	$56		; (float) graphics scale
+*					 factor
+SD_FBUF EQU	$5C		; (long) pointer to fill
+*					buffer
+SD_FUSE EQU	$60		; (long) pointer to user
+*					defined fill
+*					vectors
+SD_END	EQU	$64
+
+; --------------------------------------------------------------
+;  character attribute and other flag bits
+; --------------------------------------------------------------
+SD..ULIN EQU	0		; underline bit
+SD..FLSH EQU	1		; flash bit
+SD..TRNS EQU	2		; transparent background
+SD..XOR EQU	3		; XOR characters/graphics
+SD..DBHT EQU	4		; double height
+SD..EXWD EQU	5		; extended width
+SD..DBWD EQU	6		; double width
+SD..GCHR EQU	7		; graphics positioned
+*				  characters
+
+; --------------------------------------------------------------
+;  screen entry parameter definition
+; --------------------------------------------------------------
+SD.EXTOP EQU	$09		; external operation (A3)
+SD.PXENQ EQU	$0A		; pixel based size /
+*				  position enquiry
+SD.CHENQ EQU	$0B		; character based size /
+*				  position enquiry
+SD.BORDR EQU	$0C		; define window border
+SD.WDEF EQU	$0D		; define window
+SD.CURE EQU	$0E		; enable cursor
+SD.CURS EQU	$0F		; suppress cursor
+SD.POS	EQU	$10		; absolute position
+SD.TAB	EQU	$11		; tab (horizontal position)
+SD.NL	EQU	$12		; newline
+SD.PCOL EQU	$13		; previous column
+SD.NCOL EQU	$14		; next column
+SD.PROW EQU	$15		; previous row
+SD.NROW EQU	$16		; next row
+SD.PIXP EQU	$17		; set pixel position
+SD.SCROL EQU	$18		; scroll whole window
+SD.SCRTP EQU	$19		; scroll top of window
+SD.SCRBT EQU	$1A		; scroll bottom of window
+SD.PAN	EQU	$1B		; pan window
+SD.PANLN EQU	$1E		; pan cursor line
+SD.PANRT EQU	$1F		; pan RHS of cursor line
+SD.CLEAR EQU	$20		; clear whole window
+SD.CLRTP EQU	$21		; clear top of window
+SD.CLRBT EQU	$22		; clear bottom of window
+SD.CLRLN EQU	$23		; clear cursor line
+SD.CLRRT EQU	$24		; clear to right of cursor
+SD.FOUNT EQU	$25		; set fount addresses
+SD.RECOL EQU	$26		; recolour a window
+SD.SETPA EQU	$27		; set paper colour
+SD.SETST EQU	$28		; set strip colour
+SD.SETIN EQU	$29		; set ink colour
+SD.SETFL EQU	$2A		; set flash on/off
+SD.SETUL EQU	$2B		; set underline on/off
+SD.SETMD EQU	$2C		; set write mode
+SD.SETSZ EQU	$2D		; set character size
+SD.FILL EQU	$2E		; fill block
+SD.DONL EQU	$2F		; do pending newline
+SD.POINT EQU	$30		; set point in window
+SD.LINE EQU	$31		; draw line
+SD.ARC	EQU	$32		; draw arc
+SD.ELIPS EQU	$33		; draw ellipse
+SD.SCALE EQU	$34		; set graphics scale
+SD.FLOOD EQU	$35		; set fill mode/vectors
+SD.GCUR EQU	$36		; set text cursor using
+*				  graphics coords
+
+; --------------------------------------------------------------
+;  SYS.MD.SA - microdrive physical layer definition
+; --------------------------------------------------------------
+MD_DRIVR EQU	$10		; (long) pointer to driver
+MD_DRIVN EQU	$14		; (byte) drive number
+MD_MNAME EQU	$16		; (10 bytes+word) medium
+*				  name and check number
+MD_FILES EQU	$22		; (byte) number of files
+*					open
+MD_ESTAT EQU	$23		; (byte) error status
+*					0=OK -1=bad
+MD_FAIL EQU	$24		; (byte) failure count
+MD_MAP	EQU	$28		; (256*2 bytes) microdrive
+*					       map
+MD_FILMP EQU	$28		; files by sector number*2
+*				   FE bad, FD vac,
+*				   FC pending delete
+MD_BLKMP EQU	$29		; block by sector number*2
+MD_LSECT EQU	$226		; (word) last sector
+*					allocated.
+MD_PENDG EQU	$228		; (256 words) pending
+*					operations map
+*					by sector nr*2
+*					=0 not,
+*					>0 slave block#
+*					=-1 write map
+*					=-2 verify map
+MD_END	EQU	$428
+
+; --------------------------------------------------------------
+;  directory structure definitions
+; --------------------------------------------------------------
+MD_DELEN EQU	$00		; long word  file length
+MD_DEACS EQU	$04		; byte	    file access key
+*				  key
+MD_DETYP EQU	$05		; byte	    file type
+MD_DEINF EQU	$06		; 8 bytes    file info
+MD_DENAM EQU	$0E		; 2+36 bytes file name
+MD_DEEND EQU	$40
+
+; --------------------------------------------------------------
+;  SYS.SER.SA - Serial I/O definitions
+; --------------------------------------------------------------
+SER_RXQL EQU	81		; Length of receive buffer
+*				  (odd!)
+SER_TXQL EQU	81		; Length of transmit buffer
+*				  (odd!)
+
+; --------------------------------------------------------------
+;  Channel definition block
+; --------------------------------------------------------------
+SER_CHNO EQU	24		; Channel number (1 or 2)
+SER_PAR EQU	26		; Parity requirement
+SER_TXHS EQU	28		; Transmit handshake flag
+SER_PROT EQU	30		; Protocol, +ve CR/LF, 0
+*				  CTRLZ, -ve RAW
+SER_RXQ EQU	32		; Receive queue header
+SER_TXQ EQU	32+SER_RXQL+Q_QUEUE+1 ; Transmit queue header
+SER_END EQU	SER_TXQ+SER_TXQL+Q_QUEUE+1 ; Total memory
+*					  required
+
+; --------------------------------------------------------------
+;  SYS.NET.SA - net data block definition
+; --------------------------------------------------------------
+NET_HEDR EQU	$18		; (8 bytes) network packet
+*					   header
+NET_DEST EQU	$18		; (byte)    destination
+*					   station number
+NET_SELF EQU	$19		; (byte)    own station
+*					   number
+NET_BLKL EQU	$1A		; (byte)    data block
+*					   number (lo byte)
+NET_BLKH EQU	$1B		; (byte)    data block
+*					   number (hi byte)
+NET_TYPE EQU	$1C		; (byte)    send blocks:
+*					   0=not EOF 1=EOF
+NET_NBYT EQU	$1D		; (byte)    number of bytes
+*					   sent or received
+NET_DCHK EQU	$1E		; (byte)    data checksum
+NET_HCHK EQU	$1F		; (byte)    header checksum
+NET_DATA EQU	$20		; (255 bytes) data block
+NET_RPNT EQU	$11F		; (byte)    running pointer
+*					   to data block
+NET_END EQU	$120		; length of data definition
+*				  block
+
+; --------------------------------------------------------------
+;  SYS.IPCMD.SA 		 IPC link commands
+; --------------------------------------------------------------
+RSET_CMD EQU	0		; System reset
+STAT_CMD EQU	1		; Report input status
+OPS1_CMD EQU	2		; Open	RS232 channel 1
+OPS2_CMD EQU	3		; Open	RS232 channel 2
+CLS1_CMD EQU	4		; Close RS232 channel 1
+CLS2_CMD EQU	5		; Close RS232 channel 2
+RDS1_CMD EQU	6		; Read	RS232 channel 1
+RDS2_CMD EQU	7		; Read	RS232 channel 2
+RDKB_CMD EQU	8		; Read keyboard
+KBDR_CMD EQU	9		; Keyboard direct read
+INSO_CMD EQU	10		; Initiate sound process
+KISO_CMD EQU	11		; Kill sound process
+MDRS_CMD EQU	12		; Microdrive reduced
+*				  sensitivity
+BAUD_CMD EQU	13		; Change baud rate
+RAND_CMD EQU	14		; Random number generator
+TEST_CMD EQU	15		; Test
+SBSIZE	EQU	25		; Maximum length of an RS232
+*				  buffer
+
+; --------------------------------------------------------------
+;  SYS.RI.SA - arithmetic interpreter op codes
+; --------------------------------------------------------------
+RI.TERM EQU	$00
+RI.NINT EQU	$02
+RI.INT	EQU	$04
+RI.NLINT EQU	$06
+RI.FLOAT EQU	$08
+RI.ADD	EQU	$0A
+RI.SUB	EQU	$0C
+RI.MULT EQU	$0E
+RI.DIV	EQU	$10
+RI.ABS	EQU	$12
+RI.NEG	EQU	$14
+RI.DUP	EQU	$16
+RI.COS	EQU	$18
+RI.SIN	EQU	$1A
+RI.TAN	EQU	$1C
+RI.COT	EQU	$1E
+RI.ASIN EQU	$20
+RI.ACOS EQU	$22
+RI.ATAN EQU	$24
+RI.ACOT EQU	$26
+RI.SQRT EQU	$28
+RI.LN	EQU	$2A
+RI.LOG10 EQU	$2C
+RI.EXP	EQU	$2E
+RI.POWFP EQU	$30
+
+RI.MAXOP EQU	$30
+
+RI.LOAD EQU	$00		; load operand key
+RI.STORE EQU	$01		; store operand key (sets
+*				  bit 0)
+
+; --------------------------------------------------------------
+;  PA.SA - Token types
+; --------------------------------------------------------------
+SPC.B	EQU	$80		; space token
+KEY.B	EQU	$81		; keyword token
+BIP.B	EQU	$82		; built-in-procedure
+BIF.B	EQU	$83		; built-in-function
+SYM.B	EQU	$84		; symbol
+OPS.B	EQU	$85		; operation symbol
+MON.B	EQU	$86		; mono-operation symbol
+SYV.B	EQU	$87		; system variable
+NAM.B	EQU	$88		; name
+SHI.B	EQU	$89		; short integer
+LGI.B	EQU	$8A		; long integer
+FP.B	EQU	$F0		; floating point number
+STR.B	EQU	$8B		; string
+TXT.B	EQU	$8C		; text
+LNO.B	EQU	$8D		; line number
+SEP.B	EQU	$8E		; separator
+
+; --------------------------------------------------------------
+;  LPOFF.SA - Offsets within loop index description
+; --------------------------------------------------------------
+LP.IEXP EQU	0		; index exponent (word)
+LP.IMANT EQU	2		; index mantissa (long)
+LP.LNVAR EQU	6		; length of a simple
+*				  variable
+LP.SL	EQU	6		; start line (word)
+LP.EL	EQU	8		; end line (word)
+LP.SS	EQU	$A		; statement on start line
+*				  (byte)
+LP.ES	EQU	$B		; statement on end line
+*				  (byte)
+LP.LNREP EQU	$C		; length of a REP
+*				  description
+LP.EEXP EQU	$C		; endval exponent (word)
+LP.EMANT EQU	$E		; endval mantissa (long)
+LP.SEXP EQU	$12		; step exponent (word)
+LP.SMANT EQU	$14		; step mantissa (long)
+LP.CHPOS EQU	$18		; character position along
+*				  line (word)
+LP.LNFOR EQU	$1A		; length of a FOR
+*				  description
+
+; --------------------------------------------------------------
+;  CHOFF.SA - Offsets on BASIC channel definitions
+; --------------------------------------------------------------
+CH.ID	EQU	0		;	  Channel id
+CH.CCPY EQU	$4		; (float)  Current cursor
+*					  position, y
+CH.CCPX EQU	$A		; (float)  Current cursor
+*					  position, x
+CH.ANGLE EQU	$10		; (float)  Turtle angle
+CH.PEN	EQU	$16		; (byte)   Pen status (up
+*					  or down)
+CH.CHPOS EQU	$20		; (word)   character posn.
+*					  on line
+CH.WIDTH EQU	$22		; (word)   Width of line
+*					  in characters
+CH.SPARE EQU	$24		;	  ..spare..
+CH.LENCH EQU	$28		; Length of a channel
+*				  definition
+
+; --------------------------------------------------------------
+;  RT.SA - Return Stack pointers
+; --------------------------------------------------------------
+RT.SVBA EQU	0		; base of args	   .L
+RT.SVBL EQU	4		; base of locals	   .L
+RT.SVTL EQU	8		; top of locals    .L
+RT.SVDFL EQU	$C		; DEF line number    .W
+RT.SVFNT EQU	$E		; function type    .B
+RT.SVSWP EQU	$F		; args swapped ($FF)
+*				  or not (0)	   .B
+RT.LENPR EQU	$10		; length of pr/fn bits
+
+; --------------------------------------------------------------
+;  add $10 to next 4 if total wanted from base
+; --------------------------------------------------------------
+RT.SVRTT EQU	0		; return type-
+*				  0 gosub, 1 proc, 2 fn   .B
+RT.SVSTM EQU	1		; statement to return to  .B
+RT.SVLNO EQU	2		; line num to return to   .W
+RT.SVSTA EQU	4		; status flags - inlin,
+*				  sing, index		.L
+RT.LENTL EQU	$18		; total length
+
+; --------------------------------------------------------------
+;  Restoring wants offsets working downwards
+; --------------------------------------------------------------
+RT.RSBA EQU	$18
+RT.RSBL EQU	$14
+RT.RSTL EQU	$10
+RT.RSDFL EQU	$C
+RT.RSFNT EQU	$A
+RT.RSSWP EQU	9
+RT.RSRTT EQU	8
+RT.RSSTM EQU	7
+RT.RSLNO EQU	6
+RT.RSSTA EQU	4
+
+; --------------------------------------------------------------
+;  BV.SA - Pointers to Basic Variable lists & stacks
+; --------------------------------------------------------------
+
+; --------------------------------------------------------------
+;  $20 bytes before this are PCB
+; --------------------------------------------------------------
+BV_START EQU	0		; start of pointers
+
+BV_BFBAS EQU	0		; buffer base
+BV_BFP	EQU	4		; buffer running pointer
+BV_TKBAS EQU	8		; token list
+BV_TKP	EQU	$C
+BV_PFBAS EQU	$10		; program file
+BV_PFP	EQU	$14
+BV_NTBAS EQU	$18		; name table
+BV_NTP	EQU	$1C
+BV_NLBAS EQU	$20		; name list
+BV_NLP	EQU	$24
+BV_VVBAS EQU	$28		; variable values
+BV_VVP	EQU	$2C
+BV_CHBAS EQU	$30		; channel table
+BV_CHP	EQU	$34
+BV_RTBAS EQU	$38		; return table
+BV_RTP	EQU	$3C
+BV_LNBAS EQU	$40		; line number table
+BV_LNP	EQU	$44
+BV_CHANGE EQU	$48		; change of direction marker
+
+BV_BTP	EQU	$48		; backtrack stack during
+*				  parsing
+BV_BTBAS EQU	$4C
+BV_TGP	EQU	$50		; temporary graph stack
+*				  during parsing
+BV_TGBAS EQU	$54
+BV_RIP	EQU	$58		; arithmetic stack
+BV_RIBAS EQU	$5C
+BV_SSP	EQU	$60		; system stack (real one!)
+BV_SSBAS EQU	$64
+
+BV_ENDPT EQU	$64		; end of pointers
+
+BV_LINUM EQU	$68		; current line number (word)
+BV_LENGTH EQU	$6A		; current length (word)
+BV_STMNT EQU	$6C		; current statement on line
+*				  (byte)
+BV_CONT EQU	$6D		; continue($80) or stop(0)
+*				  processing (byte)
+BV_INLIN EQU	$6E		; processing in-line clause
+*				  or not (byte)
+*				  loop (1), other ($FF),
+*				  not (0)
+BV_SING EQU	$6F		; single line execution
+*				  on($FF) or off(0)(byte)
+BV_INDEX EQU	$70		; name tab row of last inlin
+*				  lp index read(word)
+BV_VVFREE EQU	$72		; first free space in
+*				  vvtable (long)
+BV_SSSAV EQU	$76		; saved sp for out/mem to go
+*				  back to (long)
+
+; --------------------------------------------------------------
+;  gap of 6 !
+; --------------------------------------------------------------
+BV_RAND EQU	$80		; random number (long)
+BV_COMCH EQU	$84		; command channel (long)
+
+BV_NXLIN EQU	$88		; which line number to start
+*				  after (word)
+BV_NXSTM EQU	$8A		; which statement to start
+*				  after (byte)
+BV_COMLN EQU	$8B		; command line saved($FF) or
+*				  not(0) (byte)
+BV_STOPN EQU	$8C		; which stop number set
+*				  (word)
+BV_EDIT EQU	$8E		; program has been
+*				  editted($FF) or
+*				  not(0)(byte)
+BV_BRK	EQU	$8F		; there has been a break (0)
+*				  or not ($80)(b)
+BV_UNRVL EQU	$90		; need to unravel($FF) or
+*				  not (0) (byte)
+BV_CNSTM EQU	$91		; statement to CONTINUE from
+*				  (byte)
+BV_CNLNO EQU	$92		; line to CONTINUE from
+*				  (word)
+
+BV_DALNO EQU	$94		; current DATA line number
+*				  (word)
+BV_DASTM EQU	$96		; current DATA statement
+*				  number (byte)
+BV_DAITM EQU	$97		; next DATA item to read
+*				  (byte)
+
+BV_CNIND EQU	$98		; inline loop index to
+*				  CONTINUE with (word)
+BV_CNINL EQU	$9A		; inline loop flag for
+*				  CONTINUE (byte)
+
+BV_LSANY EQU	$9B		; whether checking list(ff)
+*				  or not(0) (byte)
+BV_LSBEF EQU	$9C		; invisible top line (word)
+BV_LSBAS EQU	$9E		; bottom line in window
+*				  (word)
+BV_LSAFT EQU	$A0		; invisible bottom line
+*				  (word)
+BV_LENLN EQU	$A2		; length of window line
+*				  (word)
+BV_MAXLN EQU	$A4		; max no of window lines
+*				  (word)
+
+; --------------------------------------------------------------
+;  Note. The 2 words immediately following this will be
+;  overwritten on changing lenln and maxln
+; --------------------------------------------------------------
+BV_TOTLN EQU	$A6		; no of window lines so far
+*				  (word)
+
+; --------------------------------------------------------------
+;  gap of 2
+; --------------------------------------------------------------
+BV_AUTO EQU	$AA		; whether AUTO/EDIT on(FF)
+*				  or off(0) (byte)
+BV_PRINT EQU	$AB		; print from prtok (FF) or
+*				  leave in buffer (0) (b)
+BV_EDLIN EQU	$AC		; line number to edit next
+*				  (word)
+BV_EDINC EQU	$AE		; increment on edit range
+*				  (word)
+
+BV_TKPOS EQU	$B0		; pos of A4 in tklist on
+*				  entry to PROC (long)
+BV_PTEMP EQU	$B4		; temp pointer for GO_PROC
+*				  (long)
+BV_UNDO EQU	$B8		; undo rt stack IMMEDIATELY
+*				  then redo procedure(byte)
+
+BV_ARROW EQU	$B9		; down(FF) or up(01) or
+*				  no(0) arrow (byte)
+
+BV_LSFIL EQU	$BA		; fill window when relisting
+*				  at least to here (word)
+
+BV_END	EQU	$100		; top of BV area
+
+; --------------------------------------------------------------

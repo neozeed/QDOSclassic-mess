@@ -1,0 +1,650 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_PAR_inc'
+
+	SECTION	PAR
+
+	XREF	HW_RESET,HW_ENABLE,HW_DISABLE
+	XREF	POLL_SERver,XINT_SERver
+
+	XREF	HW_VCTR_BEG
+	XREF.S	HW_VCTR.LEN
+
+	XREF.L	HARDTAG
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; PAR_asm - parallel device driver
+;	 - originated July 98 - Mark Swift
+;	 - last modified 11/08/99 (MSW)
+
+; Assembly source for implementing a QDOS parallel device
+
+VERSTAG	EQU	'1.12'
+THNGTAG	EQU	'aPAR'
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  ROM header
+
+BASE:
+	dc.l	$4AFB0001	; ROM recognition code
+	dc.w	0
+	dc.w	ROM_START-BASE
+
+	dc.b	0,27
+	dc.l	HARDTAG
+	dc.b	'PAR device driver '
+	dc.l	VERSTAG
+	dc.b	$A,0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  start of ROM code
+
+ROM_START:
+
+; --------------------------------------------------------------
+;  enter supervisor mode and disable interrupts
+
+	trap	#0
+	ori.w	#$0700,sr	; disable interrupts
+
+; --------------------------------------------------------------
+;  save register entry values
+
+	movem.l	d0-d3/d6-d7/a0-a4/a6,-(a7)
+
+; --------------------------------------------------------------
+;  initialise hardware
+
+	bsr	HW_RESET
+
+; --------------------------------------------------------------
+;  allocate a THING entry for local variables
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+	bsr	MAKE_THG 	; a3 now points to vars
+	bne	ROM_EXIT
+
+; --------------------------------------------------------------
+;  disable caches on '020 and above
+
+	bsr	CACHOFF		; disable caches
+	move.l	d0,d7		; save cacr value
+
+; --------------------------------------------------------------
+;  get address of system vectors
+
+	suba.l	a0,a0		; a handy reference point
+
+	tst.b	161(a6)
+	beq.s	NOVBR
+
+	dc.w	$4E7A,$8801	; movec vbr,a0 (010+)
+
+NOVBR:
+
+; --------------------------------------------------------------
+;  Copy custom vector routines into THING
+
+	move.l	#VCTR.LEN+HW_VCTR.LEN,d2	; will always be multiple of 4
+	lsr.w	#2,d2
+	subq.w	#1,d2
+	lea	VCTR_BEG(pc),a2
+	lea	THNG.VCTR(a3),a4
+
+CPY_VCTR:
+	move.l	(a2)+,(a4)+
+	dbra	d2,CPY_VCTR
+
+; --------------------------------------------------------------
+;  Redirect RESET routine
+
+	move.l	$04(a0),THNG.VCTR+VCTR.RSET_OLD(a3) ; save old address
+
+	lea	THNG.VCTR+VCTR.RSET_NEW(a3),a1
+	move.l	a1,$04(a0)			; redirect RESET
+
+; --------------------------------------------------------------
+;  routines necessary for device driver
+
+	lea	PAR_IO(pc),a2	; Input/Output routine
+	move.l	a2,SV_AIO(a3)
+
+	lea	PAR_OPEN(pc),a2	; OPEN routine
+	move.l	a2,SV_AOPEN(a3)
+
+	lea	PAR_CLOSe(pc),a2	; CLOSE routine
+	move.l	a2,SV_ACLOS(a3)
+
+; --------------------------------------------------------------
+;  routines necessary for IO.SERIO. (used by PAR I/O routine)
+
+	lea	ERR_BP(pc),a2	; test for pending input
+	move.l	a2,VAR.PEND(a3)	; (not implemented)
+
+	lea	ERR_BP(pc),a2	; fetch byte
+	move.l	a2,VAR.FBYTE(a3)	; (not implemented)
+
+	lea	PAR_SBYT(pc),a2	; send byte
+	move.l	a2,VAR.SBYTE(a3)
+
+	move.w	#$4E75,VAR.RTS(A3) ; RTS instruction at $34
+
+; --------------------------------------------------------------
+;  link in device driver
+
+	lea	SV_LIO(a3),a0	; link address
+	moveq	#MT.LIOD,d0	; link in IO device driver
+	trap	#1
+
+; -------------------------------------------------------------
+;  link in external interrupt to act on parallel port free
+
+	lea	XINT_SERver(pc),a1 ; address of routine
+	lea	SV_LXINT(a3),a0
+	move.l	a1,4(a0)
+	moveq	#MT.LXINT,d0
+	trap	#1
+
+; --------------------------------------------------------------
+;  link in poll interrupt to re-enable parallel send
+
+	lea	POLL_SERver(pc),a1 ; address of routine
+	lea	SV_LPOLL(a3),a0
+	move.l	a1,4(a0) 	; address of polled task
+	moveq	#MT.LPOLL,d0
+	trap	#1
+
+; --------------------------------------------------------------
+;  restore caches
+
+	move.l	d7,d0
+	bsr	SETCACH
+
+; --------------------------------------------------------------
+;  restore register entry values
+
+ROM_EXIT:
+	movem.l	(a7)+,d0-d3/d6-d7/a0-a4/a6
+
+;  enable interrupts and re-enter user mode
+
+	andi.w	#$D8FF,sr
+	rts
+
+*******************************************************************
+*
+*  make 'THING' for me
+*
+*  enter a6 = system variables
+*  exit	a3 = address of your private variables
+*
+*  corrupts = d0,d2,a1 - etc...
+*
+*  11/08/99 Make the THING but do not add it to the THING list.
+*	   We will thus keep it private.
+
+MAKE_THG:
+;	 lea	 SV_THINGL(a6),a3  ; start of THING list
+;
+;NEXT_THG:
+;	 move.l	 (a3),d0
+;	 beq.s	 ALOC_THG
+;
+;	 move.l	 d0,a3
+;
+;	 cmp.w	 #4,$2A(a3)
+;	 bne.s	 NEXT_THG
+;
+;	 cmp.l	 #THNGTAG,$2C(a3)
+;	 bne.s	 NEXT_THG
+;
+;	 bra.s	 OKAY_THG
+;
+ALOC_THG:
+	moveq	#0,d2		; owner is superBASIC
+	move.l	#$38+VAR.LEN+VCTR.LEN+HW_VCTR.LEN,d1  ; length
+	moveq	#MT.ALCHP,d0
+	trap	#1		; allocate space
+
+	tst.l	d0
+	bne.s	EXIT_THG 	; exit if error
+
+	move.l	a0,a3
+
+INIT_THG:
+	move.l	#VERSTAG,$26(a3)	; version number
+	move.w	#4,$2A(a3)	; name length
+	move.l	#THNGTAG,$2C(a3)	; name
+	move.l	#'THG%',$30(a3)	; thing variables follow
+	move.l	#2,$34(a3)	; freeform shared code
+
+	lea	$30(a3),a1	; ptr to thing data area
+	move.l	a1,$10(a3)	; store ptr to variables
+
+;	 lea	 SV_THINGL(a6),a1
+;	 move.l	 (a1),(a3)	 ; extend thing list
+;	 move.l	 a3,(a1) 	 ; put THIS thing at start
+
+OKAY_THG:
+	move.l	$10(a3),a3	; address of data area
+	addq.l	#8,a3		; return with a3 pointing
+				; to first variable
+
+EXIT_THG:
+	tst.l	d0
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  OPEN routine for parallel device.
+;
+;  Enters: D3 = open type
+;	  A0 = start of device name
+;	  A3 = assumed start of driver definition block
+;	  A6 = system variables
+
+PAR_OPEN:
+	move.l	a3,-(a7)
+	suba.w	#4,a7		; room for 2 words on stack
+
+	movea.l	a7,a3		; address for parameters
+	move.w	IO.NAME,a4	; decode device name
+	JSR	(A4)
+
+	BRA.S	PAR_O_X		; not found
+	BRA.S	PAR_O_X		; bad device name
+	BRA.S	PAR_O_CHK	; OK, name was PAR_
+
+	dc.w	3		; length of device name
+	dc.b	'PAR',0		; definition is PAR
+	dc.w	2		; 2 parameters
+
+	dc.w	4		; char value, 4 options
+	dc.b	'RNCL'		; eol protocol
+
+	dc.w	1		; char value, 2 options
+	dc.b	'F',0		; eof protocol
+
+; --------------------------------------------------------------
+PAR_O_X:
+	adda.w	#8,a7
+	ANDI.W	#$F8FF,SR
+	RTS
+
+; --------------------------------------------------------------
+PAR_O_IU:
+	moveq	#ERR.IU,d0	; in use
+	bra	PAR_O_X
+
+; --------------------------------------------------------------
+PAR_O_CHK:
+	move.l	4(a7),a3 	; address of driver def blok
+
+	move.l	VAR.PARTQ(a3),d0	; address set?
+	beq.s	PAR_O_CHK1	; no queue, no chan def blk
+
+	movea.l	d0,a0
+	suba.w	#PAR_TXQ,a0	; addrs of old chan def blk
+	bclr	#7,PAR_TXQ(a0)	; output queue empty?
+	bne.s	PAR_O_CHK2	; yes, so continue
+	bra.s	PAR_O_IU 	; no, so exit with error
+
+PAR_O_CHK1:
+	move.w	#(PAR.LEN),d1	; allocate chan def block
+	move.w	MM.ALCHP,a4	; for first time
+	JSR	(A4)
+	bne.s	PAR_O_X		; exit if error occured
+
+	moveq	#PAR.TXQL,d1	; length of transmit queue
+	lea	PAR_TXQ(a0),a2	; address of transmit queue
+	move.w	IO.QSET,a4	; set up queue (not used
+	jsr	(a4)		; before
+
+	move.l	4(a7),a3 	; address of PAR variables
+	move.l	a2,VAR.PARTQ(a3)
+
+PAR_O_CHK2:
+	move.w	(a7),PAR_PROT(a0) ; store handshake, protocol
+	move.w	2(a7),PAR_EOF(a0) ; store EOF protocol
+
+	subq.w	#2,PAR_PROT(a0)	; -ve raw : 0 CR/LF : 1 CR : 2 LF
+	subq.w	#1,PAR_EOF(a0)	; -ve none : 0 FF : CTRL-Z
+
+	bset	#0,1+PAR_FLGS(a0) ; set 'port ready' flag
+
+; --------------------------------------------------------------
+;  any hardware to set up? - hmm...
+
+	bsr	HW_ENABLE
+
+; --------------------------------------------------------------
+PAR_O_OK:
+	moveq	#ERR.OK,d0	; signal "no error"
+	bra	PAR_O_X
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  CLOSE routine for parallel device.
+;
+;  Enters: A0 = start of device name
+;	  A3 = assumed start of driver definition block
+;	  A6 = system variables
+
+PAR_CLOSe:
+	tst.b	1+PAR_EOF(a0)
+	blt.s	PAR_C2		; cont if no eof protocol
+
+	move.w	#12,d1		; send Form Feed
+
+PAR_CLUP:
+	bsr	PAR_SBOK
+	cmp.w	#ERR.NC,d0
+	beq.s	PAR_CLUP
+
+; --------------------------------------------------------------
+;  any hardware to close - hmm...
+
+PAR_C2:
+	bsr	HW_DISABLE
+
+	lea	PAR_TXQ(a0),a2
+	move.w	IO.QEOF,a4	; put EOF marker in queue
+	jsr	(a4)
+
+	moveq	#ERR.OK,d0	; signal "no errors"
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  I/O routine for parallel device.
+;
+;  Enters: A0 = start of device name
+;	  A3 = assumed start of driver definition block
+;	  A6 = system variables
+;	  D0 = operation type
+
+PAR_IO:
+	CMP.B	#$7,D0		; trap file operations
+	BHI	ERR_BP
+
+	pea	VAR.PEND(a3)	; pretend call just before
+	move.w	IO.SERIO,a4
+	JMP	(A4)
+
+; --------------------------------------------------------------
+PAR_SBYT:
+	lea	PAR_TXQ(a0),a2
+
+	move.l	d1,d3
+	move.w	IO.QTEST,a4
+	jsr	(a4)
+	move.l	d3,d1
+
+	cmpi.w	#ERR.EF,d0
+	beq.s	PAR_SB4
+
+	moveq	#ERR.OK,d0
+
+	cmpi.w	#$6,d2		; reasonable space in Q?
+	bge.s	PAR_SB5
+
+	moveq	#ERR.NC,d0
+
+PAR_SB4:
+	rts
+
+PAR_SB5:
+	move.b	1+PAR_TXD(a0),d3	; remember old TX code
+	move.b	d1,1+PAR_TXD(a0)	; save new TX code
+
+	tst.b	1+PAR_PROT(a0)
+	blt.s	PAR_SBOK 	; branch if no eol protocol
+
+	cmpi.b	#$0A,d1		; Line Feed?
+	beq.s	PAR_SB1
+
+	cmpi.b	#$0D,d1		; Carriage Return?
+	bne.s	PAR_SBOK 	; branch if neither
+
+PAR_SB1:
+	cmpi.b	#$0A,d3		; Line Feed?
+	beq.s	PAR_SB2
+
+	cmpi.b	#$0D,d3		; Carriage Return?
+	bne.s	PAR_SB3
+
+PAR_SB2:
+	cmp.b	d1,d3
+	beq.s	PAR_SB3
+
+	move.b	#$FF,1+PAR_TXD(a0) ; ignore LF in CR/LF couple
+	moveq	#ERR.OK,d0
+	rts
+
+PAR_SB3:
+	tst.b	1+PAR_PROT(a0)
+	beq.s	PAR_SB6		; branch if CR/LF protocol
+
+	cmp.b	#2,1+PAR_PROT(a0)
+	beq.s	PAR_SB7		; branch if LF
+
+	moveq	#$0D,d1		; else use CR
+	bra.s	PAR_SBOK
+
+PAR_SB6:
+	moveq	#$0D,d1
+	bsr.s	PAR_SBOK
+
+PAR_SB7:
+	moveq	#$0A,d1
+
+PAR_SBOK:
+	lea	PAR_TXQ(a0),a2
+
+	move.w	IO.QIN,a4	; put byte d1 into queue a2
+	jsr	(a4)
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ERR_OK:
+	moveq	#ERR.OK,d0	; "no error"
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ERR_NC:
+	moveq	#ERR.NC,d0	; "not complete"
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ERR_BP:
+	moveq	#ERR.BP,d0	; "bad parameter"
+	rts
+
+*******************************************************************
+*
+* routine to disable the instruction & data caches
+* Exit:	d0 = previous CACR value
+*
+CACHOFF:
+	move.l	d1,-(a7)
+
+	moveq	#0,d0
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to set the CACR
+* Entry: d0 = value to write to CACR
+* Exit:	d0 = previous CACR value
+*
+SETCACH:
+	move.l	d1,-(a7)
+
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to alter the state of the CACR
+* callable from user or supervisor modes
+* Entry: d0 = bits to set
+*	d1 = bits to clear/alter
+* Exit:	d0 = previous CACR value
+*
+DOCACH:
+	movem.l	d2/a0/a6,-(a7)
+	movea.l	a7,a0
+	trap	#0
+	move.w	sr,-(a7)
+	ori.w	#$0700,sr	interrupts off
+
+	subq.l	#2,a0
+	cmpa.l	a0,a7
+	beq.s	DOCACHSV 	entered routine as supervisor
+
+	bclr	#5,0(a7) 	otherwise sr on exit = user mode
+
+DOCACHSV:
+	move.l	a7,d2		Calculate start of
+	andi.w	#-$8000,d2	system variables
+	move.l	d2,a6
+
+	and.l	d1,d0
+	not.l	d1
+
+	cmpi.b	#$10,$A1(a6)
+	bls.s	DOCACHX		exit if 010 or less
+
+	dc.w	$4E7A,$2002	movec	cacr,d2
+	and.l	d2,d1		mask off changed bits
+	or.l	d0,d1		or in set bits
+
+	move.l	d2,d0		store old cacr value
+
+	ori.w	#$0808,d1	always clear caches on 020/030
+
+	cmpi.b	#$30,$A1(a6)
+	bls.s	DOCACHSET
+
+	tst.w	d0		check 040 bits
+	bpl.s	DOCACHDCHK	branch if instruction cache off
+	dc.w	$F4B8		cpusha	ic
+				; otherwise update memory from cache
+
+DOCACHDCHK:
+	tst.l	d0		check 040 bits
+	bpl.s	DOCACHDINV	branch if data cache off
+	dc.w	$F478		cpusha	dc
+				; otherwise update memory from cache
+
+	tst.l	d1		check 040 bits
+	bmi.s	DOCACHIINV	branch if leaving data cache on
+
+DOCACHDINV:
+	dc.w	$F458		cinva	dc
+				; invalidate cache
+
+DOCACHIINV:
+	dc.w	$F498		cinva	ic
+				; invalidate cache
+
+DOCACHSET:
+	dc.w	$4E7B,$1002	movec	d1,cacr
+				; set the cache
+
+DOCACHX:
+	move.w	(a7)+,sr
+	movem.l	(a7)+,d2/a0/a6
+	rts
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad1:
+	DCB.w ((0-(NOPpad1-BASE))&$3)/2,$4E71
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+VCTR_BEG:
+
+*******************************************************************
+*
+*  Custom RESET routine to put vectors back as they were
+
+RSET:
+
+VCTR.RSET_NEW EQU RSET-VCTR_BEG
+
+	ori.w	#$0700,sr	; disable further interrupts
+
+	bsr	HW_RESET
+
+	movem.l	d0/a0/a3/a6,-(a7)
+
+	lea	VCTR_BEG-THNG.VCTR(pc),a3
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+;  Put back old vectors
+
+	suba.l	a0,a0		; a handy reference point
+
+	tst.b	161(a6)
+	beq.s	RSET68K
+
+	dc.w	$4E7A,$8801	; movec vbr,a0
+
+RSET68K:
+	move.l	THNG.VCTR+VCTR.RSET_OLD(a3),$04(a0) ; restore old RSET
+
+RSETX:
+	movem.l	(a7)+,d0/a0/a3/a6
+
+;  Call old RESET routine
+
+RSETJMP:
+
+VCTR.RSET_OLD EQU (RSETJMP-VCTR_BEG)+2
+
+	DC.W	$4EF9,$0000,$0000  ; filled in later
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad2:
+	DCB.w ((0-(NOPpad2-BASE))&$3)/2,$4E71
+
+*******************************************************************
+*
+* End custom vector routines
+
+VCTR_END:
+
+VCTR.LEN EQU VCTR_END-VCTR_BEG
+
+*******************************************************************
+
+; offset into thing for local variables
+
+THNG.VAR 	EQU	$0
+
+; offset into thing for custom vector routines
+
+THNG.VCTR	EQU	THNG.VAR+VAR.LEN
+THNG.HW_VCTR	EQU	THNG.VCTR+VCTR.LEN
+
+*******************************************************************
+
+	END

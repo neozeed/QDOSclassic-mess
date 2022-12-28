@@ -1,0 +1,157 @@
+1000 t=DATE
+1010 :
+1020 pdir$="win1_"
+1030 PROG_USE pdir$
+1040 :
+1050 ddir$="win1_QZ_"
+1060 DATA_USE ddir$
+1070 :
+1080 sdir$="CLSC_SRC_"
+1090 rdir$="CLSC_ROM_"
+1100 mdir$="CLSC_MGST_"
+1110 :
+1120 REMark Assemble ROMs
+1130 :
+1140 MAKE "CORE_NOP"
+1150 MAKE "CORE_MDV"
+1160 MAKE "Q40_BOOT"
+1170 MAKE "Q40_CLK"
+1180 MAKE "Q40_FLP"
+1190 MAKE "Q40_KBD"
+1200 MAKE "Q40_KEYUK"
+1210 MAKE "Q40_SER"
+1220 MAKE "Q40_SSS"
+1230 MAKE "SSS_BEEP"
+1240 :
+1250 REMark Now create ONE BIG ROM
+1260 :
+1270 REMark -- allocate space --
+1280 a=ALCHP(98304)
+1290 :
+1300 REMark -- fill with NOPs --
+1310 FOR i=0 TO 5
+1320  LBYTES ddir$&rdir$&"CORE_NOP_ROM",a+i*16384
+1330 END FOR i
+1340 :
+1350 REMark -- SYSTEM ROM --
+1360 pos=0
+1370 LOD ddir$&rdir$&"QDOS_SYS_ROM"
+1380 :
+1390 REMark -- TOOLKIT ROM --
+1400 pos=49152
+1410 LOD ddir$&"UTIL_ROM_TK2_ROM"
+1420 :
+1430 REMark -- OTHER ROMs --
+1440 pos=65536
+1450 LOD ddir$&rdir$&"Q40_BOOT_ROM"
+1460 LOD ddir$&rdir$&"Q40_CLK_ROM"
+1470 LOD ddir$&rdir$&"Q40_KBD_ROM"
+1480 LOD ddir$&rdir$&"Q40_KEYUK_ROM"
+1490 LOD ddir$&rdir$&"Q40_SSS_ROM"
+1500 LOD ddir$&rdir$&"SSS_BEEP_ROM"
+1510 LOD ddir$&rdir$&"Q40_SER_ROM"
+1520 LOD ddir$&rdir$&"CORE_MDV_ROM"
+1530 LOD ddir$&"HW_QUB_QUBQ40_ROM"
+1540 LOD ddir$&rdir$&"Q40_FLP_ROM"
+1550 :
+1560 REMark All done... save big ROM
+1570 DELETE ddir$&"CLSC_RUN_Q40_CLASSICp_ROM"
+1580 SBYTES ddir$&"CLSC_RUN_Q40_CLASSICp_ROM",a,98304
+1590 RECHP a
+1600 :
+1610 PRINT 98304-pos;" bytes free"
+1620 :
+1630 t=DATE-t:m=INT(t/60):s=t-m*60
+1640 PRINT "Make took ";m;" minutes and ";s;" seconds to complete"
+1650 STOP
+1660 :
+1670 DEFine PROCedure MAKE(f$)
+1680  LOCal l$(100),i,k,p,loop,STRIP
+1690  DO_ASSM f$
+1700  DO_LINK f$
+1710  IF FTEST(ddir$&mdir$&f$&"_link")<>0 THEN 
+1720   DELETE ddir$&sdir$&f$&"_REL"
+1730   DELETE ddir$&sdir$&f$&"_MAP"
+1740  ELSE 
+1750   OPEN_IN#3;ddir$&mdir$&f$&"_link"
+1760   REPeat loop
+1770    IF EOF(#3) THEN EXIT loop
+1780    INPUT#3;l$
+1790    FOR i=1 TO LEN(l$)
+1800     k=CODE(l$(i))
+1810     IF k>=CODE("a") AND k<=CODE("z") THEN 
+1820      l$(i)=CHR$(k+CODE("A")-CODE("a"))
+1830     END IF 
+1840    END FOR i
+1850    IF l$(1 TO 5)="INPUT" THEN 
+1860     l$=l$(6 TO LEN(l$))
+1870     REPeat STRIP
+1880      IF CODE(l$(1))=32 OR CODE(l$(1))=9 THEN 
+1890       l$=l$(2 TO LEN(l$))
+1900      ELSE 
+1910       EXIT STRIP
+1920      END IF 
+1930     END REPeat STRIP
+1940     DELETE ddir$&l$
+1950    END IF 
+1960   END REPeat loop
+1970   CLOSE#3
+1980   DELETE ddir$&mdir$&f$&"_MAP"
+1990  END IF 
+2000 END DEFine 
+2010 :
+2020 DEFine PROCedure DO_ASSM(f$)
+2030  LOCal l$(100),i,k,p,loop,STRIP
+2040  IF FTEST(ddir$&mdir$&f$&"_link")<>0 THEN 
+2050   EXEC_W "QMAC";ddir$&sdir$&f$&"_asm -ERRORS"
+2060  ELSE 
+2070   OPEN_IN#3;ddir$&mdir$&f$&"_link"
+2080   REPeat loop
+2090    IF EOF(#3) THEN EXIT loop
+2100    INPUT#3;l$
+2110    FOR i=1 TO LEN(l$)
+2120     k=CODE(l$(i))
+2130     IF k>=CODE("a") AND k<=CODE("z") THEN 
+2140      l$(i)=CHR$(k+CODE("A")-CODE("a"))
+2150     END IF 
+2160    END FOR i
+2170    IF l$(1 TO 5)="INPUT" THEN 
+2180     l$=l$(6 TO LEN(l$))
+2190     REPeat STRIP
+2200      IF CODE(l$(1))=32 OR CODE(l$(1))=9 THEN 
+2210       l$=l$(2 TO LEN(l$))
+2220      ELSE 
+2230       EXIT STRIP
+2240      END IF 
+2250     END REPeat STRIP
+2260     p="_REL" INSTR l$
+2270     IF p<>0 THEN l$=l$(1 TO p-1)
+2280     EXEC_W "QMAC";ddir$&l$&"_asm -ERRORS"
+2290    END IF 
+2300   END REPeat loop
+2310   CLOSE#3
+2320  END IF 
+2330 END DEFine 
+2340 :
+2350 DEFine PROCedure DO_LINK(f$)
+2360  IF FTEST(ddir$&mdir$&f$&"_link")<>0 THEN 
+2370   EXEC_W "QLINK";ddir$&sdir$&f$&"_REL -prog "&ddir$&rdir$&f$&"_ROM -NOSYM"
+2380  ELSE 
+2390   EXEC_W "QLINK";"-prog "&ddir$&rdir$&f$&"_ROM -with "&ddir$&mdir$&f$&"_link -NOSYM"
+2400  END IF 
+2410 END DEFine 
+2420 :
+2430 DEFine PROCedure LOD(f$)
+2440  LOCal l
+2450  l=(INT((FLEN(\f$)-1)/128)+1)*128
+2460  IF (pos+l)>98304 THEN 
+2470   PRINT f$;" too big to fit"
+2480  ELSE 
+2490   LBYTES f$,a+pos
+2500   pos=pos+l
+2510  END IF 
+2520 END DEFine 
+2530 :
+2540 DEFine PROCedure sav
+2550  SAVE_O "flp1_CLSC_MGST_Q40_MAKECLSC_bas"
+2560 END DEFine 

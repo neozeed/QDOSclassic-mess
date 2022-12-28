@@ -1,0 +1,73 @@
+Short:    patch your progs to run when sys vars are relocated
+Author:   Mark J Swift
+Version:  1.10
+Uploader: msw@blackpool.ac.uk
+Type:     util/ptch
+
+
+Many QL programs won't run when the system variables are
+not located in the usual place ($28000 hex - 163840 decimal).
+This can happen in Minerva with the second screen enabled or
+in Amiga-QDOS running QDOS from extended memory.
+
+This program takes a QL exectable, scans for $28XXX and
+patches it apropriately.
+
+
+ARCHIVE CONTENTS
+
+SYSREF_readme - this file
+SYSREF_bas    - BASIC source
+SYSREF_task   - TURBO compiled code
+
+
+PROGRAM FEATURES
+
+* patches programs to run when sys vars are relocated
+* makes all TURBO'ed & some QLIB'ed programs 32-bit clean
+* CACHE friendly - patcher code will work on 68030, '40 and '60
+  processors - will even work with COPYBACK enabled
+* TURBO COMPILED for speed
+* BASIC source is provided
+* FREEWARE
+
+
+PATCHING TURBO
+
+If patching CODEGEN_task of the TURBO compiler, patch ALL
+references EXCEPT the two that refer to $28010. These are not
+part of the CODEGEN code, but ARE included in all TURBO
+compiled programs. Patched versions of TURBO produce code
+identical to unpatched versions, i.e. newly compiled tasks still
+require patching.  If patching PARSER_task, or any other TURBO
+program replace ALL references.
+
+
+32 BIT FRIENDLY
+
+SYSREF makes all TURBO'ed programs 32-bit clean. This means you
+can run them high in memory. This is especially useful in
+Amiga-QDOS, where if you have 16 meg of memory, the memory map
+could be from $07000000 - $08000000 with the system variables
+relocated to $07000000.
+
+
+CACHE FRIENDLY
+
+On a QL with a big processor (68030/'040/'060) the caches are
+flushed/disabled/enabled at the appropriate time.
+
+
+REQUIRES
+
+Requires the D68K toolkit and some TK2 commands. If you don't have TK2
+use PDTK instead which is FREEWARE.
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

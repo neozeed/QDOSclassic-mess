@@ -1,0 +1,6 @@
+A description of the directories here
+
+comm         Communications
+comm/misc    Misc communications
+comm/trsf    Transfer utilities
+

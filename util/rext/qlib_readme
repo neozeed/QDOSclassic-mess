@@ -1,0 +1,18 @@
+Short:    Patched Qliberator runtimes
+Type:     util/rext
+
+
+These are the Qliberator runtimes, patched to some extent...
+though I can't remember what I patched.
+
+...probably removed TAS instructions for Amiga compatibility
+...probably addressed 32bit addressing issues
+
+Perhaps your own runtimes are newer and more appropriate.
+
+
+ARCHIVE CONTENTS
+
+ QLIB_runtimes - Patched Qliberator runtimes
+ QLIB_readme   - This file.
+

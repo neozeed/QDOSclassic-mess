@@ -1,0 +1,641 @@
+	SECTION	SOFTROM
+	DATA	0
+
+	NOLIST
+	INCLUDE	'QDOS_DEFINES_inc'
+	INCLUDE	'Q40_HW_inc'
+	LIST
+
+*******************************************************************
+*
+* SOFTROM_asm - Load a Q40 system ROM from disk
+*	     - originated July 98(ish) - Mark Swift
+*	     - last modified 11/08/99 (MSW)
+*
+* to assemble with the GST/QUANTA assembler use the command line:
+*   SOFTROM_asm -nolink -bin SOFTROM_rext -errors
+*
+* to assemble with HISOFT DEVPAC remove the SECTION directive,
+* and change the line "bra.l TK_START" to "bra TK_START"
+*
+* set TABS to NINE characters before editing this file
+
+HARDTAG	EQU	'Q40 '
+VERSTAG	EQU	'1.57'
+
+; --------------------------------------------------------------
+BASE:
+
+;  *** Comment out ONE of the following two lines to	***
+;  ***	 create either a ROM or a BASIC toolkit.	***
+
+	bra.l	TK_START 	; ...If I'm a BASIC toolkit!
+
+;	 dc.l	 $4AFB0001	 ; ...If I'm a ROM!
+
+	dc.w	PROC_DEF-BASE
+	dc.w	ROM_START-BASE
+
+BANNER:
+	dc.b	0,25
+	dc.l	HARDTAG
+	dc.b	'SOFTROM utility '
+	dc.l	VERSTAG
+	dc.b	$A,0
+
+; --------------------------------------------------------------
+;  start of code
+; --------------------------------------------------------------
+TK_START:
+	movem.l d1-d3/a0-a3,-(a7)
+
+	lea	PROC_DEF(pc),a1
+	move.w	BP.INIT,a2
+	jsr	(a2)
+
+	lea	BANNER(pc),a1	; start of message
+	suba.l	a0,a0		; output channel 0
+	move.w	UT.MTEXT,a2
+	jsr	(a2)		; print it
+
+	bra.s	TK_DOIT
+
+ROM_START:
+	movem.l d1-d3/a0-a3,-(a7)
+
+TK_DOIT:
+	moveq	#ERR.OK,d0
+
+	movem.l (a7)+,d1-d3/a0-a3
+	rts
+
+*******************************************************************
+*
+* routine to disable the instruction & data caches
+* Exit:	d0 = previous CACR value
+*
+CACHOFF:
+	move.l	d1,-(a7)
+
+	moveq	#0,d0
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to set the CACR
+* Entry: d0 = value to write to CACR
+* Exit:	d0 = previous CACR value
+*
+SETCACH:
+	move.l	d1,-(a7)
+
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to alter the state of the CACR
+* callable from user or supervisor modes
+* Entry: d0 = bits to set
+*	d1 = bits to clear/alter
+* Exit:	d0 = previous CACR value
+*
+DOCACH:
+	movem.l	d2/a0/a6,-(a7)
+	movea.l	a7,a0
+	trap	#0
+	move.w	sr,-(a7)
+	ori.w	#$0700,sr	interrupts off
+
+	subq.l	#2,a0
+	cmpa.l	a0,a7
+	beq.s	DOCACHSV 	entered routine as supervisor
+
+	bclr	#5,0(a7) 	otherwise sr on exit = user mode
+
+DOCACHSV:
+	move.l	a7,d2		Calculate start of
+	andi.w	#-$8000,d2	system variables
+	move.l	d2,a6
+
+	and.l	d1,d0
+	not.l	d1
+
+	cmpi.b	#$10,$A1(a6)
+	bls.s	DOCACHX		exit if 010 or less
+
+	dc.w	$4E7A,$2002	movec	cacr,d2
+	and.l	d2,d1		mask off changed bits
+	or.l	d0,d1		or in set bits
+
+	move.l	d2,d0		store old cacr value
+
+	ori.w	#$0808,d1	always clear caches on 020/030
+
+	cmpi.b	#$30,$A1(a6)
+	bls.s	DOCACHSET
+
+	tst.w	d0		check 040 bits
+	bpl.s	DOCACHDCHK	branch if instruction cache off
+	dc.w	$F4B8		cpusha	ic
+				; otherwise update memory from cache
+
+DOCACHDCHK:
+	tst.l	d0		check 040 bits
+	bpl.s	DOCACHDINV	branch if data cache off
+	dc.w	$F478		cpusha	dc
+				; otherwise update memory from cache
+
+	tst.l	d1		check 040 bits
+	bmi.s	DOCACHIINV	branch if leaving data cache on
+
+DOCACHDINV:
+	dc.w	$F458		cinva	dc
+				; invalidate cache
+
+DOCACHIINV:
+	dc.w	$F498		cinva	ic
+				; invalidate cache
+
+DOCACHSET:
+	dc.w	$4E7B,$1002	movec	d1,cacr
+				; set the cache
+
+DOCACHX:
+	move.w	(a7)+,sr
+	movem.l	(a7)+,d2/a0/a6
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  BASIC extensions
+
+PROC_DEF:
+	dc.w	1
+	dc.w	SOFTROM-*
+	dc.b	7,'SOFTROM'
+
+	dc.w	0
+
+	dc.w	0
+
+	dc.w	0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SERLOAD:
+	sub.l	a0,a0
+	lea	SERMSG(pc),a1
+	move.w	UT.MTEXT,a2
+	jsr	(a2)
+
+	bsr	SERINIT
+
+	bsr	SERJUNK
+
+	bsr	SER1CHARIN
+	move.b	d0,d1
+	lsl.l	#8,d1
+	bsr	SER1CHARIN
+	move.b	d0,d1
+	lsl.l	#8,d1
+	bsr	SER1CHARIN
+	move.b	d0,d1
+	lsl.l	#8,d1
+	bsr	SER1CHARIN
+	move.b	d0,d1
+
+	move.l	d1,d5	        ; save length
+	add.l	#(KICKEND-KICK+3),d1 ; room for kick code and
+	andi.b	#%11111100,d1	; a multiple of four bytes
+
+	moveq	#-1,d2
+	moveq	#MT.ALCHP,d0
+	trap	#1		; allocate space
+
+	tst.l	d0
+	bne	FEXIT		; no room so quit
+
+	move.l	a0,d6		; save address
+
+	move.l	d5,d1
+	bra.s	SERLUPDEC
+
+SERLODLUP:
+	bsr	SER1CHARIN
+	move.b	d0,(a0)+
+
+SERLUPDEC:
+	subq.l	#1,d1
+	bgt.s	SERLODLUP
+
+	bra.s	STOROM
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SERMSG:
+	dc.b	0,30,'Loading soft ROM from SER1...',10
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SOFTROM:
+	cmp.l	a3,a5		; if no params...
+	beq	SERLOAD		; load via serial port
+
+	moveq	#1,d7		; old shared device
+
+	bsr	FL_ID
+	bne.s	FEXIT
+
+	move.l	a4,d4		; channel ID to close
+
+	bsr	HEDR1		; read file header
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne.s	SDONE1
+
+	move.l	0(a2),d1 ; get length of file
+
+	move.l	d1,d5		; save length
+	add.l	#(KICKEND-KICK+3),d1 ; room for kick code and
+	andi.b	#%11111100,d1	; a multiple of four bytes
+
+	move.l	a2,-(a7) 	; save addr header buffer
+
+	moveq	#-1,d2
+	moveq	#MT.ALCHP,d0
+	trap	#1		; allocate space
+
+	move.l	(a7)+,a2 	; restore addr header buffer
+
+	tst.l	d0
+	bne.s	SDONE1		; no room so quit
+
+	move.l	a0,d6		; save address
+
+	move.l	d5,d2		; length
+	move.l	d6,a1		; location
+	move.l	a4,a0		; File ID
+	moveq	#-1,d3		; infinite timeout
+	moveq	#FS.LOAD,d0
+	trap	#3		; load file
+
+	tst.l	d0
+	beq.s	STOROM		; no errors.
+
+	move.l	a2,-(a7) 	; save addr header buffer
+
+	move.l	d6,a0		; location
+	moveq	#MT.RECHP,d0
+	trap	#1		; release space
+
+	move.l	(a7)+,a2 	; restore addr header buffer
+
+	bra.s	SDONE1
+
+FEXIT:
+	rts
+
+; -------------------------------------------------------------
+STOROM:
+	move.l	d6,a0		; get buffer address
+
+	addq.l	#3,d5
+	andi.b	#%11111100,d5	; len = multiple of four bytes
+
+	add.l	d5,a0		; place to store kick code
+	move.l	d5,(a0)+ 	; store length
+
+	trap	#0		; supervisor mode
+	ori.w	#$0700,sr	; disable interrupts
+	andi.w	#$7FFF,sr	; clear trace
+	bsr	CACHOFF		; disable caches
+
+	pea	(a0)
+	lea	KICK(pc),a1
+	move.w	#(((KICKEND-KICK)+3)>>2)-1,d1
+
+LUPKICK:
+	move.l	(a1)+,(a0)+	; store the kick code...
+	dbra	d1,LUPKICK
+
+	rts			; & call kick code
+
+; -------------------------------------------------------------
+SDONE1:
+	move.l	d0,d7		; save error code
+
+	move.l	a2,d0
+	beq.s	SDONE2
+
+	move.l	a2,a0
+	moveq	#MT.RECHP,d0
+	trap	#1		; release buffer
+
+SDONE2:
+	tst.l	d4
+	beq.s	SEXIT
+
+	move.l	d4,a0
+	moveq	#IO.CLOSE,d0	; close file
+	trap	#2
+
+SEXIT:
+	move.l	d7,d0		; restore error code
+
+	rts
+
+; -------------------------------------------------------------
+;   exit: a4 = channel ID of file
+
+FL_ID:
+	bsr.s	GET1_FNAMES
+	bne.s	FL_IDX
+
+FL_ID1:
+	moveq	#0,d1
+	move.w	0(a6,a1.l),d1	; length of filename
+
+	move.l	a1,a0		; address of filename
+	move.l	d7,d3		; shared or exclusive...
+	moveq	#-1,d1		; current job
+	trap	#4		; relative to a6
+	moveq	#IO.OPEN,d0	; try to open file
+	trap	#2
+
+	tst.l	d0
+	bne.s	FL_IDX		; error
+
+	move.l	a0,a4		; store channel ID
+
+FL_IDX:
+	rts
+
+; -------------------------------------------------------------
+;  enter: a4 = channel ID of file
+;   exit: a2 = pointer to file header
+
+HEDR1:
+	movem.l d2-d3/d7/a1/a3,-(a7)
+
+	moveq	#64,d1		; space required
+	moveq	#-1,d2		; owner job = me
+	moveq	#MT.ALCHP,d0
+	trap	#1
+
+	tst.l	d0
+	bne.s	HEDRX1
+
+	move.l	a0,a2		; address of buffer
+
+	move.l	a4,a0		; channel ID
+	move.l	a2,a1		; location for header
+	moveq	#64,d2
+	moveq	#-1,d3
+	moveq	#FS.HEADR,d0	; get 64 bytes of header
+	trap	#3
+
+	tst.l	d0
+	beq.s	HEDRX		; no errors... exit
+
+	move.l	d0,d7		; save error code
+
+	move.l	a2,a0
+	moveq	#MT.RECHP,d0
+	trap	#1		; release buffer
+
+	move.l	d7,d0		; restore error
+
+HEDRX1:
+	suba.l	a2,a2		; indicate no buffer
+
+HEDRX:
+	tst.l	d0
+	movem.l (a7)+,d2-d3/d7/a1/a3
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; Get a filename on the stack
+;
+; Entry: A3.L	pointer to first parameter
+;	A5.L   pointer to last parameter
+;
+; Exit:	A3.L   updated
+;	A5.L   updated
+;	D0.L...error code
+;	A1.L   pointer to string on math stack
+
+GET1_FNAMES:
+	movem.l d1/d4/d6/a2,-(a7)
+
+	cmp.l	a3,a5
+	beq	GET1_BP
+
+	move.l	BV_RIP(a6),a1
+
+	tst.w	2(a6,a3.l)	; Test for parameter name
+	bmi.s	GET1_STR 	; none? ...must be exprssn.
+
+	moveq	#$0f,d0		; extract type of parameter.
+	and.b	1(a6,a3.l),d0
+	subq.b	#1,d0		; is it a string?
+	bne.s	GET1_NAM 	; no, use name instead
+
+GET1_STR:
+	move.l	a5,-(sp) 	; save the top pointer
+	lea	8(a3),a5 	; get just one string
+	move.w	CA.GTSTR,a2
+	jsr	(a2)
+	move.l	(sp)+,a5 	; restore top pointer
+	tst.l	d0
+	bne.s	GET1_RTS
+
+	move.l	a1,BV_RIP(a6)
+	moveq	#3,d1		; get total length of string
+	add.w	0(a6,a1.l),d1
+	bclr	#0,d1
+	add.l	d1,BV_RIP(a6)	; and reset ri stack pointer
+	bra.s	GET1_OK
+
+GET1_NAM:
+	moveq	#0,d1
+	move.w	2(a6,a3.l),d1	; pointer to real entry
+	bmi.s	GET1_BP		; ... expression is no good
+
+	lsl.l	#3,d1		; in multiples of 8 bytes
+	add.l	BV_NTBAS(a6),d1
+	moveq	#0,d6
+	move.w	2(a6,d1.l),d6	; pointer to the name
+	add.l	BV_NLBAS(a6),d6
+	moveq	#0,d1		; get the length of the name
+	move.b	0(a6,d6.l),d1	; as a long word.
+	addq.l	#1,d1		; rounded up
+	bclr	#0,d1
+	move.w	d1,d4		; and save it
+	addq.l	#2,d1		; space required is +2 bytes
+	move.w	BV.CHRIX,a2	; on ri stack
+	jsr	(a2)
+	move.l	BV_RIP(a6),a1
+	add.w	d4,d6		; move to end of string
+
+GET1_NMLUP:
+	subq.l	#1,a1		; copy one byte at a time
+	move.b	0(a6,d6.l),0(a6,a1.l)
+	subq.l	#1,d6
+	dbra	d4,GET1_NMLUP	; including the (byte) name
+*				  length
+	subq.l	#1,a1		; put a zero on to make it a
+	clr.b	0(a6,a1.l)	; word
+
+GET1_OK:
+	lea	8(a3),a3 	; update parameter pointer
+	moveq	#ERR.OK,d0
+	bra.s	GET1_RTS
+
+GET1_BP:
+	moveq	#ERR.BP,d0
+
+GET1_RTS:
+	tst.l	d0
+	movem.l (a7)+,d1/d4/d6/a2
+	rts
+
+*******************************************************************
+*
+*  Hardware specific routines
+
+*******************************************************************
+*
+*  KICK start a 'SOFT' ROM - reboots the machine with new ROM
+*
+*  Before entry: allocate some memory, load a ROM into the
+*  allocated space, followed by a longword for the length
+*  of the ROM, followed by a copy of this routine.
+*  Then run the routine from the RAM copy.
+
+KICK:
+	lea	KICK(pc),a1
+	move.l	-(a1),d0 	; restore ROM length
+	sub.l	d0,a1		; address of new ROM
+	sub.l	a0,a0		; copy to address $0
+
+	lsr.l	#2,d0
+	subq.l	#1,d0		; initialise count
+
+	move.b	#1,LOWROM	; switch in real ROM
+	nop
+	nop
+
+KICKLUP:
+	move.l	(a1)+,(a0)+	; store new ROM
+	dbra	d0,KICKLUP
+
+	moveq	#0,d0
+	dc.l	$4E7B0801	; movec d0,vbr
+	dc.l	$4E7B0002	; movec d0,cacr
+	dc.l	$4E7B0003	; movec d0,tc
+	dc.l	$4E7B0004	; movec d0,itt0
+	dc.l	$4E7B0005	; movec d0,itt1
+	dc.l	$4E7B0006	; movec d0,dtt0
+	dc.l	$4E7B0007	; movec d0,dtt1
+
+	bsr.s	HW_RESET
+
+	move.b	#1,LOWRAM	; use RAM as new ROM
+	nop
+	nop
+	move.l	(0),a7
+	move.l	a7,d0		; Calculate start of
+	andi.w	#-$8000,d0	; system variables
+	move.l	d0,a6
+	clr.l	(a6)		; remove SV.IDENT
+	move.l	(4),a0
+	jmp	(a0)		; reset
+
+*******************************************************************
+*
+*  HARDWARE RESET : initialise hardware to factory defaults
+
+HW_RESET:
+	move.b	#0,MASTER_CHIP+EXT_INT_REG
+	move.b	#0,MASTER_CHIP+KEY_INT_ENABLE
+	move.b	#0,MASTER_CHIP+SER_INT_ENABLE
+	move.b	#0,MASTER_CHIP+SAMPLE_INT_ENABLE
+	move.b	#0,MASTER_CHIP+VIDEOMODE
+	move.b	#0,MASTER_CHIP+SAMPLE_RATE
+	move.b	#0,MASTER_CHIP+LED
+	move.b	#0,MASTER_CHIP+ISARESET
+
+	rts
+
+*******************************************************************
+*
+*  End of routines required for ROM swapping
+
+KICKEND:
+
+*******************************************************************
+*
+*  SERIAL INIT : initialise serial hardware for use
+
+SERINIT:
+	move.b	#0,MASTER_CHIP+SER_INT_ENABLE ; disable SER ints
+
+	move.b	#$00,SER1_BASE+SER_IER	  ; no interrupts yet
+	move.b	#$83,SER1_BASE+SER_LCR	  ; set DLAB on
+	move.b	#12,SER1_BASE+SER_DLLB	  ; baud rate divisor low (9600)
+	move.b	#0,SER1_BASE+SER_DLHB	  ; baud rate divisor high
+	move.b	#%00000111,SER1_BASE+SER_LCR ; 8 bits NO parity 2 stop DLAB OFF
+	move.b	#$C7,SER1_BASE+SER_FCR	  ; (bits 7,6) Int trigger = 14 bytes
+					  ; (bit 2) clear transmit FIFO
+					  ; (bit 1) clear receive FIFO
+					  ; (bit 0) enable FIFOs
+	move.b	#%00000011,SER1_BASE+SER_MCR ; enable DTR, RTS
+
+	rts
+
+*******************************************************************
+*
+*  SERIAL JUNK : junk data on serial lines
+
+SERJUNK:
+	moveq	#-1,d2		; value for LED
+
+SERJUNKL:
+	btst	#0,SER1_BASE+SER_LSR ; junk data on line?
+	beq.s	SERJUNKX 	   ; nope, quit
+
+	move.b	d2,MASTER_CHIP+LED
+
+	move.b	SER1_BASE+SER_RB,d0  ; throw data
+	bra.s	SERJUNKL
+
+SERJUNKX:
+	rts
+
+*******************************************************************
+*
+*  SERIAL CHAR IN : get one char from serial hardware
+
+SER1CHARIN:
+	btst	#0,SER1_BASE+SER_LSR ; data ready?
+	beq.s	SER1CHARIN	   ; nope, lup
+
+	addq.w	#1,d2
+	rol.b	#1,d2
+	move.b	d2,MASTER_CHIP+LED
+	ror.b	#1,d2
+
+	move.b	SER1_BASE+SER_RB,d0  ; get data
+	rts
+
+*******************************************************************
+NOPpadding:
+	DCB.w ((0-(NOPpadding-BASE))&$7F)/2,$4E71
+
+	END
+

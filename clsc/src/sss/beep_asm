@@ -1,0 +1,309 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'DEV_ASM_SSS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_BEEP_inc'
+
+	SECTION	BEEP
+
+	XDEF	HW_RESET,HW_ENABLE
+	XDEF	POLL_SERver
+
+	XDEF	HW_VCTR_BEG
+	XDEF	HW_VCTR.LEN
+
+	XDEF	HARDTAG
+
+*******************************************************************
+*
+* BEEP_asm - SSS specific BEEP routines
+*	  - originated July 98 - Mark Swift
+*	  - last modified 16/09/99 (MSW)
+
+BASE:
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+HW_VCTR_BEG:
+
+*******************************************************************
+*
+*  initialise sound for use.
+
+HW_RESET:
+
+*******************************************************************
+*
+*  HARDWARE DISABLE : disable hardware
+
+HW_DISABLE:
+	movem.l	a1-a3,-(a7)
+
+	suba.l	a3,a3		; get vector base register
+	dc.w	$48E7,$0001	; movem.l a7,-(a7)
+	cmpa.l	(a7)+,a7
+	beq.s	HW_DIS1		; '010 or less!
+
+	dc.w	$4E7A,$B801	; movec vbr,a3
+
+HW_DIS1:
+	move.l	$70(a3),a3
+	move.l	-(a3),a2
+	cmpi.l	#'SSSS',-(a3)
+	bne.s	HW_DIS2
+
+	jsr	SSS_KILL(a2)
+
+HW_DIS2:
+	move.b	#0,SV_SOUND(a6)	; signal as not beeping
+
+	movem.l	(a7)+,a1-a3
+	rts
+
+*******************************************************************
+*
+*  HARDWARE ENABLE : enable hardware
+
+HW_ENABLE:
+	move.l	VAR.PITCH1(a3),d0
+	tst.l	VAR.PITINC(a3)
+	bge.s	HW_EN1
+
+	move.l	VAR.PITCH2(a3),d0
+
+HW_EN1:
+	move.l	d0,VAR.BEEP(a3)
+	clr.l	VAR.BEEPACC(a3)
+
+	move.l	VAR.DURVAL(a3),d0
+	bne.s	HW_EN2
+
+	moveq	#-1,d0
+
+HW_EN2:
+	move.l	d0,VAR.BEEPLEN(a3)
+
+	clr.l	VAR.DURCNT(a3)
+	clr.l	VAR.GRDCNT(a3)
+
+	clr.w	VAR.SAMPLVL(a3)
+
+	st	SV_SOUND(a6)	; signal as beeping
+
+	rts
+
+*******************************************************************
+*
+* End custom vector routines
+
+NOPpad3:
+	DCB.w ((0-(NOPpad3-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+HW_VCTR_END:
+
+HW_VCTR.LEN	EQU	(HW_VCTR_END-HW_VCTR_BEG)
+
+*******************************************************************
+*
+*  polled interrupt server
+*  enters with a6=sys vars, a3=our (sound) vars
+
+POLL_SERver:
+	movem.l	d0-d7/a0-a4,-(a7)
+
+	tst.b	SV_SOUND(a6)	; are we beeping?
+	beq	CALC_LX		; nope
+
+	move.l	a3,a4
+
+	suba.l	a3,a3		; get vector base register
+	dc.w	$48E7,$0001	; movem.l a7,-(a7)
+	cmpa.l	(a7)+,a7
+	beq.s	CALC_L0		; '010 or less!
+
+	dc.w	$4E7A,$B801	; movec vbr,a3
+
+CALC_L0:
+	move.l	$70(a3),a3
+	move.l	-(a3),a2
+
+	cmpi.l	#'SSSS',-(a3)
+	bne.s	CALC_L2
+
+	jsr	SSS_SETM(a2)
+
+	move.l	a2,d4
+	sub.l	a1,d4
+	ble	CALC_LX
+
+	lsr.l	#1,d4		; initialise sample count
+
+	tst.l	VAR.DURVAL(a4)
+	bne.s	CALC_L1
+
+	moveq	#-1,d0
+	move.l	d0,VAR.BEEPLEN(a4)
+
+CALC_L1:
+	move.l	VAR.BEEPLEN(a4),d0
+	bne.s	CALC_L3
+
+CALC_L2:
+	move.b	#0,SV_SOUND(a6)	; signal as not beeping
+	bra	CALC_LX
+
+CALC_L3:
+	cmp.l	d4,d0
+	bcc.s	CALC_L3_1
+
+	move.l	d0,d4
+
+CALC_L3_1:
+	move.l	#500,d0		; max samples
+	cmp.l	d4,d0
+	bcc.s	CALC_L3_2
+
+	move.l	d0,d4
+
+CALC_L3_2:
+	move.l	#11447,d1
+	move.l	VAR.BEEPACC(a4),d3
+
+CALC_L4:
+	move.l	VAR.BEEP(a4),d2	; ideal pitch
+
+	move.l	VAR.GRDCNT(a4),d5
+	bne.s	CALC_L4_1
+
+	move.l	VAR.GRDVAL(a4),d5
+	bne.s	CALC_P1
+
+	move.l	d4,d5
+	bra.s	CALC_L4_1
+
+CALC_P1:
+	move.l	d5,VAR.GRDCNT(a4)
+
+	tst.l	VAR.PITINC(a4)
+	beq.s	CALC_G1		; no pitch increment
+
+	add.l	VAR.PITINC(a4),d2
+
+	move.l	VAR.PITCH1(a4),d0
+	move.l	VAR.PITCH2(a4),d6
+
+	tst.l	VAR.PITINC(a4)
+	bmi.s	CALC_P2
+
+	exg	d0,d6
+	cmp.l	d2,d0		; reached limit?
+	bgt.s	CALC_G2		; no
+
+	bra.s	CALC_R1
+
+CALC_P2:
+	cmp.l	d2,d0		; reached limit?
+	blt.s	CALC_G2		; no
+
+CALC_R1:
+	tst.w	VAR.REPVAL(a4)
+	beq.s	CALC_G1
+
+	subq.w	#1,VAR.REPCNT(a4)
+	bmi.s	CALC_R2
+
+	move.l	d6,d0
+	bra.s	CALC_G1_1
+
+CALC_R2:
+	move.w	VAR.REPVAL(a4),VAR.REPCNT(a4)
+
+CALC_G1:
+	neg.l	VAR.PITINC(a4)	; bounce
+
+CALC_G1_1:
+	move.l	d0,d2
+
+CALC_G2:
+	move.l	d2,VAR.BEEP(a4)	; ideal pitch
+
+CALC_L4_1:
+	cmp.l	d5,d4
+	bcc.s	CALC_L4_2
+
+	move.l	d4,d5
+
+CALC_L4_2:
+	sub.l	d5,d4
+
+	tst.l	VAR.GRDVAL(a4)
+	beq.s	CALC_L4_3
+
+	sub.l	d5,VAR.GRDCNT(a4)
+
+CALC_L4_3:
+	sub.l	d5,VAR.BEEPLEN(a4)
+	move.w	VAR.SAMPLVL(a4),d0
+
+	moveq	#0,d6
+	move.w	VAR.RNDVAL(a4),d6
+	beq.s	CALC_L7
+
+	and.l	d3,d6	; use BEEP accumulator as random generator
+	swap	d6
+	add.l	d6,d2	; randomise the ideal note
+	bra.s	CALC_L7
+
+CALC_L5:
+	add.l	d1,d3
+
+	move.w	VAR.FUZVAL(a4),d6
+	beq.s	CALC_L5_1
+
+	move.w	d3,d7
+	lsr.w	#3,d7
+	lsr.w	d6,d7
+
+	bne.s	CALC_L5_1
+
+	not.w	d0
+
+CALC_L5_1:
+	cmp.l	d2,d3
+	blt.s	CALC_L6
+
+	sub.l	d2,d3
+	not.w	d0
+
+CALC_L6:
+	move.w	d0,(a1)+
+
+CALC_L7:
+	dbra	d5,CALC_L5
+
+	move.w	d0,VAR.SAMPLVL(a4)
+
+	tst.l	d4
+	bne	CALC_L4
+
+	move.l	d3,VAR.BEEPACC(a4)
+
+	move.l	4(a3),a2 	; restore a2
+	jsr	SSS_ADDM(a2)
+
+CALC_LX:
+
+POLL_X:
+	movem.l	(a7)+,d0-d7/a0-a4
+	rts
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad5:
+	DCB.w ((0-(NOPpad5-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+*******************************************************************
+
+	END

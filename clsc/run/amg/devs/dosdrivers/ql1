@@ -1,0 +1,26 @@
+/* QL file system entry
+ *
+ * This file enables reading and writing of QDOS (QL) disks on the built-in
+ * floppy drive normally referred to as DF1:. QL0 does the same for DF0. By
+ * creating new versions of this file and changing the Unit line to use other
+ * numbers, you can make the QLFileSystem available on other devices. For
+ * example, changing the value of Unit to 2 would create a mount file that
+ * would allow for QDOS floppies on DF2.
+ */
+
+FileSystem     = L:QLFileSystem
+Device         = fd.device
+Unit           = 1
+Flags          = 0
+Surfaces       = 2
+BlocksPerTrack = 9
+Reserved       = 0
+Interleave     = 0
+LowCyl         = 0
+HighCyl        = 79
+Buffers        = 21
+BufMemType     = 1
+StackSize      = 8000
+Priority       = 9
+GlobVec        = -1
+DosType        = 0x514C3541

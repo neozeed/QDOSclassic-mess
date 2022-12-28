@@ -1,0 +1,4 @@
+100 src$="WIN1_QZ_UTIL_TIME_"
+110 :
+120 SET_FTYP\src$&"SETDATE_task",1
+130 SET_FDAT\src$&"SETDATE_task",4096

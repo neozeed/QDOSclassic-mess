@@ -1,0 +1,9 @@
+A description of the directories here
+
+util         Utilities
+util/boot    Boot sequence software
+util/conv    File conversion
+util/ptch    Patchers and fixers
+util/rext    Resident extensions & toolkits
+util/rom     ROM toolkits
+util/time    Clocks and timing

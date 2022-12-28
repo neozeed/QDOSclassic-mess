@@ -1,0 +1,16 @@
+*******************************************************************
+*
+*  SSS variables
+
+VAR.SMPEND   EQU	$00	; ptr to physical end of sample Q
+VAR.SMPIN    EQU	$04	; ptr to loc to put next sample in
+VAR.SMPOUT   EQU	$08	; ptr to loc to take next sample from
+
+VAR.SMPQ     EQU	$0C	; physical start of Q
+
+VAR_SMPLEN   EQU	$32000	; max len of sample (200K)
+
+VAR.LEN	    EQU	VAR.SMPQ+VAR_SMPLEN
+
+*******************************************************************
+

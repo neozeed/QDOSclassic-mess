@@ -1,0 +1,103 @@
+*******************************************************************
+*
+* SER_asm - serial device driver routines
+*	 - for hardware that is compatible with the 16650 UART
+*	 - originated July 98 - Mark Swift
+*	 - last modified 22/09/99 (MSW)
+
+*******************************************************************
+*
+*  HARDWARE RESET : initialise hardware to factory defaults
+
+SER_RESET:
+	bsr.s	SER_RESET1
+
+SER_RESET2:
+	lea	SER2_BASE+IO_8BIT,a1
+	bra.s	DO_RESET
+
+SER_RESET1:
+	lea	SER1_BASE+IO_8BIT,a1
+
+DO_RESET:
+	move.b	#$00,SER_IER(a1)		; no interrupts yet
+	move.b	#$00,SER_MCR(a1)		; disable OUT2, RTS, DTR
+	move.l	#9600,d0
+	bra.s	DO_BAUD			; default BAUD rate
+
+*******************************************************************
+*
+*  HARDWARE ENABLE : enable hardware
+
+SER_ENABLE:
+	subq.w	#1,d0
+	beq.s	SER_ENABLE1
+
+SER_ENABLE2:
+	lea	SER2_BASE+IO_8BIT,a1
+	bra.s	DO_ENABLE
+
+SER_ENABLE1:
+	lea	SER1_BASE+IO_8BIT,a1
+
+DO_ENABLE:
+	move.b	#%00001011,SER_MCR(a1)	; enable OUT2, RTS, DTR
+	move.b	#$03,SER_IER(a1)		; enable interrupts
+	rts
+
+*******************************************************************
+*
+*  HARDWARE DISABLE : disable hardware
+
+SER_DISABLE:
+	subq.w	#1,d0
+	beq.s	SER_DISABLE1
+
+SER_DISABLE2:
+	lea	SER2_BASE+IO_8BIT,a1
+	bra.s	DO_DISABLE
+
+SER_DISABLE1:
+	lea	SER1_BASE+IO_8BIT,a1
+
+DO_DISABLE:
+	move.b	#00,SER_IER(a1)		; disable send & recv ints
+	move.b	#00,SER_MCR(a1)		; disable OUT2, RTS, DTR
+	rts
+
+*******************************************************************
+*
+*  SET BAUD RATE IN HARDWARE
+
+HW_BAUD:
+	bsr.s	HW_BAUD1
+
+HW_BAUD2:
+	lea	SER2_BASE+IO_8BIT,a1
+	bra.s	DO_BAUD
+
+HW_BAUD1:
+	lea	SER1_BASE+IO_8BIT,a1
+
+DO_BAUD:
+	movem.l	d0/d1,-(a7)
+
+	move.l	d1,d0			; D0=baudrate
+	move.l	#115200,d1
+	divu	d0,d1			; D1=D1/baudrate
+
+	move.b	#$83,SER_LCR(a1)		; set DLAB on
+	move.b	d1,SER_DLLB(a1)		; baud rate divisor low
+	ror.w	#8,d1
+	move.b	d1,SER_DLHB(a1)		; baud rate divisor high
+
+	movem.l	(a7)+,d0/d1
+
+	move.b	#%00000111,SER_LCR(a1)	; 8 bits NO parity 2 stop DLAB OFF
+	move.b	#$C7,SER_FCR(a1)		; (bits 7,6) Int trigger = 14 bytes
+					; (bit 2) clear transmit FIFO
+					; (bit 1) clear receive FIFO
+					; (bit 0) enable FIFOs
+	rts
+
+*******************************************************************

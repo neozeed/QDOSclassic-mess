@@ -1,0 +1,113 @@
+*/beginfile PROCS2_asm
+; --------------------------------------------------------------
+; PROCS2_asm - BASIC bits
+;	    - last modified 03/11/97
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...some changes by Mark J Swift
+; --------------------------------------------------------------
+L064E2:
+BAS_BAUD:
+	JSR	GET_INT4(PC)	; modify BSR SEA_PARA(PC)
+				; search for parameter
+	BNE.S	L064F6
+	MOVE.L	0(A6,A1.L),D1	; modify MOVE.W 0(A6,A1.L),D1
+	MOVEQ	#$12,D0		; MT.BAUD sets bautrate
+				; (D1.W)
+	TRAP	#1
+	TST.L	D0
+	BMI.S	L064F8
+	MOVEQ	#0,D0
+L064F6	RTS
+L064F8	MOVEQ	#-15,D0		; bad parameter
+	RTS
+L064FC	; displacements for parameters of BEEP
+	DC.W	6
+	DC.W	0
+	DC.W	2
+	DC.W	4
+	DC.W	8
+	DC.W	10
+	DC.W	14
+	DC.W	12
+L0650C	; Beep error
+	ADD.L	D3,D3
+	ADD.L	D3,$58(A6)	; Arithmetic stack
+L06512	ADDA.W	#$18,A7
+	MOVEM.L	(A7)+,D4-D7/A3-A5
+	TST.L	D0
+	RTS
+BEEP:
+	JSR	CA_GTINT(PC)	;*/undomodify BSR CA_GTINT
+	MOVEM.L	D4-D7/A3-A5,-(A7)
+	ADDA.W	#$FFE8,A7
+	MOVEA.L	A7,A3
+	BNE.S	L0650C
+	MOVEQ	#-15,D0		; Bad parameter
+	CMPI.W	#0,D3
+	BEQ.S	L065A8
+	CMPI.W	#1,D3
+	BEQ.S	L0650C
+	CMPI.W	#3,D3
+	BEQ.S	L0650C
+	CMPI.W	#4,D3
+	BEQ.S	L0650C
+	CMPI.W	#8,D3
+	BGT.S	L0650C
+	LEA	L064FC(PC),A5
+	MOVEQ	#1,D2
+L06554	MOVE.W	0(A6,A1.L),D0
+	CMPI.W	#2,D2
+	BEQ.S	L06564
+	CMPI.W	#3,D2
+	BNE.S	L06566
+L06564	ADDQ.W	#1,D0
+L06566:
+	ROR.W	#8,D0
+	JSR	L065C0(PC)	;*/undomodify BSR.S L065C0
+				;*/undomodify nop
+	ADDA.W	#$0002,A1
+	CMP.W	D3,D2
+	BLE.S	L06554
+	CMPI.W	#$0003,D2
+	BEQ.S	L06582
+L0657A:
+	MOVEQ	#0,D0
+	CMPI.W	#$0008,D2
+	BGT.S	L06588
+L06582:
+	JSR	L065C0(PC)	;*/undomodify BSR.S L065C0
+				;*/undomodify nop
+	BRA.S	L0657A
+L06588:
+	MOVE.B	#$0A,(A3)
+	MOVE.B	#$10,1(A3)
+	MOVE.L	#$4444AA66,2(A3)
+	MOVE.B	#1,$16(A3)
+	MOVEQ	#$11,D0		; MT.IPCOM send command (A3)
+				; to IPC
+	TRAP	#1
+	BRA	L0650C
+L065A8	; stop beeper
+	MOVE.B	#$0B,(A3)
+	MOVE.B	#0,1(A3)
+	MOVE.B	#1,6(A3)
+	MOVEQ	#$11,D0		; MT.IPCOM send command (A3)
+				; to IPC
+	TRAP	#1
+	BRA	L06512
+L065C0	MOVEA.W	(A5)+,A4
+	MOVE.W	D0,$06(A3,A4.W)
+	ADDQ.W	#1,D2
+	RTS
+BAS_CALL:
+	JSR	CA_GTLIN(PC)	;*/undomodify BSR CA_GTLIN
+	BNE.S	L065E4
+	LSL.L	#2,D3
+	BEQ.S	L065E2
+	ADD.L	D3,BV_RIP(A6)	;arith stack
+	MOVE.L	0(A6,A1.L),-(A7)
+	MOVEM.L	4(A6,A1.L),D1-D7/A0-A5
+L065E2	MOVEQ	#-15,D0		; bad parameter
+L065E4	RTS
+; --------------------------------------------------------------
+;*/endfile

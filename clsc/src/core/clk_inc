@@ -1,0 +1,13 @@
+*******************************************************************
+*
+*  CLOCK variables
+
+;SV_LXINT	EQU	$00	; (long) ptr to next link
+				; (long) address of EXT INT routine
+
+;SV_LPOLL	EQU	$08	; (long) ptr to next link
+				; (long) address of POLLed int routine
+
+VAR.LEN		EQU	$10	; length of vars
+
+*******************************************************************

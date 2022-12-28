@@ -1,0 +1,285 @@
+Short:    Freeware BASIC toolkit with many TK2/TURBO like commands
+Author:   Mark J Swift
+Version:  1.14
+Uploader: msw@blackpool.ac.uk
+Type:     util/rext
+
+
+ARCHIVE CONTENTS
+
+ PDTK_rext   - the toolkit
+ PDTK_asm    - the assembly source
+ DEFINES_inc - QDOS includes
+ PDTK_readme - this file
+
+
+PROGRAM FEATURES
+
+* Contains many TK2/TURBO like commands
+* Source provided
+* FREEWARE
+
+
+HISTORY
+
+Version 1.14
+
+* Fixed bug that messed up RI stack in some instances
+  of GETW, GETF, GETL and INPUTS
+
+Pre version 1.14
+
+* all version history forgotten
+
+
+SUPERBASIC KEYWORDS
+
+EXTRAS[#<channel>]
+
+This procedure lists all SuperBASIC resident extensions to the
+specified channel.
+
+TOOLKILL
+
+This procedure scours the SuperBASIC name table for duplicate
+entries. If one is found, TOOLKILL makes sure that the last
+entry defined is the one used. Thus it is possible to write a
+program that loads a toolkit, issues a TOOLKILL command, and
+executes extensions from the toolkit immediately.
+
+WHERE(<Name$>)
+
+This function returns the address at which an extension is
+loaded. If the extension does not exist, the function returns 0
+
+PDTK_VER$
+
+This function takes no parameters, and returns the version
+number of the PDTK toolkit.
+
+PDTK_EXT
+
+This procedure adds the following keywords to the list of
+SuperBASIC commands:
+
+RESET
+
+This procedure performs a QL RESET.
+
+QDOS$
+
+This function returns the version number of the QDOS system ROM.
+
+SYSBASE
+
+This function returns the address of the system variables.
+
+FREE_MEM
+
+This function returns the amount of memory available to BASIC.
+
+ALCHP
+
+This function allocates some memory in the common heap, and
+returns the address of the allocation.
+
+RECHP<Address>
+
+This procedure releases memory from the common heap, previously
+allocated at the given address by the function ALCHP.
+
+CLCHP
+
+This procedure releases all memory from the common heap,
+previously allocated by the function ALCHP.
+
+LRESPR<FileName$>
+
+This procedure allocates some memory in the resident procedure
+area, loads a toolkit and calls the code.
+
+DDLIST[#<chan>]
+
+This procedure lists the name of every directory device driver
+to the specified channel, or to channel #1 if none is given.
+
+DDTEST(<DirectoryDevice$>)
+
+This function returns the status of the specified directory
+device:
+
+   0    device exists
+
+  -7    device not found
+
+FTEST(<FileName$>)
+
+This function returns the status of the specified file:
+
+   0    file exists and is not in use
+
+  -7    file not found
+
+  -9    file in use
+
+  -12   bad device name
+
+FLEN(#<chan>)  or FLEN(\<FileName$>)
+
+This function returns the length of the file specified, or the
+length of the file associated with the specified channel.
+
+FTYP(#<chan>)  or FTYP(\<FileName$>)
+
+This function returns the type of the file specified,  or the
+type of the file associated with the specified channel.
+
+typical file types are:
+
+  0     BASIC, text or document files
+
+  1     QL task
+
+FDAT(#<chan>)  or FDAT(\<FileName$>)
+
+This function returns the dataspace of a QL task. The file can
+be specified, or a channel associated with the file.
+
+FACCS(#<chan>)  or FACCS(\<FileName$>)
+
+This function returns the file access byte
+
+FXTRA(#<chan>)  or FXTRA(\<FileName$>)
+
+This function returns the files long word of extra information
+that is currently unused.
+
+SET_FTYP#<chan>,<byte>  or SET_FTYP\<FileName$>,<byte>
+SET_FDAT#<chan>,<byte>  or SET_FDAT\<FileName$>,<byte>
+SET_FACCS#<chan>,<byte>  or SET_FACCS\<FileName$>,<byte>
+SET_FXTRA#<chan>,<long>  or SET_FXTRA\<FileName$>,<long>
+
+These Procedures set the relevant information in the files
+header area.
+
+HEX$(<number>,<bits>)
+
+This function returns a HEX string of the given number with a
+length equivalent to the specified number of binary bits.
+
+HEX(<HexNumber$>)
+
+This function converts the given HEX string into decimal format.
+
+INTEGER$(<number>)
+
+This function takes an integer number and returns the internal
+math representation of the number as a two character string.
+
+LONGINT$(<number>)
+
+This function takes a long integer number and returns the
+internal math representation of the number (should QDOS support
+long ints) as a four character string.
+
+FLOAT$(<number>)
+
+This function takes a floating point number and returns the
+internal math representation of the number as a six character
+string.
+
+STRING$(<number>)
+
+This function takes a string and returns another string
+representing the initial string's internal format. In essence
+the function returns the string parameter with two characters
+representing string length, appended to its start.
+
+STRING%(<string$>)
+
+This function takes the internal math representation of an
+integer as a two character string, and returns an integer
+result.
+
+STRINGL(<string$>)
+
+This function takes the internal math representation of a long
+integer as a four character string, and returns the long integer
+as a floating point result.
+
+STRINGF(<string$>)
+
+This function takes the internal math representation of a
+floating point number as a six character string, and returns a
+floating point result.
+
+POSITION[(#<chan>)]
+
+This function returns the file pointer position for the specified channel.
+BASIC's #1 is assumed if no channel is specified.
+
+SET_POSITION[#<chan>,]<value>
+
+This procedure sets the file pointer position for the specified channel.
+BASIC's #1 is assumed if no channel is specified.
+
+GET%[(#<chan>)]
+
+This function reads two bytes from the specified channel representing
+a math integer and returns an integer result. BASIC's #1 is assumed if no
+channel is specified.
+
+GETF[(#<chan>)]
+
+This function reads six bytes from the specified channel representing
+a math floating point number and returns an floating point result. BASIC's
+#1 is assumed if no channel is specified.
+
+GET$[(#<chan>)]
+
+This function reads the 2 byte length of a string and then proceeds to read
+that many characters from the channel - returning a string as a result.
+BASIC's #1 is assumed if no channel is specified.
+
+INPUT$[(#<chan>),]<length>
+
+This function reads <length> bytes from the specified channel and returns a
+string as a result. BASIC's #1 is assumed if no channel is specified.
+
+CURSEN[#<chan>]
+
+This procedure enables the cursor in the CON window of the specified
+channel. BASIC's #1 is assumed if no channel is specified.
+
+CURDIS[#<chan>]
+
+This procedure disables the cursor in the CON window attached to the
+specified channel. BASIC's #1 is assumed if no channel is specified.
+
+F_TRACE(<functionname$>, <funcparam1>, <funcparam2> ... )
+
+This function executes the named SuperBASIC function in TRACE mode,
+and passes all other parameters on to the named function. A trace
+exception vector must be set up before using this function.
+
+P_TRACE <procedurename$>, <procparam1>, <procparam2> ...
+
+This procedure executes the named SuperBASIC procedure in TRACE mode,
+and passes all other parameters on to the named procedure. A trace
+exception vector must be set up before using this procedure.
+
+J_TRACE <taskname$>  and J_TRACE_W <taskname$>
+
+These two procedures load, then execute a task in TRACE mode. They are
+equivalent to the procedures EXEC and EXEC_W except that the TRACE bit
+is set before entering the task. A trace exception vector must be set
+up before using this procedure.
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

@@ -1,0 +1,192 @@
+*******************************************************************
+*
+* CACHE handling routines compatible with ALL processors
+* callable from supervisor OR user modes
+* Version 1.00 by Mark J Swift
+
+
+*******************************************************************
+*
+* routine to flush the instruction & data caches
+*
+FLSHCACH:
+        movem.l d0/d1,-(a7)
+
+        moveq   #0,d0
+        moveq   #0,d1
+        bsr.s   ALTCACH
+
+        movem.l (a7)+,d0/d1
+        rts
+
+*******************************************************************
+*
+* routine to disable the data cache
+*
+DCACHOFF:
+        movem.l d0/d1,-(a7)
+
+*                 1=data cache enable (>=040)
+*                 |                   1=clear data cache (030)
+*                 |                   |  1=data cache enable (030)
+*                 |                   |  |
+        move.l  #%00000000000000000000100000000000,d0
+        move.l  #%10000000000000000000100100000000,d1
+        bsr.s   ALTCACH
+
+        movem.l (a7)+,d0/d1
+        rts
+
+*******************************************************************
+*
+* routine to enable the data cache
+*
+DCACHON:
+        movem.l d0/d1,-(a7)
+
+*                 1=data cache enable (>=040)
+*                 |                   1=clear data cache (030)
+*                 |                   |  1=data cache enable (030)
+*                 |                   |  |
+        move.l  #%10000000000000000000100100000000,d0
+        move.l  d0,d1
+        bsr.s   ALTCACH
+
+        movem.l (a7)+,d0/d1
+        rts
+
+*******************************************************************
+*
+* routine to disable the instruction cache
+*
+ICACHOFF:
+        movem.l d0/d1,-(a7)
+
+*                                 1=instr cache enable (>=040)
+*                                 |           1=clear instr cache (020,030)
+*                                 |           |  1=instr cache enable(020,030)
+*                                 |           |  |
+        move.l  #%00000000000000000000000000001000,d0
+        move.l  #%00000000000000001000000000001001,d1
+        bsr.s   ALTCACH
+
+        movem.l (a7)+,d0/d1
+        rts
+
+*******************************************************************
+*
+* routine to enable the instruction cache
+*
+ICACHON:
+        movem.l d0/d1,-(a7)
+
+*                                 1=instr cache enable (>=040)
+*                                 |           1=clear instr cache (020,030)
+*                                 |           |  1=instr cache enable(020,030)
+*                                 |           |  |
+        move.l  #%00000000000000001000000000001001,d0
+        move.l  d0,d1
+        bsr.s   ALTCACH
+
+        movem.l (a7)+,d0/d1
+        rts
+
+*******************************************************************
+*
+* routine to disable the instruction & data caches
+* Exit: d0 = previous CACR value
+*
+CACHOFF:
+        movem.l d1,-(a7)
+
+        moveq   #0,d0
+        moveq   #-1,d1
+        bsr.s   ALTCACH
+
+        movem.l (a7)+,d1
+        rts
+
+*******************************************************************
+*
+* routine to set the CACR
+* Entry: d0 = value to write to CACR
+* Exit: d0 = previous CACR value
+*
+SETCACH:
+        movem.l d1,-(a7)
+
+        moveq   #-1,d1
+        bsr.s   ALTCACH
+
+        movem.l (a7)+,d1
+        rts
+
+*******************************************************************
+*
+* routine to alter the state of the CACR
+* Entry: d0 = bits to set
+*       d1 = bits to clear/alter
+* Exit: d0 = previous CACR value
+*
+ALTCACH:
+        movem.l d2/a0/a6,-(a7)
+        movea.l a7,a0
+        trap    #0
+        move.w  sr,-(a7)
+        ori.w   #$0700,sr       interrupts off
+
+        subq.l  #2,a0
+        cmpa.l  a0,a7
+        beq.s   ALTCACHSV       entered routine as supervisor
+
+        bclr    #5,0(a7)        otherwise sr on exit = user mode
+
+ALTCACHSV:
+        move.l  a7,d2           Calculate start of
+        andi.w  #-$8000,d2      system variables
+        move.l  d2,a6           (or you could call the system trap)
+
+        and.l   d1,d0
+        not.l   d1
+
+        cmpi.b  #$10,$A1(a6)
+        bls.s   ALTCACHX        exit if 010 or less
+
+        dc.w    $4E7A,$2002     movec   cacr,d2
+        and.l   d2,d1           mask off changed bits
+        or.l    d0,d1           or in set bits
+
+        move.l  d2,d0           store old cacr value
+
+        ori.w   #$0808,d1       always clear caches on 020/030
+
+        cmpi.b  #$30,$A1(a6)
+        bls.s   ALTCACHSET
+
+        tst.w   d0              check 040 bits
+        bpl.s   ALTCACHDCHK     no need to flush if instr cache off
+        dc.w    $F4B8           cpusha  ic - update memory from cache
+
+ALTCACHDCHK:
+        tst.l   d0              check 040 bits
+        bpl.s   ALTCACHDINV     no need to flush if data cache off
+        dc.w    $F478           cpusha  dc - update memory from cache
+
+        tst.l   d1              check 040 bits
+        bmi.s   ALTCACHIINV     branch if leaving data cache on
+
+ALTCACHDINV:
+        dc.w    $F458           cinva   dc - invalidate data cache
+
+ALTCACHIINV:
+        dc.w    $F498           cinva   ic - invalidate instr cache
+
+ALTCACHSET:
+        dc.w    $4E7B,$1002     movec   d1,cacr - set the cache
+
+ALTCACHX:
+        move.w  (a7)+,sr
+        movem.l (a7)+,d2/a0/a6
+        rts
+
+*******************************************************************

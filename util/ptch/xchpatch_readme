@@ -1,0 +1,187 @@
+Short:    patch for PD XCHANGE for COPYBACK compatibility
+Author:   Mark J Swift
+Version:  1.00
+Uploader: msw@blackpool.ac.uk
+Type:     util/ptch
+
+
+The BASIC program XCHPATCH_bas patches PD XCHANGE to work
+with 68040 and 68060 processors with COPYBACK enabled.
+
+
+ARCHIVE CONTENTS
+
+ XCHPATCH_bas    - Patch program for PD XCHANGE
+ XCHPATCH_readme - This file.
+
+
+COMPATIBILITY
+
+Works with every version of XChange that I have tried.
+
+
+WHY IS IT NECESSARY?
+
+On machines with 68040 and 68060 processors, the efficiency of
+data and instruction caches is greatly increased if COPYBACK
+is enabled. Enabling the COPYBACK cache can give substantial
+speed increases.
+
+However doing so highlights problems with a number of programs,
+including Psion Xchange...
+
+Psion Xchange contains a routine at offset $120 that relocates an
+internal jump table. On 68040 and 68060 this can cause problems as
+I shall try to explain...
+
+
+  With COPYBACK enabled, when a write to memory occurs the data is
+  written to the data cache but is not written through to memory.
+
+  If the processor subsequently fetches an instruction from this
+  area of memory it won't get the correct value, since the correct
+  value will only be held in the data cache - not within memory.
+
+
+Programs that create jump tables should always flush the caches out
+to memory before modified jump table code is executed.
+
+The problematic jump-table-relocation routine of Xchange is at
+offset $120 and continues for $BE bytes...
+
+00000120 48E7E0C0     movem.l   d0-d2/a0-a1,-(a7)
+00000124 41FA00BC     lea       $1E2(pc),a0
+00000128 224D         move.l    a5,a1
+0000012A 303C00C5     move.w    #$C5,d0
+0000012E 2408         move.l    a0,d2
+00000130 32FC4EF9     move.w    #$4EF9,(a1)+
+00000134 2218         move.l    (a0)+,d1
+00000136 D282         add.l     d2,d1
+00000138 22C1         move.l    d1,(a1)+
+0000013A 5340         subq.w    #1,d0
+0000013C 66F2         bne       $130
+0000013E 2B7A65AAFFF0 move.l    $66EA(pc),-$10(a5)
+00000144 41FA0098     lea       $1DE(pc),a0
+00000148 D1D0         adda.l    (a0),a0
+0000014A 2B4814C8     move.l    a0,$14C8(a5)
+0000014E 1B7C00FF06FE move.b    #-$1,$6FE(a5)
+00000154 50ED06FF     st        $6FF(a5)
+00000158 422D06FB     clr.b     $6FB(a5)
+0000015C 422D06FC     clr.b     $6FC(a5)
+00000160 422D0701     clr.b     $701(a5)
+00000164 422D068B     clr.b     $68B(a5)
+00000168 1B7C001B06FD move.b    #$1B,$6FD(a5)
+0000016E 422D0700     clr.b     $700(a5)
+00000172 422D0702     clr.b     $702(a5)
+00000176 422D0703     clr.b     $703(a5)
+0000017A 2B7C0000FFFF move.l    #$FFFF,$1262(a5)
+         1262
+00000182 2B7C000000FF move.l    #$FF,$1266(a5)
+         1266
+0000018A 422D06F5     clr.b     $6F5(a5)
+0000018E 42AD08FE     clr.l     $8FE(a5)
+00000192 2B7A655AFFF4 move.l    $66EE(pc),-$C(a5)
+00000198 41ED0A20     lea       $A20(a5),a0
+0000019C 4258         clr.w     (a0)+
+0000019E 4298         clr.l     (a0)+
+000001A0 4298         clr.l     (a0)+
+000001A2 41ED0CC6     lea       $CC6(a5),a0
+000001A6 30FC4000     move.w    #$4000,(a0)+
+000001AA 4258         clr.w     (a0)+
+000001AC 4298         clr.l     (a0)+
+000001AE 4280         clr.l     d0
+000001B0 4EAD0438     jsr       $438(a5)     *!*!*!*!*
+000001B4 20C1         move.l    d1,(a0)+
+000001B6 20C2         move.l    d2,(a0)+
+000001B8 5280         addq.l    #1,d0
+000001BA 0C00000B     cmpi.b    #$B,d0
+000001BE 66F0         bne       $1B0
+000001C0 50ED126D     st        $126D(a5)
+000001C4 206D14C8     move.l    $14C8(a5),a0
+000001C8 D0E800EA     adda.w    $EA(a0),a0
+000001CC 2B481006     move.l    a0,$1006(a5)
+000001D0 422D097C     clr.b     $97C(a5)
+000001D4 4EBA1E38     jsr       $200E(pc)
+000001D8 4CDF0307     movem.l   (a7)+,d0-d2/a0-a1
+000001DC 4E75         rts
+
+Note, offset $1B0 contains the instruction "jsr $438(a5)".
+It is important to flush the caches BEFORE this instruction
+is executed.
+
+This can be achieved by patching out the instruction with a "jsr"
+to a patch routine (see PATCH: below) that flushes the caches.
+This routine can be inserted into Xchange by inserting new code
+between the job name and the first instruction.
+
+The BASIC program XCHPATCH_bas makes all the necessary patches.
+
+*******************************************************************
+*
+* Patch routines to fix CACHE problems in Xchange on 68040 & 68060
+*
+START:
+        move.l  #PATCH_END-START,d0
+        adda.l  d0,a6
+        suba.l  d0,a4
+        suba.l  d0,a5
+        bra.s   PATCH_END
+
+PATCH:
+        trap    #0              enter supervisor mode
+        ori.w   #$0700,sr       no interrupts
+        bsr     FLSHCACH
+        andi.w  #$D8FF,sr       back into user mode
+        jmp     $438(a5)
+
+*******************************************************************
+*
+* a routine to flush the caches out to memory on all processors
+*
+FLSHCACH:
+        movem.l d0-d2/a0,-(a7)
+
+        moveq   #0,d0
+        trap    #1              get address of sys vars
+
+        cmpi.b  #$10,$A1(a0)    no caches on 68010 or less
+        ble.s   FLSHCACHX
+
+        movec   cacr,d0
+*                     1=clear data cache (030)
+*                     |       1=clear instr cache (020,030)
+*                     |       |
+        ori.w   #%0000100000001000,d0   clear caches
+
+        cmpi.b  #$30,$A1(a0)
+        bls.s   FLSHCACHSET
+
+        tst.w   d0              Check 040 bits. Only flush cache
+        bpl.s   FLSHCACHDCHK    if instruction cache is ON
+        cpusha  ic              update memory from cache
+        cinva   ic              invalidate cache
+
+FLSHCACHDCHK:
+        tst.l   d0              Check 040 bits. Only flush cache
+        bpl.s   FLSHCACHSET     if data cache is ON
+        cpusha  dc              update memory from cache
+        cinva   dc              invalidate cache
+
+FLSHCACHSET:
+        movec   d0,cacr         set the cache
+
+FLSHCACHX:
+        movem.l (a7)+,d0-d2/a0
+        rts
+
+PATCH_END:
+
+*******************************************************************
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

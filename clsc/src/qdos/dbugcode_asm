@@ -1,0 +1,1043 @@
+*/beginfile DBUGCODE_asm
+; --------------------------------------------------------------
+; DBUGCODE_asm - QDOS debugging routines
+;	      - last modified 23/07/98
+; QDOS-Amiga sources by Rainer Kowallik
+;  ...latest changes by Mark J Swift
+; --------------------------------------------------------------
+;*/beginoverlay
+
+; --------------------------------------------------------------
+; main interrupt server
+
+QL_MAIN_INT:
+	MOVEM.L	D7/A5/A6,-(A7)
+
+	MOVEA.L	A7,A5
+	move.l	a5,d7		; calculate SV_BASE
+	andi.w	#-$8000,d7
+	move.l	d7,a6
+
+	move.b	PC_INTR,d7
+	lsr.b	#4,d7
+	bcs	L00900		; Vertical blank
+	lsr.b	#1,d7
+	bcc.s	L003B6
+
+; --------------------------------------------------------------
+; external interrupt
+
+	MOVEM.L	D0-D6/A0-A4,-(A7)
+	MOVEQ	#0,D0
+	MOVEA.L	SV_I2LST(A6),A0	; pointer to list of
+				; interrupt 2 drivers
+	BSR	EXEC_TSK 	; execute polled task
+	MOVEM.L	(A7)+,D0-D6/A0-A4
+	BRA.S	L003B6
+
+; --------------------------------------------------------------
+;  Common return for Most system manager traps
+
+RET_CLD0:
+	MOVEQ	#0,D0
+L003A6:
+RET_TRAP:
+	BTST	#5,$C(A7)	; was it supervisor mode ?
+	BNE.S	L003B6
+	TST.W	SV_POLLM(A6)	; count of poll interrupts
+				; missed
+	BNE	L00936
+L003B6:
+	MOVEM.L	(A7)+,D7/A5/A6
+	RTE
+
+; --------------------------------------------------------------
+; Execute job
+
+L00A78:
+EXEC_JOB:
+	MOVEA.L	$64(A6),A0	;SV.JBPNT   Pointer to
+				; current job table entry
+	MOVEA.L	(A0),A0
+	ADDA.W	#$16,A7		;*/undomend ADDA.L
+				;*/note #$16 sign extended long
+	MOVE.L	$62(A0),-(A7)
+	MOVE.W	$60(A0),-(A7)
+	MOVE.L	$1C(A0),$50(A6)	;SV.TRAPV   Pointer to trap
+				; redirection table
+	MOVEA.L	$5C(A0),A1
+	MOVE.L	A1,USP
+	MOVEM.L	$20(A0),D0-D7/A0-A6
+	RTE
+
+; --------------------------------------------------------------
+;  Execute polled task
+
+L00A9E:
+EXEC_TSK:
+	move.l	d0,-(a7) 	;*/mend MOVE.W   D0,-(A7)
+L00AA0:
+	MOVEA.L	A0,A3
+	adda.l	(a7),a3		;*/mend ADDA.W   (A7),A3
+				; word adding causing errors ??
+	MOVE.L	A0,-(A7)
+	BEQ.S	L00ABC
+	MOVE.W	D3,-(A7)
+	ANDI.W	#$7F,D3
+	MOVEA.L	4(A0),A0 	; A0=address of task
+	JSR	(A0)
+	MOVE.W	(A7)+,D3
+	MOVEA.L	(A7)+,A0
+	MOVEA.L	(A0),A0
+	BRA.S	L00AA0
+L00ABC:
+	addq.l	#8,a7		;*/mend ADDQ.L   #6,A7
+	RTS
+
+; --------------------------------------------------------------
+;  TRAP #0 - Enter supervisor mode
+
+L00318:
+TRAP0:
+	bset.b	#5,(a7)
+	rte
+
+; --------------------------------------------------------------
+TRAP1	BSR.S	INI_A5A6
+	BRA	DO_TRAP1
+
+TRAP2	BSR.S	INI_A5A6
+	BRA	DO_TRAP2
+
+TRAP3	BSR.S	INI_A5A6
+	BRA	DO_TRAP3
+
+TRAP4	BSR.S	INI_A5A6
+	BRA	DO_TRAP4
+
+; --------------------------------------------------------------
+; Initialize A5 and A6
+
+L00336:
+INI_A5A6:
+	SUBQ.W	#8,A7
+	MOVE.L	8(A7),-(A7)
+	MOVEM.L	D7/A5/A6,4(A7)
+	LEA	4(A7),A5 	; A5 points saved D7,A5,A6
+	move.l	a5,d7		; calculate SV_BASE
+	andi.w	#-$8000,d7
+	move.l	d7,a6
+	MOVEQ	#$7F,D7		; Registers D7,A5,A6
+	AND.L	D7,D0
+	RTS
+
+; --------------------------------------------------------------
+;  exceptions that are not handled by user vector
+; --------------------------------------------------------------
+BUSERR:
+	ori	#$0700,sr	; mask out all interrupts
+
+	bsr	CHK6800X 	; use special 680X0 code?
+	bne	TRP0X0
+
+	bsr	XTRA
+	addq.l	#8,a7		; dump 68000/008 extra info
+
+	bsr	STK_REGS
+	moveq	#$08,d7		; vector offset
+
+	bsr	CH_ZERO
+	bra	PRTVCTR
+
+; --------------------------------------------------------------
+TRPOTHER:
+	ori	#$0700,sr	; mask out all interrupts
+
+	bsr	CHK6800X 	; use special 680X0 code?
+	bne	TRP0X0
+
+ILLEG_INT:
+	rte			; otherwise ignore exception
+
+; --------------------------------------------------------------
+;  special cases of exceptions handled by user vector
+; --------------------------------------------------------------
+TAS_EMU:
+
+; Provide emulation of TAS instruction for machines that
+; cannot handle READ-MODIFY-WRITE.
+
+; The user must first replace any TAS (An) / TAS d(An)
+; / TAS $absolute.L by the corresponding line F command
+; (with co-processor ID=7).
+
+; The following code will then emulate the TAS command with
+; the appropriate TST.B ?? and BSET #7,?? instruction pair.
+
+	ori	#$0700,sr	; mask out all interrupts
+
+	movem.l	d0-d1/a0-a1,-(a7) ; save regs
+
+	move.l	$12(a7),a0	; addr of last instruction
+	move.w	(a0)+,d0 	; get instruction
+
+	move.w	d0,d1
+	and.w	#$FE00,d0
+
+	cmp.w	#$AE00,d0	; v3.23 or later TAS?
+	beq.s	TAS_VALID
+
+	cmp.w	#$FE00,d0	; v3.20-v3.22 TAS?
+	beq.s	TAS_VALID
+
+	cmp.w	#$F000,d0	; pre v3.20 TAS?
+	bne.s	TAS_SKIP
+
+TAS_VALID:
+	lea	MODCODE,a1	; put addr of self-mod code
+	move.l	a1,$12(a7)	; onto stack ready for RTE
+
+	move.w	d1,d0		; restore instruction
+	AND.W	#$003F,D0	; only effective address
+
+	MOVE.W	D0,D1
+	OR.W	#$4A00,D1	; make TST.B ? instr.
+	move.w	d1,(a1)+ 	; put TST instr in place
+
+	or.w	#$08C0,d0	; make BSET #,? instr.
+
+	AND.W	#$0038,D1	; get EA mode
+
+	CMP.W	#$0028,D1	; ARI with displacement ?
+	BEQ.S	TAS_ARID
+
+	CMP.W	#$0030,D1	; ARI with index ?
+	BEQ.S	TAS_ARID 	; treat as with displacement
+				; only (should not happen)
+
+	CMP.W	#$0038,D1	; absolute.L ?
+	bne.s	TAS_ARI		; no, treat all other modes
+				; as ARI
+
+	cmp.w	#$08F9,d0	; really absolute.L ?
+	bne.s	TAS_ARID 	; no, treat as ARI+disp.
+
+TAS_ABSL:
+	move.l	(a0),(a1)+	; copy long data field
+	move.w	d0,(a1)+ 	; store BSET instruction
+	move.w	#7,(a1)+ 	; put bit # to set in place
+	move.l	(a0)+,(a1)+	; copy long data field
+	bra.s	TAS_DOIT
+
+TAS_ARID:
+	move.w	(a0),(a1)+	; copy word data field
+	move.w	d0,(a1)+ 	; store BSET instruction
+	move.w	#7,(a1)+ 	; put bit # to set in place
+	move.w	(a0)+,(a1)+	; copy word data field
+	bra.s	TAS_DOIT
+
+TAS_ARI:
+	move.w	d0,(a1)+ 	; store BSET instruction
+	move.w	#7,(a1)+ 	; put bit # to set in place
+
+TAS_DOIT:
+	bra	MSR_JMP
+
+TAS_SKIP:
+	movem.l	(a7)+,d0-d1/a0-a1 ; restore registers
+	bra	ILL_INST
+
+; --------------------------------------------------------------
+MSR_EMU:
+
+; The following code traps the priviledge exception caused by
+; processing the move sr,<aywhere> instruction in user mode on
+; 680X0 processors, and executes equivalent code.
+
+; The move sr,<anywhere> instruction is not priviledged on the
+; 68000/68008 processors and is used extensively in the pointer
+; environment while in user mode. In later processors the
+; instruction can only be executed in supervisor mode.
+
+	ori	#$0700,sr	; mask out all interrupts
+
+	movem.l	d0-d1/a0-a1,-(a7) ; save regs
+
+	move.l	$12(a7),a0	; addr of last instruction
+	move.w	(a0)+,d0 	; get instruction
+
+	moveq	#0,d1
+	move.w	d0,d1
+	and.w	#$FFC0,d0
+	cmp.w	#$40C0,d0	; move sr,<?> instruction?
+	bne	MSR_SKIP 	; ...no, so exit
+
+	move.w	$10(a7),d0	; get sr
+	move.l	usp,a1
+	move.w	d0,-(a1) 	; push sr onto user stack
+	move.l	a1,usp
+
+	lea	MODCODE,a1	; put addr of self-mod code
+	move.l	a1,$12(a7)	; onto stack ready for RTE
+
+	move.w	d1,d0
+	andi.w	#$0038,d0	; get effective address
+	beq.s	MSR_DATA 	; branch if move sr,dn
+				; (special case)
+
+	andi.w	#$0007,d1	; get register
+	lsl.w	#6,d1		; shift
+	or.w	d0,d1		; add in EA
+	lsl.w	#3,d1		; shift
+	or.w	#$301F,d1	; make move.w (a7)+,? instr.
+	move.w	d1,(a1)+ 	; put instr in place
+
+	cmp.w	#$0028,d0	; ARI with displacement ?
+	beq.s	MSR_ARID
+
+	cmp.w	#$0030,d0	; ARI with index ?
+	beq.s	MSR_SKIP 	; sorry, can't handle yet!
+
+	cmp.w	#$0038,d0	; absolute.L ?
+	bne.s	MSR_ARI		; no, treat all other modes
+				; as ARI
+
+	cmp.w	#$33DF,d1	; really absolute.L ?
+	bne.s	MSR_JMP		; no, treat as ARI+disp.
+
+MSR_ABSL:
+	move.l	(a0)+,(a1)+	; copy long data field
+	bra.s	MSR_JMP
+
+MSR_ARID:
+	move.w	(a0)+,(a1)+	; copy word data field
+
+MSR_ARI:
+	bra.s	MSR_JMP
+
+MSR_DATA:
+	andi.w	#$0007,d1	; get register #
+
+	move.w	#$48e7,(a1)+	; make "movem.l dn,-(a7)"
+	eori.w	#$f,d1
+	moveq	#0,d0
+	bset	d1,d0		; set correct bit for dn
+	move.w	d0,(a1)+ 	; complete instr
+
+	move.w	#$3F6F,(a1)+
+	move.l	#$00040002,(a1)+	; make "move.w 4(a7),2(a7)"
+
+	move.w	#$4cdf,(a1)+	; make "movem.l (a7)+,dn"
+	eori.w	#$f,d1
+	moveq	#0,d0
+	bset	d1,d0		; set correct bit for dn
+	move.w	d0,(a1)+ 	; complete instr
+
+	move.w	#$548f,(a1)+	; make "addq.l #2,a7"
+
+MSR_JMP:
+	move.w	#$4EF9,(a1)+	; make JMP instruction
+	move.l	a0,(a1)+ 	; jump behind MSR instr
+
+MSR_XIT:
+	bsr	CLRALL		; ...just in case
+
+	movem.l	(a7)+,d0-d1/a0-a1 ; restore registers
+
+	rte			; perform operation
+
+MSR_SKIP:
+	movem.l	(a7)+,d0-d1/a0-a1 ; restore registers
+	bra.s	PRIV_ERR
+
+; --------------------------------------------------------------
+MOVP_EMU:
+	ori	#$0700,sr	; mask out all interrupts
+
+	movem.l	d0-d1/a0-a1,-(a7) ; save regs
+
+	move.l	$12(a7),a0	; addr of last instruction
+	move.w	(a0)+,d0 	; get instruction
+
+	move.w	d0,d1
+	andi.w	#$F138,d0
+	cmpi.w	#$0108,d0
+
+	movem.l	(a7)+,d0-d1/a0-a1 ; restore registers
+	bne	ILL_INST
+
+	bsr	STK_REGS
+RLOC07	jsr	_moveperipheral-ORG0
+	bra	TIDYUP
+
+; --------------------------------------------------------------
+;  Redirect other exceptions thro' possible user table
+; --------------------------------------------------------------
+TRAPRDIR:
+ADR_ERR:
+	BSR.S	TRAPTRAP
+ILL_INST:
+	BSR.S	TRAPTRAP
+ZERO_DIV:
+	BSR.S	TRAPTRAP
+CHK_INST:
+	BSR.S	TRAPTRAP
+TRAPV_INst:
+	BSR.S	TRAPTRAP
+PRIV_ERR:
+	BSR.S	TRAPTRAP
+TRACE:
+	BSR.S	TRAPTRAP
+NMI_INT:
+	BSR.S	TRAPTRAP
+TRAP5:
+	BSR.S	TRAPTRAP
+TRAP6:
+	BSR.S	TRAPTRAP
+TRAP7:
+	BSR.S	TRAPTRAP
+TRAP8:
+	BSR.S	TRAPTRAP
+TRAP9:
+	BSR.S	TRAPTRAP
+TRAP10:
+	BSR.S	TRAPTRAP
+TRAP11:
+	BSR.S	TRAPTRAP
+TRAP12:
+	BSR.S	TRAPTRAP
+TRAP13:
+	BSR.S	TRAPTRAP
+TRAP14:
+	BSR.S	TRAPTRAP
+TRAP15:
+	BSR.S	TRAPTRAP
+
+; --------------------------------------------------------------
+;  default exception/trap table
+; --------------------------------------------------------------
+TRAPTAB:
+        DC.L    ADRERR-ORG0
+        DC.L    ILLINS-ORG0
+        DC.L    ZERODV-ORG0
+        DC.L    CHKR-ORG0
+        DC.L    TRAPVR-ORG0
+        DC.L    PRIVR-ORG0
+        DC.L    TRACET-ORG0
+        DC.L    NMI_NEW-ORG0
+        DC.L    TRAPR-ORG0
+        DC.L    TRAPR-ORG0
+        DC.L    TRAPR-ORG0
+        DC.L    TRAPR-ORG0
+        DC.L    TRAPR-ORG0
+        DC.L    TRAPR-ORG0
+        DC.L    TRAPR-ORG0
+        DC.L    TRAPR-ORG0
+        DC.L    TRAPR-ORG0
+        DC.L    TRAPR-ORG0
+        DC.L    TRAPR-ORG0
+
+; --------------------------------------------------------------
+;  transfer execution to user or default exception handler
+; --------------------------------------------------------------
+TRAPTRAP:
+	move.l	a6,-(a7) 	; save a6
+	exg	d7,a6		; save d7
+	move.l	a7,d7
+	andi.w	#-$8000,d7	; calc sys vars in a6
+	exg	d7,a6		; restore d7
+	tst.l	$50(a6)		; is there a redirection tbl
+	bne.s	TRPCONT1 	; ..yes, use it.
+
+RLOC04	move.l	#(TRAPTAB-ORG0)-2*(2),a6 ; default
+	bra.s	TRPCONT3
+TRPCONT1:
+	move.l	$50(a6),a6
+	adda.l	#2*($28),a6	; compensate for
+				; different table psn
+TRPCONT3:
+RLOC05	suba.l	#(TRAPRDIR-ORG0),a6
+RLOC06	suba.l	#(TRAPRDIR-ORG0),a6
+
+	adda.l	4(a7),a6
+	adda.l	4(a7),a6 	; address of long vector
+	move.l	(a6),4(a7)	; stack routine address
+	move.l	(a7)+,a6 	; restore a6
+	rts			; call routine
+
+; --------------------------------------------------------------
+XTRA:
+	movem.l	d0-d7/a0-a6,-(a7) ; save regs
+
+	bsr	CH_ZERO
+
+	move.w	$40(a7),d0
+	lea	TXTR(PC),a1
+	btst	#4,d0
+	beq.s	XTRA1
+	lea	TXTW(PC),a1
+XTRA1:
+	bsr	IOSTRG		; R/W
+
+	lea	TXTI(PC),a1
+	btst	#3,d0
+	beq.s	XTRA2
+	lea	TXTX(PC),a1
+XTRA2:
+	bsr	IOSTRG		; instruction/exception
+
+	andi.w	#$7,d0
+	lsl.w	#1,d0
+	lea	TXTTBL(PC),a1
+	move.w	0(a1,d0.w),d0
+	lea	TXTUDS(PC),a1
+	lea	0(a1,d0.w),a1
+	bsr	IOSTRG		; address space
+
+	lea	TXTG(PC),a1
+	bsr	IOSTRG
+
+	move.l	$42(a7),d0
+	bsr	HEX20		; address
+
+	lea	TXTH(PC),a1
+	bsr	IOSTRG
+
+	move.w	$46(a7),d0
+	bsr	HEX10		; instruction
+
+	lea	TXTSPC(pc),a1
+	bsr	IOSTRG
+
+	movem.l	(a7)+,d0-d7/a0-a6 ; restore regs
+
+	rts
+
+; --------------------------------------------------------------
+; Default user exception handlers
+
+ADRERR:
+	ori	#$0700,sr	; mask out all interrupts
+
+	bsr.s	CHK6800X 	; use special 680X0 code?
+	bne	TRP0X0
+
+	bsr	XTRA
+	addq.l	#8,a7		; dump 68000/008 extra info
+
+	bsr	STK_REGS
+	moveq	#$0C,d7		; vector offset
+
+	bsr	CH_ZERO
+	bra	PRTVCTR
+
+; --------------------------------------------------------------
+ILLINS:
+	ori	#$0700,sr	; mask out all interrupts
+
+	movem.l	d0-d1/a0-a1,-(a7) ; save regs
+
+	move.l	$12(a7),a0	; addr of last instruction
+	move.w	(a0)+,d0 	; get instruction
+	andi.w	#$F000,d0
+
+	cmp.w	#$A000,d0
+	beq.s	ALINE		; branch if A-LINE instruction
+
+	cmp.w	#$F000,d0
+	beq.s	FLINE		; branch if F-LINE instruction
+
+	movem.l	(a7)+,d0-d1/a0-a1 ; restore registers
+
+	bsr.s	CHK6800X 	; use special 680X0 code?
+	bne	TRP0X0
+
+	bsr	STK_REGS
+	moveq	#$10,d7		; vector offset
+
+ILLINS1:
+	bsr	CH_ZERO
+
+	LEA	TXTC(PC),A1
+	bsr	IOSTRG		; print err message
+
+	move.l	$42(a7),a1
+	move.w	(a1),d0
+	bsr	HEX10
+
+	lea	TXTSPC(pc),a1
+	bsr	IOSTRG
+
+	bra	PRTVCTR
+
+; --------------------------------------------------------------
+;    check attn flags for 68000/008 processor. Returns Z if so
+
+CHK6800X:
+	movem.l	d1/a6,-(a7)
+
+	move.l	a7,d1		; Calculate start of
+	andi.w	#-$8000,d1	; system variables
+	move.l	d1,a6
+	tst.b	161(a6)
+
+	movem.l	(a7)+,d1/a6
+	rts
+
+; --------------------------------------------------------------
+ALINE:
+	movem.l	(a7)+,d0-d1/a0-a1 ; restore registers
+
+	bsr.s	CHK6800X 	; use special 680X0 code?
+	bne	TRP0X0
+
+	bsr.s	STK_REGS
+	moveq	#$28,d7
+
+	bra	ILLINS1
+
+; --------------------------------------------------------------
+FLINE:
+	movem.l	(a7)+,d0-d1/a0-a1 ; restore registers
+
+	bsr.s	CHK6800X 	; use special 680X0 code?
+	bne	TRP0X0
+
+	bsr.s	STK_REGS
+	moveq	#$2C,d7
+
+	bra	ILLINS1
+
+; --------------------------------------------------------------
+ZERODV:
+	ori	#$0700,sr	; mask out all interrupts
+
+	bsr.s	CHK6800X 	; use special 680X0 code?
+	bne	TRP0X0
+
+	bsr.s	STK_REGS
+	moveq	#$14,d7		; vector offset
+
+	bsr	CH_ZERO
+	bra	PRTVCTR
+
+; --------------------------------------------------------------
+CHKR:
+	ori	#$0700,sr	; mask out all interrupts
+
+	bsr.s	CHK6800X 	; use special 680X0 code?
+	bne.s	TRP0X0
+
+	bsr.s	STK_REGS
+	moveq	#$18,d7		; vector offset
+
+	bsr	CH_ZERO
+	bra	PRTVCTR
+
+; --------------------------------------------------------------
+TRAPVR:
+	ori	#$0700,sr	; mask out all interrupts
+
+	bsr.s	CHK6800X 	; use special 680X0 code?
+	bne.s	TRP0X0
+
+	bsr.s	STK_REGS
+	moveq	#$1C,d7		; vector offset
+
+	bsr	CH_ZERO
+	bra	PRTVCTR
+
+; --------------------------------------------------------------
+STK_REGS:
+	movem.l	d0-d7/a0-a6,-(a7)
+	move.l	$3C(a7),d1	; get return address
+	move.w	$40(a7),d0	; get sr
+	lea	$46(a7),a1	; get old a7 for supervisor
+	btst	#13,d0		; was user mode ?
+	bne.s	STKREG1
+	move.l	usp,a1		; if so, get old usp
+STKREG1:
+	move.l	a1,$3C(a7)	; stack old a7
+	move.l	d1,-(a7) 	; stack return address
+	rts
+
+; --------------------------------------------------------------
+PRIVR:
+	ori	#$0700,sr	; mask out all interrupts
+
+	bsr	CHK6800X 	; use special 680X0 code?
+	bne.s	TRP0X0
+
+	bsr.s	STK_REGS
+	moveq	#$20,d7		; vector offset
+
+	bsr	CH_ZERO
+	bra	PRTVCTR
+
+; --------------------------------------------------------------
+NMI_NEW:
+	ori	#$0700,sr	; mask out all interrupts
+
+	bsr	CH_ZERO
+	bra	DEAD		; warm-start into BASIC
+
+; --------------------------------------------------------------
+TRACET:
+	ori	#$0700,sr	; mask out all interrupts
+
+	bsr	CHK6800X 	; use special 680X0 code?
+	bne.s	TRP0X0
+
+	bsr.s	STK_REGS
+	moveq	#$24,d7		; vector offset
+
+	bsr	CH_ZERO
+	bra	PRTVCTR
+
+; --------------------------------------------------------------
+TRAPR:
+	rte			; ignore undefined TRAP #s
+
+; --------------------------------------------------------------
+; 68010 '020 '030 '040 exception handler
+
+TRP0X0:
+	bsr.s	STK_REGS
+	move.w	$46(a7),d7
+	andi.w	#$0FFF,d7	; vector offset
+
+; find ID for channel zero
+
+	bsr	CH_ZERO
+
+; print format code and stack frame
+
+	cmp.w	#$24,d7
+	beq.s	PRTVCTR		; skip if TRACE
+
+	lea	TXTFMSG(pc),a1	; "Format code: "
+	bsr	IOSTRG
+
+	move.w	$46(a7),d0
+	rol.w	#4,d0
+	andi.w	#$000F,d0
+	bsr	HEX04		; print actual code
+
+	lsl.w	#1,d0
+	lea	TXTFTBL(PC),a1
+	move.w	0(a1,d0.w),d0
+	lea	TXT0000(PC),a1
+	lea	0(a1,d0.w),a1
+	bsr	IOSTRG		; print stack frame type
+
+	lea	TXTSPC(pc),a1
+	bsr	IOSTRG
+
+; --------------------------------------------------------------
+; print EXCEPTION VECTOR (now in d7)
+
+PRTVCTR:
+	cmp.w	#$24,d7
+	beq.s	PRTSR		; skip if TRACE
+
+	lea	TXTTMSG(pc),a1
+	bsr	IOSTRG		; print "VECTOR OFFSET "
+
+	move.l	d7,d0
+	bsr	HEX10
+
+	lea	TXTSPC(pc),a1
+	bsr	IOSTRG
+
+; print exception - if known
+
+	cmp.w	#$30,d7
+	bge.s	PRTSR
+
+	move.l	d7,d0
+	lsr.w	#1,d0
+	lea	TXTTTBL(PC),a1
+	move.w	0(a1,d0.w),d0
+	lea	TXT00(PC),a1
+	lea	0(a1,d0.w),a1
+	bsr	IOSTRG		; print exception
+
+	lea	TXTSPC(pc),a1
+	bsr	IOSTRG
+
+; print Status Register
+
+PRTSR:
+	LEA	TXTSR(PC),A1
+	BSR	IOSTRG
+
+	MOVE.W	$40(a7),d0
+	BSR	HEX10		; print SR
+
+; print Program Counter
+
+	LEA	TXTPC(PC),A1
+	BSR	IOSTRG
+
+	MOVE.L	$42(a7),d0
+	BSR	HEX20		; print PC
+
+	lea	TXTSPC(pc),a1
+	bsr	IOSTRG
+
+	move.l	a7,a2		; address of regs on stack
+
+; print register contents to screen
+
+	lea	REGSTK,a3
+	move.l	d0,(a3)+
+	move.w	(a3)+,d3
+
+	lea	TXTREGD(pc),a1
+	move.l	a1,d2
+	bsr	REGPRT
+
+	lea	TXTREGA(pc),a1
+	move.l	a1,d2
+	bsr	REGPRT
+
+	lea	TXTRTN(pc),a1
+	bsr	IOSTRG
+
+	move.w	$40(a7),-66(a3)
+
+; check for trace
+
+	cmp.w	#$24,d7
+	beq	NOTDEAD		; TRACE is not deadly
+
+; exit to BASIC
+
+DEAD:
+	bclr	#7,JB_RELA6(a4)	; addresses not a6 relative
+
+	move.l	BV_CHBAS(a6),d1	; get ptr to BASICs # table
+	move.l	0(a6,d1.l),d0	; get ID for #0
+	blt.s	DO_WINDO 	; branch if #0 is closed
+
+	move.l	d0,a0		; move ID to a0
+	bsr	CH_KEYQ		; check if chan has a key Q
+	bne.s	REL_BAS		; ...branch if so
+
+	move.l	#-1,0(a6,d1.l)	; otherwise close BASICs' #0
+	andi	#$F8FF,sr	; enable interrupts
+	moveq	#IO.CLOSE,d0
+	trap	#2		; close channel
+	ori.w	#$0700,sr	; turn interrupts off
+
+DO_WINDO:
+	bsr	CH_ZERO		; and re-open as a CON
+	bsr	CH_KEYQ		; get keyboard Q
+
+REL_BAS:
+	move.l	a2,SV_KEYQ(a5)	; make Q current
+
+	sf	SV_SCRST(a5)	; screen status
+
+	bclr	#7,JB_RELA6(a4)
+
+	move.w	JB_STAT(a4),d0	; job status (BASIC)
+	beq.s	REL_BAS2 	; not suspended
+
+	move.b	JB_PRINC(a4),d0	; priority of BASIC
+	bne.s	REL_BAS1
+
+	move.b	#$20,JB_PRINC(a4) ; if 0 set to 32
+
+REL_BAS1:
+	clr.w	JB_STAT(a4)	; release job
+	move.l	JB_HOLD(a4),d0	; Ptr to byte to be
+				; cleared when job released
+	beq.s	REL_BAS2
+
+	movea.l	d0,a3		; clear this byte
+	sf	(a3)
+
+REL_BAS2:
+	move.l	a6,JB_A6(a4)	; save BASICs A6
+
+	move.l	SV_TRNSP(a5),a3	; get BASICs A7
+	clr.l	-(a3)
+	move.l	a3,JB_A7(a4)	; and save it
+
+	lea	L04B54(pc),a2	; get Basic Warm start address
+	move.l	a2,JB_PC(a4)	; set PC to WARM START address
+
+	move.l	a2,-(a3) 	; save return address = basic warm start
+
+	move.l	a3,usp
+
+	sf	BV_BRK(a6)	; signal Break to BASIC
+
+	move.l	0,a7		; reset supervisor stack
+
+REL_JOB:
+	move.l	SV_JBPNT(a5),a3	; current job table entry
+
+JOB_LUP:
+	move.l	(a3),a2		; current jobs' header
+	move.l	JB_OWNER(a2),d0	; owner job
+	beq.s	REL_JOB1
+
+	swap	d0
+	clr.w	d0
+	swap	d0
+	lsl.l	#2,d0
+	add.l	SV_JBBAS(a5),d0
+	move.l	d0,a3
+	bra.s	JOB_LUP
+
+REL_JOB1:
+	move.l	a0,d5		; save ch ID
+
+	exg	a5,a6
+	bsr	JOBID_ME2
+	exg	a5,a6
+	move.l	d0,d1
+	beq.s	DEADX
+
+	moveq	#ERR.NC,d3
+	moveq	#MT.FRJOB,d0
+	trap	#1		; remove job
+
+	move.l	d5,a0
+
+DEADX:
+	move.w	#0,sr		; user mode on
+	rts
+
+NOTDEAD:
+
+; are next instructions about to be executed in single-trace mode?
+
+	btst	#7,$40(a7)
+	beq.s	DSKIP		; ...no, skip disassembly
+
+; if D68K_rext is loaded, print disassembly of next instruction
+
+	lea	SV_THINGL(a5),a3	; start of THING list
+
+NEXT_THG:
+;	 bra.s	 DSKIP
+
+	move.l	(a3),d0
+	beq.s	DSKIP
+
+	move.l	d0,a3
+
+	cmp.w	#4,$2A(a3)
+	bne.s	NEXT_THG
+
+	cmp.l	#'d68k',$2C(a3)	; find d68k 'THING'
+	bne.s	NEXT_THG
+
+	lea	TXTRTN(pc),a1
+	bsr	IOSTRG
+
+	move.l	$10(a3),a3	; address of data area
+	addq.l	#8,a3		; a3 now points to 1st var
+
+	move.l	a0,d5		; save channel ID
+	move.l	$42(a7),a0	; get pc
+	move.l	a0,a1		; set org
+	move.l	4(a3),a2 	; address of buffer
+	move.l	a2,d4		; save buffer address
+	addq.l	#2,a2
+	move.l	(a3),a3		; address of routine
+
+	jsr	(a3)		; do it.
+
+	move.l	d4,a1		; buffer address
+	suba.l	a1,a2
+	move.l	a2,d2
+	subq.l	#3,d2		; # bytes to print
+	move.w	d2,(a1)
+	move.l	d5,a0		; restore channel ID
+	bsr	IOSTRG		; print it
+
+	lea	TXTRTN(pc),a1
+	bsr	IOSTRG
+
+DSKIP:
+	ifnd	serdbg
+
+; wait for key press, then return from exception
+
+IPC9KEY:
+	andi	#$F8FF,sr	; enable interrupts
+
+IPC9LUP:
+	moveq	#MT.IPCOM,d0
+	lea	IPC9(pc),a3
+	trap	#1
+	btst	#6,d1
+	bne.s	IPC9X		; exit if <SPACE> key pressed
+
+	cmp.w	#$24,d7
+	bne.s	IPC9LUP		; branch back if not trace
+
+	btst	#3,d1
+	beq.s	IPC9LUP		; branch back if not <ESC> key
+
+	andi.w	#$3FFF,$40(a7)	; clear trace bits
+
+	lea	REGSTK,a3
+	move.w	$40(a7),4(a3)	; signal REG store invalid
+
+IPC9X:
+	move.b	d6,JB_RELA6(a4)	; restore JOBs' RELA6 flag
+
+	endif
+
+TIDYUP:
+	movem.l	(a7)+,d0-d7/a0-a6
+	addq	#4,a7		; restore regs
+
+	rte			; return from exception
+
+; --------------------------------------------------------------
+REGPRT:
+	moveq	#7,d1
+
+REGLPD:
+	tst.w	d3
+	bpl.s	REGPRD
+
+	move.l	(a2),d0
+	cmp.l	(a3),d0
+	beq.s	REGSKP
+
+REGPRD:
+	move.l	d2,a1
+	bsr	IOSTRG
+
+	moveq	#7,d0
+	sub.w	d1,d0
+	bsr	HEX04
+
+	lea	TXTEQU(pc),a1
+	bsr	IOSTRG
+
+	move.l	(a2),d0
+	bsr	HEX20
+
+	addq.l	#4,a1
+	bsr	IOSTRG
+
+	move.l	(a2),(a3)
+
+REGSKP:
+	addq.l	#4,a2
+	addq.l	#4,a3
+	dbra	d1,REGLPD
+
+	rts
+
+;*/endoverlay
+; --------------------------------------------------------------
+;*/endfile

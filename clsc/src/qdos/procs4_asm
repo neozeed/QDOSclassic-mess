@@ -1,0 +1,95 @@
+*/beginfile PROCS4_asm
+; --------------------------------------------------------------
+; PROCS4_asm - BASIC bits
+;	    - last modified 27/08/95
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...some changes by Mark J Swift
+; --------------------------------------------------------------
+L06788:
+BAS_ADATe:
+	JSR	GET_INT4(PC)	;*/undomodify BSR GET_INT4
+	BNE.S	L067AE
+	ADDQ.L	#4,BV_RIP(A6)	;arith stack
+	MOVE.L	0(A6,A1.L),D1
+	MOVEQ	#$15,D0		; MT.ACLCK adjusts the clock
+				; (D1 sec.)
+	TRAP	#1
+	BRA.S	L0680C
+BAS_SDATe:
+	JSR	CA_GTLIN(PC)	;*/undomodify BSR CA_GTLIN
+	BNE.S	L0680E
+	MOVEQ	#-15,D0
+	LSL.L	#2,D3
+	ADD.L	D3,BV_RIP(A6)	;arith stack
+	LSR.L	#2,D3
+	SUBQ.W	#6,D3
+L067AE	BNE.S	L0680E
+	MOVE.L	0(A6,A1.L),D0
+	SUBI.L	#$7A9,D0
+	MOVE.L	D0,D1
+	MULU	#$016D,D1
+	MOVE.L	4(A6,A1.L),D2
+	DIVU	#4,D0
+	SWAP	D0
+	CMPI.W	#3,D0
+	BNE.S	L067D8
+	CMPI.W	#2,D2
+	BLE.S	L067D8
+	ADDQ.L	#1,D1
+L067D8	CLR.W	D0
+	SWAP	D0
+	ADD.L	D0,D1
+	SUBQ.L	#1,D2
+	ASL.W	#1,D2
+	LEA	DAY_TABL(PC,D2.W),A2 ; table of days
+	CLR.L	D0
+	MOVE.W	(A2),D0
+	ADD.L	D0,D1
+	ADD.L	8(A6,A1.L),D1
+	SUBQ.W	#1,D1
+	MOVEQ	#$18,D0
+	BSR.S	L0682A
+	ADD.L	$0C(A6,A1.L),D1
+	MOVEQ	#$3C,D0
+	BSR.S	L0682A
+	ADD.L	$10(A6,A1.L),D1
+	BSR.S	L0682A
+	ADD.L	$14(A6,A1.L),D1
+	MOVEQ	#$14,D0		; MT.SCLCK sets the clock
+				; (D1 sec.)
+	TRAP	#1
+L0680C	MOVEQ	#0,D0
+L0680E	TST.L	D0
+	RTS
+DAY_TABL ; table of days
+	DC.L	$0000001F,$003B005A,$00780097,$00B500D4
+	DC.L	$00F30111,$0130014E
+L0682A	; multiply integer long in D0 with integer long in D1
+	BSR.S	L0684E
+	MOVE.L	D4,D3
+	SWAP	D0
+	SWAP	D1
+	BSR.S	L0684E
+	MOVE.L	D4,D2
+	SWAP	D0
+	SWAP	D3
+	BSR.S	L0684E
+	BSR.S	L06854
+	SWAP	D0
+	SWAP	D1
+	BSR.S	L0684E
+	BSR.S	L06854
+	SWAP	D3
+	SWAP	D0
+	MOVE.L	D3,D1
+	RTS
+L0684E	MOVE.L	D0,D4
+	MULU	D1,D4
+	RTS
+L06854	ADD.W	D4,D3
+	CLR.W	D4
+	SWAP	D4
+	ADDX.L	D4,D2
+	RTS
+; --------------------------------------------------------------
+;*/endfile

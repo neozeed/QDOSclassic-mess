@@ -1,0 +1,704 @@
+10  TURBO_objfil "ram1_NO_TAS_task"
+11  TURBO_taskn "NO_TAS"
+12  TURBO_repfil "scr"
+13  TURBO_windo 0
+14  TURBO_diags 'omit'
+15  TURBO_struct "S"
+16  TURBO_model "<"
+17  TURBO_objdat 4
+18  TURBO_optim "R"
+19 :
+1000 REMark ------------------------------
+1010 REMark      NO_TAS_bas - Mark J Swift
+1020 REMark ...Turbo tweaks - SNG
+1030 :
+1040 REMark   Replace TAS with Line-A
+1050 REMark     (1010111X XXXXXXXX)
+1060 REMark    emulation instruction.
+1110 REMark ------------------------------
+1120 :
+1210 DIM InFile$(100),OutFile$(100),Rplc$(1),P$(256),Src$(5),Dst$(40),Name$(40),Space$(40),temp$(40)
+1215 verstag$="1.15"
+1220 Buff=ALCHP(256)
+1230 Rows=14
+1240 DIM D(Rows/2)
+1250 OPEN#3;"Con_456x234a28x12"
+1260 OPEN#4;"Scr_104x12a362x20"
+1270 OPEN#5;"Scr_436x142a38x99"
+1280 InFlg%=0
+1290 temp$=DATE$:Name$="ram1_NO_TAS_log"
+1300 DELETE Name$
+1310 OPEN_NEW#8;Name$
+1320 PRINT#8;"NO_TAS started at ";temp$(13 TO 20);" on";temp$(5 TO 12);temp$(1 TO 4)\\
+1330 REPeat outer_loop
+1332  RETRY_HERE
+1334  IF InFlg%<>0 THEN CLOSE#7:DELETE Dst$&"NO_TAS_dat":InFlg%=0
+1340  IF COMPILED
+1341   WHEN ERRor 
+1342    PRINT #3\\"Error: "
+1343    REPORT #3,ERNUM
+1344    INPUT #3;\" Press ENTER to re-start.";Rplc$
+1345    RETRY
+1346   END WHEN 
+1347  END IF 
+1349  WINDOW#3;456,234,28,12:PAPER#3;0:INK#3;7:CLS#3:BORDER#3;3,2:BORDER#3;2,0:BORDER#3;1,2:WINDOW#3;438,220,36,19:BORDER#5;1,4:INK#5;4:PAPER#5;0
+1350  CSIZE#3;2,1:PRINT#3;"NO_TAS v";verstag$:CSIZE#3;0,0
+1360  PRINT#3;" AMIGA-FRIENDLY PATCHER";
+1370  CLS#4:BORDER#4;1,7:INK#4;4:CLS#5
+1380  WINDOW#3;438,40,36,59
+1390  IF InFlg%=0 THEN 
+1400   INK#5;7:PRINT#5;"PROBLEM:";:INK#5;4
+1410   PRINT#5;" The Amiga hardware does not allow the CPU two contiguous bus"
+1420   PRINT#5;" cycles. This means that all READ-MODIFY-WRITE cycles fail and as a"
+1430   PRINT#5;" result the machine code instruction 'TAS' doesn't function correctly."
+1440   PRINT#5;" (it can mess up the next instruction fetch)"
+1450   INK#5;7:PRINT#5;"SOLUTION:";:INK#5;4
+1460   PRINT#5;" This program removes TAS instructions in recognised TURBO'ed"
+1470   PRINT#5;" and QLIB'ed tasks, substituting equivalent code. If the code is not"
+1480   PRINT#5;" thus recognised, TAS will be replaced by a Line-A instruction (which is"
+1490   PRINT#5;" programmed to emulate TAS but is not QL-compatible) or by extending the"
+1500   PRINT#5;" code (which might confuse tasks that assume their own length). Under"
+1510   PRINT#5;" such circumstances a disassembly is shown and you will be asked whether"
+1520   PRINT#5;" or not to replace the code. The program may display TAS instructions"
+1530   PRINT#5;" where none are present (i.e. within program DATA). A good rule-of-thumb"
+1540   PRINT#5;" is that true CODE will usually be surrounded by other machine code"
+1550   PRINT#5;" instructions, whereas DATA will be liberally sprinkled with DC.Ws";
+1560   INPUT#3;\"Input FILE or VOLUME name  >";InFile$
+1570   IF InFile$="" THEN EXIT outer_loop
+1580   IF LEN(InFile$)=5 THEN 
+1590    InFlg%=INT(((InFile$ INSTR "flp1_flp2_flp3_flp4_ram1_ram2_")+4)/5)
+1600   ELSE 
+1610    InFlg%=0
+1620   END IF 
+1630   IF InFlg%=0 THEN 
+1640    INPUT#3;"         Output FILE name  >";OutFile$
+1650    IF OutFile$="" THEN EXIT outer_loop
+1660   ELSE 
+1670    INPUT#3;"       Output VOLUME name  >";OutFile$
+1680    IF OutFile$="" THEN InFlg%=0:EXIT outer_loop
+1690    Src$=InFile$:Dst$=OutFile$
+1700    DELETE Dst$&"NO_TAS_dat"
+1710    OPEN_NEW#7;Dst$&"NO_TAS_dat"
+1720    DIR#7;Src$:CLOSE#7
+1730    OPEN_IN#7;Dst$&"NO_TAS_dat"
+1740    INPUT#7;Name$,Space$
+1750   END IF 
+1760   CLS#5
+1770  END IF 
+1780  REPeat main_loop
+1790   REPeat in_loop
+1800    CLS#4:CLS#3:RPORT CHR$(10)
+1810    IF InFlg%<>0 THEN 
+1820     IF EOF(#7) THEN 
+1830      EXIT main_loop
+1840     ELSE 
+1850      INPUT#7;InFile$
+1860      OutFile$=Dst$&InFile$
+1870      InFile$=Src$&InFile$
+1880     END IF 
+1890    END IF 
+1895    IF FTEST(InFile$)<>0 THEN 
+1896     EXIT main_loop
+1897    ELSE 
+1900     OPEN_IN#6;InFile$
+1910     fl=FLEN(#6):ft=FTYP(#6):IF ft THEN fd=FDAT(#6)
+1920     CLOSE#6
+1930     RPORT "FILE: "&InFile$&CHR$(10)
+1940     IF fl=0 THEN 
+1950      RPORT "ZERO length!"&CHR$(10)
+1960      IF InFlg%=0 THEN EXIT main_loop
+1970     ELSE 
+1971      INK#3;4
+1972      IF ft=1 AND fd<>0 THEN 
+1974       RPORT "Executable TASK"&CHR$(10)
+1976      ELSE 
+1980       temp$=FILE_CLASS$(InFile$)
+1990       IF temp$<>"" THEN 
+2000        RPORT "Possible "&temp$&CHR$(10)
+2010       END IF 
+2012      END IF 
+2014      INK#3;7
+2020      IF InFlg%=0 THEN 
+2030       EXIT in_loop
+2040      ELSE 
+2050       RPORT "TAS replace :":Rplc$=WAITKEY$(3,"ynq")
+2060       IF Rplc$=="y" THEN EXIT in_loop
+2070       IF Rplc$=="q" THEN EXIT main_loop
+2080      END IF 
+2090     END IF 
+2095    END IF 
+2100   END REPeat in_loop
+2110   CLS#5
+2120   base=ALCHP(fl+1024)
+2130   IF base>0 THEN 
+2140    LBYTES InFile$,base
+2150   ELSE 
+2160    PRINT#3;\"Out of memory!"
+2170    EXIT outer_loop
+2180   END IF 
+2190   REMark do it
+2200   NoRpc%=0:RecogFlg%=0
+2210   IF PEEK_W(base+6)<>HEX("4AFB") THEN 
+2220    fixQLIB
+2230    IF RecogFlg%=0 THEN 
+2240     RPORT "UNRECOGNISED CODE:..."&CHR$(10)
+2250    END IF 
+2260   ELSE 
+2270    fixTURBO
+2280    IF RecogFlg%=0 THEN 
+2290     fixQLIB
+2300     IF RecogFlg%=0 THEN 
+2310      RPORT "UNRECOGNISED TASK:..."&CHR$(10)
+2320     END IF 
+2330    END IF 
+2340   END IF 
+2350   IF RecogFlg%=0 THEN 
+2360    Flg%=-1
+2370    IF fl<32768 THEN 
+2380     RPORT "SMALL CODE: try QL-Compatible TAS replacement ":Rplc$=WAITKEY$(3,"ynq")
+2390     IF Rplc$=="q" THEN EXIT main_loop
+2400     IF Rplc$=="y" THEN 
+2410      treatTAS
+2420      IF Flg%=0 THEN 
+2430       fl=LastByte-base
+2440      ELSE 
+2450       RPORT "THERE WERE ERRORS: re-loading CODE"&CHR$(10)
+2460       LBYTES InFile$,base
+2470      END IF 
+2480     END IF 
+2490    END IF 
+2500    IF Flg%<>0 THEN 
+2510     RPORT "Attempting A-Line TAS replacement"&CHR$(10)
+2520     fixTAS
+2530    END IF 
+2540   END IF 
+2550   IF NoRpc% THEN 
+2560    RPORT "Saving..."&CHR$(10)
+2570    IF ft=1 THEN 
+2580     DELETE OutFile$
+2590     SEXEC OutFile$,base,fl,fd
+2600    ELSE 
+2610     DELETE OutFile$
+2620     SBYTES OutFile$,base,fl
+2630    END IF 
+2640   ELSE 
+2650    RPORT "No changes."&CHR$(10)
+2660   END IF 
+2670   RECHP(base)
+2680   IF (InFlg%=0) OR (NoRplc%=0) THEN 
+2690    Rplc$=INKEY$(#3,200)
+2700    IF InFlg%=0 THEN EXIT main_loop
+2710   END IF 
+2720  END REPeat main_loop
+2750 END REPeat outer_loop
+2760 CLOSE#8
+2770 RECHP(Buff)
+2780 CLOSE#3
+2790 CLOSE#4
+2800 CLOSE#5
+2810 IF InFlg%<>0 THEN CLOSE#7:DELETE OutFile$&"NO_TAS_dat":InFlg%=0
+2820 STOP
+2830 :
+2840 DEFine PROCedure fixSYSV
+2850  LOCal a,p,i,N
+2860  CLS#4
+2870  p=0
+2880  REPeat find_loop
+2890   BLOCK#4;(p/fl)*100,10,0,0,4
+2900   pk=PEEK_L(base+p)
+2910   IF (pk>HEX("28000")) AND (pk<=HEX("28200")) THEN 
+2920    DISOUT
+2930   Rplc$=WAITKEY$(3,"ynaq")
+2940   END IF 
+2950   p=p+2
+2960   IF p>fl THEN EXIT find_loop
+2970  END REPeat find_loop
+2980 END DEFine 
+2990 :
+3000 DEFine PROCedure fixTURBO
+3010  LOCal a,p,i,N,pk,dt
+3020  CLS#4
+3030  RecogFlg%=0:p=0
+3040  REPeat find_loop
+3050   IF p>fl THEN EXIT find_loop
+3060   FOR N=1 TO 256
+3070    pk=PEEK_W(base+p)
+3080    IF (pk=19182) OR (pk=-4050) OR (pk=-466) THEN 
+3090     RESTORE 3270
+3100     fixTURBOsub base+p
+3110    END IF 
+3120    IF (pk=19178) OR (pk=-4054) OR (pk=-470) THEN 
+3130     RESTORE 3320
+3140     fixTURBOsub base+p
+3150    END IF 
+3151    IF (pk=19182) THEN 
+3152     RESTORE 3370
+3154     fixTURBOsub base+p
+3157    END IF 
+3160    p=p+2
+3170    IF p>=fl THEN EXIT N
+3180   END FOR N
+3190   IF p>fl THEN 
+3200    BLOCK#4;100,10,0,0,4
+3210   ELSE 
+3220    BLOCK#4;INT((p/fl)*100),10,0,0,4
+3230   END IF 
+3240  END REPeat find_loop
+3250 END DEFine 
+3260 :
+3270 DATA 0,12
+3280 DATA 19182,143,32256,29184,20112,17393,-6144
+3290 DATA 2286,7,143,32256,29184,20112,-11314
+3300 DATA "TURBO"
+3310 :
+3320 DATA -10,8
+3330 DATA 12842,34,8775,19008,26410,19178,23,26404,10249,14849
+3340 DATA 14890,34,8775,19008,26410,2282,7,23,26402,10249
+3350 DATA "TURBO"
+3360 :
+3370 DATA 0,36
+3380 DATA 19182,143,29184,20112,19679,20544,19072,26372,20206,-32048,10847,8799,4117,21632,2176,0,-9280,20206,-32356
+3390 DATA 2286,7,143,29184,20112,19679,20544,19072,26372,20206,-32048,10847,8799,4117,21632,2176,0,-9280,24578
+3400 DATA "superCHARGE"
+3410 :
+3420 DEFine PROCedure fixTURBOsub(a)
+3430 LOCal s,e,i
+3440  READ s,e
+3450  FOR i=s TO e STEP 2
+3460   READ dt
+3470   IF i<>0 THEN 
+3480    IF PEEK_W(a+i)<>dt THEN i=0:EXIT i:END IF 
+3490   END IF 
+3500  END FOR i
+3510  IF i<>0 THEN 
+3520   FOR i=s TO e STEP 2
+3530    READ dt:POKE_W a+i,dt
+3540   END FOR i
+3550   READ a$
+3560   IF RecogFlg%=0 THEN RPORT a$&" TASK:..."&CHR$(10):RecogFlg%=-1
+3570   RPORT "Patched at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+3580  END IF 
+3590 END DEFine 
+3600 :
+3610 DEFine PROCedure fixQLIB
+3620  LOCal l,N,i,X
+3630  RecogFlg%=0
+3640  X=find("Q_Libe"&"rator ",FILL$(CHR$(223),12),base,0,fl)
+3650  IF X<>-1 THEN 
+3660   IF PEEK_W(base+6)<>HEX("4AFB") THEN 
+3670    RPORT "QLIB CODE: "
+3680   ELSE 
+3690    RPORT "QLIB TASK: "
+3700   END IF 
+3710   RPORT "initial scan OK at "&X&"..."&CHR$(10):RecogFlg%=-1
+3720   N=find(CHR$(HEX("4A"))&CHR$(HEX("EE"))&CHR$(HEX("00"))&CHR$(HEX("8f")),CHR$(HEX("FF"))&CHR$(HEX("F8"))&CHR$(HEX("FF"))&CHR$(HEX("FF")),base,0,fl)
+3730   IF N<>-1 THEN 
+3740    REMark Truncate copyright notice
+3750    REMark to make room for m/c sub
+3760    l=PEEK_W(base+X-2)-12:POKE_W base+X-2,l
+3770    FOR i=0 TO l-1
+3780     POKE base+X+i,PEEK(base+X+i+12)
+3790    END FOR i
+3800    REMark Create subroutine:
+3810    REMark BSET #7,$8F(A0)
+3820    REMark RTS
+3830    POKE base+X+l,HEX('08')
+3840    POKE base+X+l+1,HEX('E8')
+3850    POKE base+X+l+2,HEX('00')
+3860    POKE base+X+l+3,HEX('07')
+3870    POKE base+X+l+4,HEX('00')
+3880    POKE base+X+l+5,HEX('8F')
+3890    POKE base+X+l+6,HEX('4E')
+3900    POKE base+X+l+7,HEX('75')
+3910    REMark Customize subroutine
+3920    POKE base+X+l+1,PEEK(base+N+1)
+3930    REMark Overwrite TAS $8F(An)
+3940    REMark with a BSR instruction
+3950    POKE base+N,HEX("61"):POKE base+N+1,HEX("00")
+3960    POKE_W base+N+2,X+l-N-2
+3970    RPORT "Patched at $"&HEX$(N,32)&CHR$(10):NoRpc%=NoRpc%+1
+3980   END IF 
+3990  END IF 
+4000 END DEFine 
+4010 :
+4020 DEFine PROCedure fixTAS
+4030  CLS#4
+4040  EA_mask=HEX('003F')
+4050  TAS_mask=HEX('FFC0')-HEX('10000')
+4060  LINEF_7_inst=HEX('AE00')-HEX('10000')
+4070  TAS_inst=HEX('4AC0')
+4080  p=0
+4090  REPeat Replace_loop
+4100   IF p>=fl THEN EXIT Replace_loop
+4110   FOR N=1 TO 256
+4120    pk=PEEK_W(base+p)
+4130    IF ((pk && TAS_mask)=TAS_inst) THEN 
+4140     ea=pk && EA_mask
+4150     SELect ON ea
+4160     =0 TO 7 : REMark dn - can handle this!
+4170      REMark RPORT HEX$(p,32)&" TAS d"&(ea&&7)
+4180      REMark Replace_TAS
+4190     =16 TO 23 : REMark  (an)
+4200      RPORT HEX$(p,32)&" TAS (a"&(ea&&7)&")"
+4210      Replace_TAS
+4220     =24 TO 31 : REMark  (an)+
+4230      RPORT HEX$(p,32)&" TAS (a"&(ea&&7)&")+"
+4240      Replace_TAS
+4250     =32 TO 39 : REMark  -(an)
+4260      RPORT HEX$(p,32)&" TAS -(a"&(ea&&7)&")"
+4270      Replace_TAS
+4280     =40 TO 47 : REMark d(an)
+4290      RPORT HEX$(p,32)&" TAS "&HEX$(PEEK_W(base+p+2),16)&"(a"&(ea&&7)&")"
+4300      Replace_TAS
+4310     =48 TO 55 : REMark d(an,a/dn)
+4320      RPORT HEX$(p,32)&" TAS $"&HEX$(PEEK(base+p+3),8)&"(a"&(ea&&7)&","&("da"(1+(INT(PEEK(base+p+2)/128)&&1)))&INT(PEEK(base+p+2)/16)&&7&"."&("wl"(1+(INT(PEEK(base+p+2)/8)&&1)))&")"
+4330      Replace_TAS
+4340     =56 : REMark $.w
+4350      RPORT HEX$(p,32)&" TAS $"&HEX$(PEEK_W(base+p+2),16)
+4360      Replace_TAS
+4370     =57 : REMark $.l
+4380      RPORT HEX$(p,32)&" TAS $"&HEX$(PEEK_L(base+p+2),32)
+4390      Replace_TAS
+4400     =REMAINDER : REMark impossible
+4410      REMark ignore illegal address modes
+4420     END SELect 
+4430     IF Rplc$=="Q" THEN NoRpc%=0:EXIT Replace_loop
+4440    ELSE 
+4441     temp$=HEX$(PEEK_L(base+p),32)
+4442     IF temp$=="46FC0000" THEN 
+4443      POKE_L base+p,HEX("027CC0FF"):DISOUT:RPORT "tidying code at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+4446     END IF 
+4448    END IF 
+4450    p=p+2
+4460    IF p>=fl THEN EXIT N
+4470   END FOR N
+4480   IF p>fl THEN 
+4490    BLOCK#4;100,10,0,0,4
+4500   ELSE 
+4510    BLOCK#4;INT((p/fl)*100),10,0,0,4
+4520   END IF 
+4530  END REPeat Replace_loop
+4540 END DEFine 
+4550 :
+4560 DEFine PROCedure Replace_TAS
+4570  LOCal get_loop
+4580  IF NOT(Rplc$=="a")
+4590   DISOUT
+4600   Rplc$=WAITKEY$(3,"ynaq")
+4610   CLS#5
+4620  ELSE 
+4630   RPORT " replaced."&CHR$(10)
+4640  END IF 
+4650  IF Rplc$=="y" OR Rplc$=="a" THEN 
+4660   POKE_W base+p,LINEF_7_inst||ea
+4670   NoRpc%=NoRpc%+1
+4680  END IF 
+4690 END DEFine 
+4700 :
+4710 DEFine PROCedure treatTAS
+4720  REMark Replace TAS instructions in a QL-friendly way.
+4730  REMark Extends the code, so may not be reliable with
+4740  REMark tasks that assume their own size.
+4750  CLS#4
+4760  EA_mask=HEX('003F')
+4770  TST_mask=HEX('4A00'):BSET_mask=HEX('08C0')
+4780  TAS_mask=HEX('FFC0')-HEX('10000')
+4790  TAS_inst=HEX('4AC0')
+4800  BSR_inst=HEX('6100')
+4810  RTS_inst=HEX('4E75')
+4820  NOP_inst=HEX('4E71')
+4830  LastByte=base+fl
+4840  Rplc$=""
+4850  p=0:Flg%=0
+4860  REPeat Replace_loop
+4870   IF p>=fl THEN EXIT Replace_loop
+4880   FOR N=1 TO 256
+4890    pk=PEEK_W(base+p)
+4900    IF ((pk && TAS_mask)=TAS_inst) THEN 
+4910     ea=pk && EA_mask
+4920     SELect ON ea
+4930     =0 TO 7 : REMark dn - can handle this!
+4940      REMark RPORT HEX$(p,32)&" TAS d"&ea&&7
+4950      REMark Treat_ARI
+4960     =16 TO 23 : REMark  (an)
+4970      RPORT HEX$(p,32)&" TAS (a"&(ea&&7)&")"
+4980      Treat_ARI
+4990     =24 TO 31 : REMark  (an)+
+5000      RPORT HEX$(p,32)&" TAS (a"&(ea&&7)&")+"
+5010      Treat_ARI
+5020     =32 TO 39 : REMark  -(an)
+5030      RPORT HEX$(p,32)&" TAS -(a"&(ea&&7)&")"
+5040      Treat_ARI
+5050     =40 TO 47 : REMark d(an)
+5060      RPORT HEX$(p,32)&" TAS "&HEX$(PEEK_W(base+p+2),16)&"(a"&(ea&&7)&")"
+5070      Treat_ARID
+5080     =48 TO 55 : REMark d(an,a/dn)
+5090      RPORT HEX$(p,32)&" TAS $"&HEX$(PEEK(base+p+3),8)&"(a"&(ea&&7)&","&("da"(1+(INT(PEEK(base+p+2)/128)&&1)))&INT(PEEK(base+p+2)/16)&&7&"."&("wl"(1+(INT(PEEK(base+p+2)/8)&&1)))&")"
+5100      Treat_ARID
+5110     =56 : REMark $.w
+5120      RPORT HEX$(p,32)&" TAS $"&HEX$(PEEK_W(base+p+2),16)
+5130      Treat_ARID
+5140     =57 : REMark $.l
+5150      RPORT HEX$(p,32)&" TAS $"&HEX$(PEEK_W(base+p+2),32)
+5160      Treat_ABSL
+5170     =REMAINDER : REMark impossible ea
+5180      REMark ignore illegal address modes
+5190     END SELect 
+5200     IF Rplc$=="Q" OR Flg%=-1 THEN NoRpc%=0:EXIT Replace_loop
+5210    ELSE 
+5211     temp$=HEX$(PEEK_L(base+p),32)
+5212     IF temp$=="46FC0000" THEN 
+5213      POKE_L base+p,HEX("027CC0FF"):DISOUT:RPORT "tidying code at $"&HEX$(p,32)&CHR$(10):NoRpc%=NoRpc%+1
+5216     END IF 
+5218    END IF 
+5220    p=p+2
+5230    IF p>=fl THEN EXIT N
+5240   END FOR N
+5250   IF p>fl THEN 
+5260    BLOCK#4;100,10,0,0,4
+5270   ELSE 
+5280    BLOCK#4;INT((p/fl)*100),10,0,0,4
+5290   END IF 
+5300  END REPeat Replace_loop
+5310 END DEFine 
+5320 :
+5330 DEFine PROCedure Treat_ARI
+5340  LOCal disp,get_loop
+5350  disp=LastByte-(base+p+2)
+5360  IF NOT(Rplc$=="a")
+5370   DISOUT
+5380   Rplc$=WAITKEY$(3,"ynaq")
+5390   CLS#5
+5400  END IF 
+5410  IF Rplc$=="y" OR Rplc$=="a" THEN 
+5420   IF disp>126 THEN 
+5430    RPORT " ERROR: OFFSET TOO LARGE"&CHR$(10):Flg%=-1
+5440   ELSE 
+5450    POKE_W LastByte,TST_mask&&ea:LastByte=LastByte+2
+5460    POKE_W LastByte,BSET_mask||ea:LastByte=LastByte+2
+5470    POKE_W LastByte,7:LastByte=LastByte+2
+5480    POKE_W LastByte,RTS_inst:LastByte=LastByte+2
+5490    POKE_W base+p,BSR_inst||disp
+5500    NoRpc%=NoRpc%+1
+5510    IF Rplc$=="a" THEN RPORT " replaced."&CHR$(10)
+5520   END IF 
+5530  END IF 
+5540 END DEFine 
+5550 :
+5560 DEFine PROCedure Treat_ARID
+5570  LOCal disp
+5580  disp=LastByte-(base+p+2)
+5590  IF NOT(Rplc$=="a")
+5600   DISOUT
+5610   Rplc$=WAITKEY$(3,"ynaq")
+5620   CLS#5
+5630  END IF 
+5640  IF Rplc$=="y" OR Rplc$=="a" THEN 
+5650   IF disp>32766 THEN 
+5660    RPORT " ERROR: FILE TOO BIG"&CHR$(10):Flg%=-1
+5670   ELSE 
+5680    POKE_W LastByte,TST_mask||ea:LastByte=LastByte+2
+5690    POKE_W LastByte,PEEK_W(base+p+2):LastByte=LastByte+2
+5700    POKE_W LastByte,BSET_mask||ea:LastByte=LastByte+2
+5710    POKE_W LastByte,7:LastByte=LastByte+2
+5720    POKE_W LastByte,PEEK_W(base+p+2):LastByte=LastByte+2
+5730    POKE_W LastByte,RTS_inst:LastByte=LastByte+2
+5740    POKE_W base+p,BSR_inst
+5750    POKE_W base+p+2,disp
+5760    NoRpc%=NoRpc%+1
+5770    IF Rplc$=="a" THEN RPORT " replaced."&CHR$(10)
+5780   END IF 
+5790  END IF 
+5800 END DEFine 
+5810 :
+5820 DEFine PROCedure Treat_ABSL
+5830  LOCal disp
+5840  disp=LastByte-(base+p+2)
+5850  IF NOT(Rplc$=="a")
+5860   DISOUT
+5870   Rplc$=WAITKEY$(3,"ynaq")
+5880   CLS#5
+5890  END IF 
+5900  IF Rplc$=="y" OR Rplc$=="a" THEN 
+5910   IF disp>32766 THEN 
+5920    RPORT " ERROR: FILE TOO BIG"&CHR$(10):Flg%=-1
+5930   ELSE 
+5940    POKE_W LastByte,TST_mask||ea:LastByte=LastByte+2
+5950    POKE_L LastByte,PEEK_L(base+p+2):LastByte=LastByte+4
+5960    POKE_W LastByte,BSET_mask||ea:LastByte=LastByte+2
+5970    POKE_W LastByte,7:LastByte=LastByte+2
+5980    POKE_L LastByte,PEEK_L(base+p+2):LastByte=LastByte+4
+5990    POKE_W LastByte,RTS_inst:LastByte=LastByte+2
+6000    POKE_W base+p,BSR_inst
+6010    POKE_W base+p+2,disp
+6020    POKE_W base+p+4,NOP_inst
+6030    NoRpc%=NoRpc%+1
+6040    IF Rplc$=="a" THEN RPORT " replaced."&CHR$(10)
+6050   END IF 
+6060  END IF 
+6070 END DEFine 
+6080 :
+10000 DEFine PROCedure DISOUT
+10010  LOCal loop, preLoop, disLoop
+10020  LOCal r, Ds, Q, N, c, i
+10030  r=Rows/2
+10040  Ds=0
+10050  FOR i=1 TO r
+10060   D(i)=0
+10070  END FOR i
+10080  Q=p-8*r
+10090  IF Q<0 THEN Q=0
+10100  REPeat preLoop
+10110   N=D68K(base+Q,Q\Buff)
+10120   Q=Q+N
+10130   Ds=Ds-D(i)+N
+10140   D(i)=N
+10150   REPeat loop
+10160    i=1+(i MOD r)
+10170    N=N-6
+10180    IF N<=0 THEN EXIT loop
+10190    Ds=Ds-D(i)
+10200    D(i)=0
+10210   END REPeat loop
+10220   IF Q>=p THEN EXIT preLoop
+10230  END REPeat preLoop
+10240  CLS#5
+10250  Q=Q-Ds
+10260  r=Rows
+10270  dflag=0
+10280  REPeat disLoop
+10290   N=D68K(base+Q,Q\Buff)
+10300   i=0:P$=" "
+10310   REPeat loop
+10320    c=PEEK(Buff+i)
+10330    IF c=0 THEN EXIT loop
+10340    i=i+1
+10350    P$=P$(1 TO LEN(P$))&CHR$(c)
+10360   END REPeat loop
+10370   IF (Q<=p) AND ((Q+N)>p) THEN 
+10380    IF dflag AND NOT("tas" INSTR P$(1 TO LEN(P$)))
+10390     P$=P$(1 TO 14)&"         dc.w      $"&P$(11 TO 14)&CHR$(10):dflag=1:N=2
+10400     INK#5;4
+10410    ELSE 
+10420     INK#5;7
+10430    END IF 
+10440   ELSE 
+10450    INK#5;4
+10460     dflag="dc." INSTR P$(1 TO LEN(P$))
+10470   END IF 
+10480   Q=Q+N
+10490   r=r-((N+5) DIV 6)
+10500   IF r<0 THEN EXIT disLoop
+10510   PRINT#5;P$(1 TO LEN(P$));
+10520  END REPeat disLoop
+10530 END DEFine 
+10540 :
+10550 DEFine FuNction FILE_CLASS$(i$)
+10560  i=0
+10570  REPeat check_loop
+10580   j="_" INSTR i$(i+1 TO LEN(i$))
+10590   IF j=0 THEN EXIT check_loop
+10600   i=i+j
+10610   IF i=LEN(i$) THEN RETurn ""
+10620  END REPeat check_loop
+10630  IF i=0 THEN 
+10640   j=-1
+10650  ELSE 
+10660   IF (i=5) AND (i$(1 TO i) INSTR "ram1_ram2_flp1_flp2_mdv1_mdv2_") THEN 
+10670    j=-1
+10680   END IF 
+10690  END IF 
+10700  IF j<>0 THEN 
+10710   j="_"&i$(i+1 TO LEN(i$))&"_" INSTR "_BOOT_"
+10720   SELect ON j
+10730   =1:a$="SuperBASIC boot program"
+10740   =REMAINDER :a$=""
+10750   END SELect 
+10760   RETurn a$
+10770  ELSE 
+10780   a$=""
+10790   j=(i$(i TO LEN(i$))&"_") INSTR "_c_h_bas_fth_asm_list_txt_text_scr_doc_aba_prg_grf_hob_arc_zip_font_fnt_boot_asc_screen_dbf_scn_log_task_job_bin_code_rext_inc_"
+10800   SELect ON j
+10810   =1:a$="C source"
+10820   =3:a$="C header file"
+10830   =5:a$="SuperBASIC program"
+10840   =9:a$="FORTH program"
+10850   =13:a$="Assembler source"
+10860   =17:a$="Assembler list file"
+10870   =123:a$="Assembler include file"
+10880   =22,26,77,96:a$="ASCII text file"
+10890   =31,81:a$="Screen-save"
+10900   =35:a$="QUILL wordprocess document"
+10910   =39:a$="ABACUS spreadsheet document"
+10920   =43:a$="ARCHIVE program document"
+10930   =88:a$="ARCHIVE database file"
+10940   =92:a$="ARCHIVE screen layout"
+10950   =47:a$="EASEL chart document"
+10960   =51:a$="Psion help file"
+10970   =55:a$="ARC file archive"
+10980   =59:a$="ZIP file archive"
+10990   =63,68:a$="Alternative character set"
+11000   =72:a$="SuperBASIC boot program"
+11010   =100,105:a$="executable TASK"
+11020   =109,113:a$="Machine code"
+11030   =118:a$="Resident extension code"
+11040   =REMAINDER :a$=""
+11050   END SELect 
+11060  END IF 
+11070  RETurn a$
+11080 END DEFine 
+11090 :
+11100 DEFine FuNction WAITKEY$(Chan%,i$)
+11110  LOCal K$(1),i,l,prompt_loop,get_loop
+11120  RPORT " ("
+11130  i=1:l=LEN(i$)
+11140  REPeat prompt_loop
+11150   RPORT i$(i):i=i+1
+11160   IF i>l THEN EXIT prompt_loop
+11170   RPORT "/"
+11180  END REPeat prompt_loop
+11190  RPORT ")? >"
+11200  CURSEN#Chan%
+11210  REPeat get_loop
+11220   K$=INKEY$(#Chan%,-1)
+11230   IF K$ INSTR i$ THEN EXIT get_loop
+11240  END REPeat get_loop
+11250  CURDIS#Chan%
+11260  RPORT K$&CHR$(10)
+11270  RETurn K$
+11280 END DEFine 
+11290 :
+11300 DEFine PROCedure RPORT(temp$)
+11310  PRINT#3;temp$;
+11320 END DEFine 
+11330 :
+11340 DEFine FuNction find(txt$,msk$,base,s,e)
+11350  LOCal i,j,K,l
+11360  CLS#4
+11370  l=-1
+11380  i=s
+11390  REPeat i_loop
+11400   j=0
+11410   REPeat j_loop
+11420    K=0
+11430    REPeat k_loop
+11440     IF (PEEK(base+i+j+K)&&CODE(msk$(K+1)))<>(CODE(txt$(K+1))&&CODE(msk$(K+1))) THEN EXIT k_loop
+11450     K=K+1
+11460     IF K=LEN(txt$) THEN 
+11470      l=i+j:EXIT i_loop
+11480     END IF 
+11490    END REPeat k_loop
+11500    j=j+1
+11510    IF j=256 THEN EXIT j_loop
+11520   END REPeat j_loop
+11530   IF i>=e THEN 
+11540    BLOCK #4,100,10,0,0,4
+11550   ELSE 
+11560    BLOCK#4;((i-s)/(e-s))*100,10,0,0,4
+11570   END IF 
+11580   i=i+256
+11590   IF (i-e)>=256 THEN EXIT i_loop
+11600  END REPeat i_loop
+11610  RETurn l
+11620 END DEFine 
+11630 :

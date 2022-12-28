@@ -1,0 +1,153 @@
+*/beginfile PROCS6_asm
+; --------------------------------------------------------------
+; PROCS6_asm - BASIC bits
+;	    - last modified 27/08/95
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...some changes by Mark J Swift
+; --------------------------------------------------------------
+BAS_READ:
+	MOVE.L	A5,-(A7)
+L06860	CMPA.L	(A7),A3
+	BGE.S	L06886
+	JSR	L07A8E(PC)	;*/undomodify BSR L07A8E
+	BNE.S	L06888
+	JSR	L066FA(PC)	;*/undomodify BSR L066FA
+	BNE.S	L06888
+	MOVE.B	$01(A6,A3.L),D0
+	MOVE.L	A3,-(A7)
+	JSR	L05A84(PC)	;*/undomodify BSR L05A84
+	MOVEA.L	(A7)+,A3
+	BNE.S	L06888
+	JSR	BP_LET(PC)	;*/undomodify BSR BP_LET
+	ADDQ.W	#8,A3
+	BRA.S	L06860
+L06886	MOVEQ	#0,D0
+L06888	MOVEA.L	(A7)+,A5
+	RTS
+EXEC:
+	MOVEQ	#0,D5
+	BRA.S	L06892
+EXEC_W:
+	MOVEQ	#-1,D5
+L06892:
+	MOVEQ	#1,D4
+	BSR.L	L069C4
+	BNE.S	L068F8
+	MOVEQ	#$47,D0
+	MOVEQ	#$0E,D2
+	MOVEA.L	(A6),A1
+	BSR.L	TRAP_4_3
+	BNE.S	L06912
+	CMPI.B	#$01,-$09(A6,A1.L)
+	BNE.L	L06990
+	MOVEQ	#MT.CJOB,D0	; create job in
+				; transient prog. area
+	MOVEQ	#-1,D1		; owner of job
+	MOVE.L	-14(A6,A1.L),D2
+	MOVE.L	-8(A6,A1.L),D3
+	SUBA.L	A1,A1		; start address
+	MOVEM.L	D2/A0/A3,-(A7)
+	TRAP	#1
+	MOVEA.L	A0,A1
+	MOVEM.L	(A7)+,D2/A0/A3
+	TST.L	D0
+	BNE.S	L06912
+	MOVE.L	D1,D6
+	MOVEQ	#$48,D0
+	BSR.L	BAS_TRAP3	;*/note could be short
+	BSR.L	L0693A		;*/undomodify BSR.S L0693A
+				;*/undomodify nop
+	BNE.S	L068FA
+	MOVEQ	#$0A,D0
+	MOVE.L	D6,D1
+	MOVEQ	#$20,D2
+	MOVE.L	D5,D3
+	TRAP	#1
+	TST.L	D0
+	BNE.S	L068FA
+	TST.L	D5
+	BNE.S	L068F8
+	MOVEQ	#MT.SUSJB,D0	;suspend a job
+	MOVEQ	#-1,D1		; me
+	MOVEQ	#$19,D3		; timeout
+	SUBA.L	A1,A1		; no flag
+	TRAP	#1
+L068F8:
+	RTS
+L068FA:
+	MOVE.L	D0,D4
+	MOVEQ	#MT.RJOB,D0	;remove job
+	MOVE.L	D6,D1
+	TRAP	#1
+	MOVE.L	D4,D0
+	RTS
+BAS_LBYTes:
+	MOVEQ	#$01,D4
+	BSR	L069C4
+	BNE.S	L068F8
+	JSR	CA_GTLIN(PC)	;*/undomodify BSR CA_GTLIN
+L06912	BNE.S	L06986
+	SUBQ.W	#1,D3
+	BNE.S	L06990
+	BTST	#0,$03(A6,A1.L)
+	BNE.S	L06990
+	MOVEA.L	0(A6,A1.L),A1
+	ADDQ.L	#4,BV_RIP(A6)	;arithmetic stack
+	MOVEQ	#$47,D0
+	moveq	#4,d2		;*/modify MOVEQ #14,D2
+	MOVE.L	A1,-(A7)
+	BSR.S	BAS_TRAP3
+	MOVEA.L	(A7)+,A1
+	BNE.S	L06986
+	MOVE.L	(A1),D2
+	MOVEQ	#$48,D0
+	BSR.S	BAS_TRAP3
+L0693A	BRA.S	L06986
+BAS_SEXEc:
+	MOVEQ	#$01,D5
+	BRA.S	L06942
+BAS_SBYTes:
+	MOVEQ	#0,D5
+L06942	MOVE.L	A3,BV_PTEMP(A6)	;Temp.pointer for GO.PROC
+	MOVEQ	#2,D4
+	BSR.S	L069C4
+	BNE.S	L0698E
+	JSR	CA_GTLIN(PC)	;*/undomodify BSR CA_GTLIN
+	BNE.S	L06986
+	SUBQ.W	#2,D3
+	SUB.W	D5,D3
+	BNE.S	L0699A
+	MOVEA.L	0(A6,A1.L),A2
+	ADDQ.W	#2,A1
+	MOVE.L	2(A6,A1.L),0(A6,A1.L)
+	MOVE.W	D5,4(A6,A1.L)
+	MOVEQ	#FS.HEADS,D0	;set file header
+	MOVE.L	A1,-(A7)
+	BSR.S	TRAP_4_3
+	MOVEA.L	(A7)+,A1
+	BNE.S	L06986
+	MOVE.L	0(A6,A1.L),D2
+	ADDQ.W	#6,A1
+	LSL.W	#4,D5
+	ADDA.W	D5,A1
+	MOVE.L	A1,BV_RIP(A6)	;arithmetic stack
+	MOVEA.L	A2,A1		; address of file
+	MOVEQ	#FS.SAVE,D0	;save file from memory
+	BSR.S	BAS_TRAP3
+L06986	MOVE.L	D0,D4
+L06988	MOVEQ	#IO.CLOSE,D0
+	TRAP	#2
+L0698C	MOVE.L	D4,D0
+L0698E	RTS
+L06990	MOVEQ	#-15,D0
+	BRA.S	L06986
+L06994	ADDQ.W	#4,A7
+L06996	MOVEQ	#-15,D0
+	RTS
+L0699A	BSR.S	L06988
+	MOVEA.L	BV_PTEMP(A6),A3	;temp. pointer for GO.PROC
+	BSR.S	BAS_DELEte
+	BRA.S	L06996
+
+; --------------------------------------------------------------
+;*/endfile

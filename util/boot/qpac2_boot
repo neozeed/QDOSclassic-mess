@@ -1,0 +1,62 @@
+100 REMark Example BOOT program for QPAC2
+110 REMark Note where it says 164024 it
+120 REMark should say SYS_VARS+184
+130 :
+140 PROG_USE "win1_"
+150 DATA_USE "win1_"
+160 :
+170 REMark load pointer environment
+180 LRESPR 'win1_ptr_gen'
+190 LRESPR 'win1_wman'
+200 :
+210 REMark HOT_REXT expects the thing list
+220 REMark to be empty when it is loaded.
+230 REMark Find first & last thing in list
+240  thingl=PEEK_L(164024)
+250  thingf=164024
+260  REPeat loop
+270   IF PEEK_L(thingf)=0 THEN EXIT loop
+280   thingf=PEEK_L(thingf)
+290  END REPeat loop
+300 :
+310 REMark make an empty thing list
+320  POKE_L 164024,0
+330 :
+340 REMark load QPAC2 binaries
+350 LRESPR 'win1_hot_rext'
+360 LRESPR 'win1_menu_rext'
+370 LRESPR 'win1_Qpac2'
+380 :
+390 REMark restore things to thing list
+400  IF thingl<>0 THEN 
+410   POKE_L thingf,PEEK_L(164024)
+420   POKE_L 164024,thingl
+430  END IF 
+440 :
+450 REMark The rest is for example only,
+460 REMark replace with your own stuff...
+470 :
+480 BT_SLEEP "Sysdef"
+490 BT_SLEEP "EXEC"
+500 BT_SLEEP "PICK"
+510 BT_SLEEP "RJOB"
+520 BT_SLEEP "files";"\dwin1_",,,1
+530 BT_SLEEP "files";"\dflp1_",,,1
+540 :
+550 ERT HOT_WAKE ('.','Button_pick')
+560 :
+570 ERT HOT_CHP ('c', win1_calculator)
+580 ERT HOT_CHP ('k', win1_calendar)
+590 ERT HOT_CHP ('l', win1_alarm)
+600 ERT HOT_CHP ('w', win1_typer)
+610 :
+620 BT_WAKE 'calculator','Calc',,,3
+630 BT_WAKE 'calendar','Calendar',,,3
+640 BT_WAKE 'xchange','"X"change'
+650 :
+660 ERT HOT_LOAD ("x","win1_xchange")
+670 :
+680 ERT HOT_CMD ('t','charge')
+690 ERT HOT_CMD ('b','')
+700 :
+710 HOT_GO

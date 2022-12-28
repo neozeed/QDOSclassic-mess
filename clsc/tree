@@ -1,0 +1,11 @@
+A description of the directories here
+
+clsc         QDOS Classic software
+clsc/doc     documentation
+clsc/ma68    Tools to make QDOS Classic using a68 assembler (amiga)
+clsc/mgst    Tools to make QDOS Classic using GST assembler (ql)
+clsc/rom     ROM files
+clsc/run     Loaders
+clsc/src     Assembler sources
+clsc/ubik    Outdated files
+

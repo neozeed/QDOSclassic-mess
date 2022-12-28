@@ -1,0 +1,1780 @@
+*/beginfile QDOS3_asm
+; --------------------------------------------------------------
+; QDOS3_asm - The QDOS kernel
+;	   - last modified 06/09/95
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...latest changes by Mark J Swift
+; --------------------------------------------------------------
+
+; --------------------------------------------------------------
+; Main Microdrive system was here in JS ROM
+L01230:
+
+; --------------------------------------------------------------
+;*/beginoverlay
+;*/beginfilling
+;NOP0195A:
+;	 DCB.w	 ($195A-(NOP0195A-ORGN))/2,$4E71
+;L0195A:
+;*/endfilling
+;*/endoverlay
+; --------------------------------------------------------------
+; Trap clock related Trap #1 calls (d0=$13, $14 $15)
+MT_RCLCK:
+MT_SCLCK:
+MT_ACLCK:
+	moveq	#0,d0
+	bra	L003B6
+;*/beginoverlay
+CJOBFIX:
+	LEA	(JB_END-JB_PC)(A0),A0 ; start of program area
+	move.l	SV_JBPNT(a6),a4	; current job
+	move.l	(a4),a4		; JCB of job
+	move.b	JB_RELA6(a4),d0	; get screen (lsb of JB_RELA6)
+	andi.b	#%00000001,d0
+	move.b	d0,(JB_RELA6-JB_END)(a0) ; inherit screen
+	rts
+
+;*/beginfilling
+NOP01992:
+	DCB.w	($1992-(NOP01992-ORGN))/2,$4E71
+L01992:
+;*/endfilling
+;*/endoverlay
+; --------------------------------------------------------------
+;  screen printing routine for trap #3, d0=5/$9-$36
+;  this routine is extremely slow - it should be speeded up
+; --------------------------------------------------------------
+; is called by screen device driver to support TRAP #3
+TRAP3_UP:
+	MOVE.B	$43(A0),-(A7)	; cursor status
+	BLE.S	L019A4		; cursor inactive
+	MOVEM.W	D0-D2,-(A7)	; calling params of TRAP #3
+	JSR	GET_CURPos(PC)	;*/undomodify BSR GET_CURPos
+				; get cursor position
+	MOVEM.W	(A7)+,D0-D2
+L019A4:
+	CMPI.B	#5,D0		; IO.SBYTE ?
+	BNE.S	L019B0
+	JSR	L01A4C(PC)	;*/undomodify BSR L01A4C
+	BRA.S	L019CE
+L019B0:
+	CMPI.W	#$36,D0		; only SD.xx calls (screen
+				; output)
+	BHI.S	L019EE
+	CMPI.W	#$9,D0
+	BLT.S	L019EE
+	BGT.S	L019C2
+	JSR	(A2)		; do extended operation
+				; (SD.EXTOP)
+	BRA.S	L019CE
+L019C2:
+	ADD.B	D0,D0		; adjust D0 for displacement
+	MOVEA.W	JMP_TB_19f2-$14(PC,D0.W),A3
+	LSR.L	#1,D0
+	JSR	TRAP3_UP(PC,A3.W)
+L019CE:
+	TST.B	(A7)+		; test cursor status
+	BLE.S	L019E8		; inactive
+	TST.L	D0		; any errors ?
+	BNE.S	L019E8
+	TST.B	$43(A0)		; test cursor status
+	BGE.S	L019E8		; inactive
+	MOVEM.L	D0-D2,-(A7)	; save cursor status
+	JSR	SD_CURE(PC)	;*/undomodify BSR SD_CURE
+				; reposition cursor
+	MOVEM.L	(A7)+,D0-D2
+L019E8:
+	TST.L	D0
+	RTS
+L019EC:
+	ADDQ.L	#4,A7
+L019EE:
+	MOVEQ	#-15,D0		; Bad parameter
+	BRA.S	L019CE
+JMP_TB_19f2:
+	DC.W	SD_PXENQ-TRAP3_UP ; $0A
+	DC.W	SD_CHENQ-TRAP3_UP ; $0B
+	DC.W	SD_BORDR-TRAP3_UP ; $0C
+	DC.W	SD_WDEF-TRAP3_UP	; $0D
+	DC.W	SD_CURE-TRAP3_UP	; $0E
+	DC.W	SD_CURS-TRAP3_UP	; $0F
+	DC.W	SD_POS-TRAP3_UP	; $10
+	DC.W	SD_TAB-TRAP3_UP	; $11
+	DC.W	SD_NL-TRAP3_UP	; $12
+	DC.W	SD_PCOL-TRAP3_UP	; $13
+	DC.W	SD_NCOL-TRAP3_UP	; $14
+	DC.W	SD_PROW-TRAP3_UP	; $15
+	DC.W	SD_NROW-TRAP3_UP	; $16
+	DC.W	SD_PIXP-TRAP3_UP	; $17
+	DC.W	SD_SCROL-TRAP3_UP ; $18
+	DC.W	SD_SCRTP-TRAP3_UP ; $19
+	DC.W	SD_SCRBT-TRAP3_UP ; $1A
+	DC.W	SD_PAN-TRAP3_UP	; $1B
+	DC.W	L019EC-TRAP3_UP	; Bad parameter return $1C
+	DC.W	L019EC-TRAP3_UP	; dito		     $1D
+	DC.W	SD_PANLN-TRAP3_UP ; $1E
+	DC.W	SD_PANRT-TRAP3_UP ; $1F
+	DC.W	SD_CLEAR-TRAP3_UP ; $20
+	DC.W	SD_CLRTP-TRAP3_UP ; $21
+	DC.W	SD_CLRBT-TRAP3_UP ; $22
+	DC.W	SD_CLRLN-TRAP3_UP ; $23
+	DC.W	SD_CLRRT-TRAP3_UP ; $24
+	DC.W	SD_FOUNT-TRAP3_UP ; $25
+	DC.W	SD_RECOL-TRAP3_UP ; $26
+	DC.W	SD_SETPA-TRAP3_UP ; $27
+	DC.W	SD_SETST-TRAP3_UP ; $28
+	DC.W	SD_SETIN-TRAP3_UP ; $29
+	DC.W	SD_SETFL-TRAP3_UP ; $2A
+	DC.W	SD_SETUL-TRAP3_UP ; $2B
+	DC.W	SD_SETMD-TRAP3_UP ; $2C
+	DC.W	SD_SETSZ-TRAP3_UP ; $2D
+	DC.W	SD_FILL-TRAP3_UP	; $2E
+	DC.W	L01BF2-TRAP3_UP	; $2F ; not declared
+	DC.W	SD_POINT-TRAP3_UP ; $30
+	DC.W	SD_LINE-TRAP3_UP	; $31
+	DC.W	SD_ARC-TRAP3_UP	; $32
+	DC.W	SD_ELLIPs-TRAP3_UP ; $33
+	DC.W	SD_SCALE-TRAP3_UP ; $34
+	DC.W	SD_FLOOD-TRAP3_UP ; $35
+	DC.W	SD_GCUR-TRAP3_UP	; $36
+; ******************************************************
+; *	   Grafical subroutines			 *
+; ******************************************************
+L01A4C:
+	JSR	L01BCE(PC)	;*/undomodify BSR L01BCE
+				; IO.SBYTE
+	BLT.S	L01A76
+	MOVE.B	D1,D2
+	MOVE.L	$18(A0),D0	; window top left side
+	ADD.L	$22(A0),D0	; cursor position
+	MOVE.W	D0,D1
+	SWAP	D0
+	MOVE.B	$42(A0),D3	; attributes for printing
+				; like underline or colour
+	LEA	$3A(A0),A1	; strip colour mask
+	MOVEM.L	$2A(A0),A2-A3	; font address
+	JSR	OUT_CHAR(PC)	;*/undomodify BSR OUT_CHAR
+	BRA	SD_NCOL
+L01A76:
+	RTS
+; Return window size and cursor position in pixel
+L01A78:
+SD_PXENQ:
+	JSR	L01BF2(PC)	;*/undomodify BSR L01BF2
+	MOVE.L	$1C(A0),(A1)	; window size
+	MOVE.L	$22(A0),$4(A1)	; cursor position
+	MOVEQ	#0,D0
+	RTS
+; return window size and cursor position in characters
+L01A8A:
+SD_CHENQ:
+	BSR.S	SD_PXENQ
+	MOVE.L	D1,-(A7)
+	MOVE.W	$26(A0),D0
+	BSR.S	L01AAA
+	BSR.S	L01AAA
+	SUBQ.W	#6,A1		;*/undomend SUBQ.L
+				;*/note #6 sign extended long
+	MOVE.W	$28(A0),D0	; cursor Y-increment
+	BSR.S	L01AAA
+	BSR.S	L01AAA
+	MOVE.L	(A7)+,D1
+	SUBA.W	#$A,A1		;*/undomend SUBA.L
+				;*/note #$A sign extended long
+	MOVEQ	#0,D0
+	RTS
+L01AAA:
+	MOVEQ	#0,D1
+	MOVE.W	(A1),D1
+	DIVU	D0,D1
+	MOVE.W	D1,(A1)
+	ADDQ.W	#4,A1		;*/undomend ADDQ.L #4,A1
+	RTS
+SD_WDEF	; redifines a window
+	MOVEM.W	D1-D4,-(A7)
+	JSR	L01C1C(PC)	;*/undomodify BSR L01C1C
+	MOVEM.W	(A1),D0-D3
+	EXG	D0,D2
+	EXG	D1,D3
+	MOVEQ	#0,D4
+	BCLR	D4,D0
+	BCLR	D4,D2
+	TST.W	D2
+	BEQ	L01B64
+	TST.W	D3
+	BEQ	L01B64
+	MOVE.W	D0,D4
+	ADD.W	D2,D4
+	BCS	L01B64
+	CMPI.W	#$0200,D4
+	BHI.S	L01B64
+	MOVE.W	D1,D4
+	ADD.W	D3,D4
+	BCS.S	L01B64
+	CMPI.W	#$0100,D4
+	BHI.S	L01B64
+	CLR.W	$20(A0)		; border width
+	BRA.S	L01B12
+SD_BORDR ; Sets the border width and colour
+	MOVE.B	D1,$47(A0)	; border colour
+L01AFC	MOVEM.W	D1-D4,-(A7)
+	CMP.W	$20(A0),D2	; border width
+	BEQ.S	L01B0A
+	JSR	L01C1C(PC)	;*/undomodify BSR L01C1C
+L01B0A	MOVEM.W	$18(A0),D0-D4
+	BSR.S	L01B6C
+L01B12	MOVE.W	$02(A7),D4
+	CMPI.W	#$0100,D4
+	BHI.S	L01B64
+	BSR.S	L01B6E
+	MOVEM.W	D0-D4,$18(A0)	; window start and size
+	BEQ.S	L01B60
+	MOVE.W	(A7),D1
+	CMPI.B	#$80,D1
+	BEQ.S	L01B60
+	MOVEA.L	A7,A1
+	JSR	L027D8(PC)	;*/undomodify BSR L027D8
+	MOVE.W	$1A(A0),D1
+	BSR.S	L01B6C
+	NEG.W	D4
+	EXG	D4,D3
+	JSR	L025BE(PC)	;*/undomodify BSR L025BE
+	ADD.W	D4,D1
+	SUB.W	D3,D1
+	JSR	L025BE(PC)	;*/undomodify BSR L025BE
+	ADD.W	D3,D1
+	SUB.W	D4,D1
+	EXG	D4,D3
+	ADD.W	D4,D4
+	EXG	D4,D2
+	JSR	L025BE(PC)	;*/undomodify BSR L025BE
+	ADD.W	D4,D0
+	SUB.W	D2,D0
+	JSR	L025BE(PC)	;*/undomodify BSR L025BE
+L01B60	MOVEQ	#0,D0
+	BRA.S	L01B66
+L01B64	MOVEQ	#-$04,D0
+L01B66	MOVEM.W	(A7)+,D1-D4
+	RTS
+L01B6C	NEG.W	D4
+L01B6E	ADD.W	D4,D1
+	ADD.W	D4,D4
+	SUB.W	D4,D3
+	BLE.S	L01B82
+	ADD.W	D4,D0
+	ADD.W	D4,D4
+	SUB.W	D4,D2
+	BLE.S	L01B82
+	ASR.W	#2,D4
+	RTS
+L01B82:
+	ADDQ.W	#4,A7		;*/undomend ADDQ.L
+				;*/note #4 sign extended long
+	BRA.S	L01B64
+; enables the cursor
+L01B86:
+SD_CURE:
+	MOVEQ	#1,D2
+	TST.B	$43(A0)
+	BGT.S	L01BCA
+	JSR	L01BF2(PC)	;*/undomodify BSR.S L01BF2
+				;*/undomodify nop
+	BRA.S	L01BAA
+; suppress the cursor
+L01B94:
+SD_CURS:
+	MOVEQ	#0,D2
+	TST.B	$43(A0)		; cursor flag
+	BGT.S	L01BAA
+	MOVE.B	D2,$43(A0)	; cursor flag
+	BRA.S	L01BCA
+L01BA2:
+GET_CURPos:
+	MOVE.B	$43(A0),D2	; cursor flag
+	BEQ.S	L01BCA
+	NEG.B	D2
+L01BAA:
+	JSR	L01BCE(PC)	;*/undomodify BSR.S L01BCE
+				;*/undomodify nop
+	BLT.S	L01BCC
+	MOVE.B	D2,$43(A0)
+	MOVE.L	$18(A0),D0
+	ADD.L	$22(A0),D0
+	MOVE.W	D0,D1
+	SWAP	D0
+	MOVEM.W	$26(A0),D2-D3
+	JSR	L02548(PC)	;*/undomodify BSR L02548
+L01BCA:
+	MOVEQ	#0,D0
+L01BCC:
+	RTS
+; verify cursor in window
+L01BCE:
+	MOVE.L	$22(A0),D0
+	BMI.S	L01BEE
+	TST.W	D0
+	BMI.S	L01BEE
+	ADD.L	$26(A0),D0
+	CMP.W	$1E(A0),D0
+	BHI.S	L01BEE
+	SWAP	D0
+	CMP.W	$1C(A0),D0
+	BHI.S	L01BEE
+	MOVEQ	#0,D0
+	RTS
+L01BEE	MOVEQ	#-4,D0		; Out of range
+	RTS
+L01BF2:
+	TST.B	$48(A0)		; new line status
+	BEQ.S	L01C1A
+L01BF8:
+	MOVEM.L	D0-D2/A1,-(A7)
+	JSR	SD_NL(PC)	;*/undomodify BSR.S SD_NL
+				;*/undomodify nop
+	BEQ.S	L01C12
+	MOVEQ	#$18,D0
+	MOVE.W	$28(A0),D1	; cursor Y-increment
+	NEG.W	D1
+	JSR	SD_SCROL(PC)	;*/undomodify BSR SD_SCROL
+	CLR.W	$22(A0)		; cursor position X
+L01C12:
+	SF	$48(A0)		; new line status explicit
+	MOVEM.L	(A7)+,D0-D2/A1
+L01C1A	RTS
+L01C1C	CLR.L	$22(A0)		; set cursor position to 0,0
+	BRA.S	L01C9A
+SD_POS	; Position cursor at row/column
+	MULU	$28(A0),D2	; Y-increment for cursor
+	BRA.S	L01C2C
+SD_TAB	; position cursor at column
+	MOVE.W	$24(A0),D2	; cursor Y position
+L01C2C	MULU	$26(A0),D1	; X-increment for cursor
+	BRA.S	SD_PIXP
+SD_NL	; position cursor at next row
+	MOVEQ	#0,D1
+	MOVE.W	$24(A0),D2	; Y-position for cursor
+	ADD.W	$28(A0),D2	; Y-increment for cursor
+	BRA.S	SD_PIXP
+SD_PCOL	; Position cursor on a new line
+	MOVE.W	$22(A0),D1	; X-position for cursor
+	SUB.W	$26(A0),D1	; X-increment for cursor
+	BRA.S	L01C50
+SD_NCOL	; position cursor on previus column
+	MOVE.W	$22(A0),D1	; X-position for cursor
+	ADD.W	$26(A0),D1	; X-increment for cursor
+L01C50	MOVE.W	$24(A0),D2	; Y-position for cursor
+	BRA.S	SD_PIXP
+SD_PROW	; position cursor on next column
+	MOVE.W	$24(A0),D2	; Y-position for cursor
+	SUB.W	$28(A0),D2	; Y-increment for cursor
+	BRA.S	L01C68
+SD_NROW	; Position cursor on previus row
+	MOVE.W	$24(A0),D2	; Y-position for cursor
+	ADD.W	$28(A0),D2	; Y-increment for cursor
+L01C68	MOVE.W	$22(A0),D1	; X-position for cursor
+SD_PIXP	; position cursor on next row
+	MOVE.W	D1,D0
+	BLT.S	L01CA2
+	ADD.W	$26(A0),D0	; X-increment for cursor
+	CMP.W	$1C(A0),D0	; X-size of window
+	BHI.S	L01CA2
+	MOVE.W	D2,D0
+	BLT.S	L01CA2
+	ADD.W	$28(A0),D0	; Y-increment for cursor
+	CMP.W	$1E(A0),D0	; Y-size of window
+	BHI.S	L01CA2
+L01C88	bsr.l	MDTSTFIX 	;*/modify BTST #3,$34(A6)
+	nop			;*/modify
+	BEQ.S	L01C94
+	BCLR	#0,D1
+L01C94	MOVEM.W	D1-D2,$22(A0)	; set cursor position
+L01C9A	SF	$48(A0)		; set explicit new line
+				; status
+	MOVEQ	#0,D0
+	RTS
+L01CA2	MOVEQ	#-4,D0		; Out of range
+	RTS
+SD_RECOL ; recolour a window
+	MOVEQ	#0,D0
+	LEA	L025D6(PC),A2
+	BRA.S	L01CE0
+SD_CLEAR ; clear all of a window
+	JSR	L01C1C(PC)	;*/undomodify BSR L01C1C
+	MOVEQ	#$20,D0
+SD_CLRTP ; clear top of window
+SD_CLRBT ; clear bottom of window
+SD_CLRLN ; clear cursor line
+SD_CLRRT ; clear right hand end of cursor line
+	SUBI.W	#$20,D0
+	LEA	L025BE(PC),A2
+	BRA.S	L01CDC
+SD_SCROL ; scroll all of a window
+SD_SCRTP ; scroll top of a window
+SD_SCRBT ; scroll the bottom of a window
+	SUBI.W	#$18,D0
+	LEA	L025FE(PC),A2
+	BRA.S	L01CDC
+SD_PAN	; pans all of a window
+SD_PANLN ; pans cursor line
+SD_PANRT ; pans right hand end of cursor line
+	SUBI.W	#$1B,D0
+	LEA	L02648(PC),A2
+	bsr.l	MDTSTFIX 	;*/modify BTST #3,$34(A6)
+	nop			;*/modify
+	BEQ.S	L01CDC
+	BCLR	#0,D1
+L01CDC	LEA	$36(A0),A1	; paper colour mask
+L01CE0	MOVEM.L	D4-D5,-(A7)
+	MOVE.W	D1,D4
+	MOVE.W	D0,D5
+	MOVEM.W	$18(A0),D0-D3	; window top left hand pixel
+				; and size
+	SUBQ.W	#1,D5
+	BLT.S	L01D22
+	BGT.S	L01CFA
+	MOVE.W	$24(A0),D3	; Y-position for cursor
+	BRA.S	L01D22
+L01CFA	ADD.W	$24(A0),D1	; Y-position for cursor
+	SUBQ.W	#2,D5
+	BGE.S	L01D12
+	SUB.W	$24(A0),D3	; Y-position for cursor
+	MOVE.W	$28(A0),D5	; Y-increment for cursor
+	ADD.W	D5,D1
+	SUB.W	D5,D3
+	BLE.S	L01D24
+	BRA.S	L01D22
+L01D12	MOVE.W	$28(A0),D3	; Y-increment for cursor
+	TST.W	D5
+	BEQ.S	L01D22
+	ADD.W	$22(A0),D0	; X-position for cursor
+	SUB.W	$22(A0),D2	; X-position for cursor
+L01D22	JSR	(A2)		; 2648 / 256E / 25BE / 25FE
+L01D24	MOVEQ	#0,D0
+	MOVEM.L	(A7)+,D4-D5
+	RTS
+SD_FILL	; fills rectangular block within window
+	LEA	L025BE(PC),A3
+	BTST	#$03,$42(A0)	; XOR character / graphics
+	BEQ.S	L01D3C
+	LEA	L025CA(PC),A3
+L01D3C	MOVEA.L	A1,A2
+	SUBQ.W	#4,A7		;*/undomend SUBQ.L #4,A7
+	MOVEA.L	A7,A1
+	JSR	L027D8(PC)	;*/undomodify BSR L027D8
+	MOVE.L	#$01FF01FF,D3
+	bsr.l	MDTSTFIX 	;*/modify BTST #3,$34(A6)
+	nop			;*/modify
+	BEQ.S	L01D58
+	BCLR	#$10,D3
+L01D58	MOVEM.L	(A2),D0/D2
+	EXG	D0,D2
+	AND.L	D3,D0
+	AND.L	D3,D2
+	MOVE.L	D0,D3
+	ADD.L	D2,D3
+	CMP.W	$1E(A0),D3	; Window y-size
+	BGT.S	L01D88
+	SWAP	D3
+	CMP.W	$1C(A0),D3	; Window x-size
+	BGT.S	L01D88
+	ADD.L	$18(A0),D0	; window top left
+	MOVE.W	D2,D3
+	SWAP	D2
+	MOVE.W	D0,D1
+	SWAP	D0
+	JSR	(A3)		; 25BE / 25CA /27D8
+	MOVEQ	#0,D0
+L01D84:
+	ADDQ.W	#4,A7		;*/undomend ADDQ.L #4,A7
+	RTS
+L01D88:
+	MOVEQ	#-4,D0		; Out of range
+	BRA.S	L01D84
+; set or reset the character fount
+L01D8C:
+SD_FOUNT:
+	MOVE.L	A1,D0
+	BGT.S	L01D96
+RLOC0A	MOVEA.L	#(FONT1-ORG0),A1	;*/modify LEA FONT1,A1
+				; start of ROM char pattern
+L01D96:
+	MOVE.L	A2,D0
+	BGT.S	L01DA0
+RLOC0B	MOVEA.L	#(FONT2-ORG0),A2	;*/modify LEA FONT2,A2
+				; second font
+L01DA0:
+	MOVEM.L	A1-A2,$2A(A0)	; store char font address
+	MOVEQ	#0,D0
+	RTS
+; -----------------------------------------------------------
+; TRAP #3 with D0=$27 to $29 : set paper, strip, ink colour
+; D1= colour , A0= cchannel ID
+; -----------------------------------------------------------
+L01DAA:
+SD_SETPA:
+SD_SETST:
+SD_SETIN:
+	SUBI.W	#$27,D0		; select paper, strip or ink
+	MOVE.B	D1,$44(A0,D0.W)	; Set paper, strip or ink
+				; colour
+	LSL.W	#2,D0		; now we have a long word
+	LEA	$36(A0,D0.W),A1	; related colour mask
+	MOVEQ	#0,D0
+	JMP	L027D8(PC)	;*/undomodify BRA.L L027D8
+				; calculate acording mask
+; set flashing
+L01DBE:
+SD_SETFL:
+	bsr.l	MDTSTFIX 	;*/modify BTST #3,$34(A6)
+	nop			;*/modify
+	BEQ.L	L01E3C		;*/undomodify BEQ.S L01E3C
+				;*/undomodify nop
+	MOVEQ	#$02,D0
+	BRA.S	L01DD4
+; Set character writing or plotting mode
+L01DCC:
+SD_SETMD:
+	MOVEQ	#$0C,D0
+	LSL.B	#2,D1
+	BRA.S	L01E3E
+; set underline
+L01DD2:
+SD_SETUL:
+	MOVEQ	#$01,D0
+L01DD4:
+	TST.B	D1
+	SNE	D1
+	BRA.S	L01E3E
+; set character size and spacing
+L01DDA:
+SD_SETSZ:
+	JSR	L01BF2(PC)	;*/undomodify BSR L01BF2
+	ANDI.W	#$03,D1
+	ANDI.W	#$01,D2
+	bsr.l	MDTSTFIX 	;*/modify BTST #3,$34(A6)
+	nop			;*/modify
+	BEQ.S	L01DF2
+	BSET	#$01,D1
+L01DF2:
+	MOVE.B	L01E4E(PC,D1.W),$27(A0) ; X-increment for
+				      ; cursor
+	MOVE.B	L01E52(PC,D2.W),$29(A0) ; Y-increment for
+				      ; cursor
+	LSL.B	#1,D1
+	OR.B	D2,D1
+	LSL.B	#4,D1
+	MOVEQ	#$70,D0
+	BSR.S	L01E3E
+	MOVE.W	$22(A0),D0	; X-position for cursor
+	ADD.W	$26(A0),D0	; X-increment for cursor
+	CMP.W	$1C(A0),D0	; X-size of window
+	BLS.S	L01E1A
+	JSR	L01BF8(PC)	;*/undomodify BSR L01BF8
+L01E1A:
+	MOVE.W	$24(A0),D0	; Y-position for cursor
+	ADD.W	$28(A0),D0	; Y-increment for cursor
+	CMP.W	$1E(A0),D0	; Y-size for cursor
+	BLS.S	L01E4A
+	MOVEQ	#$18,D0
+	MOVEQ	#-$0A,D1
+	JSR	SD_SCROL(PC)	;*/undomodify BSR SD_SCROL
+	SUBI.W	#$0A,$24(A0)	; Y-position for cursor
+	BGE.S	L01E4A
+	CLR.W	$24(A0)		; set cursor Y-position to 0
+L01E3C:
+	BRA.S	L01E4A
+L01E3E:
+	AND.B	D0,D1
+	NOT.B	D0
+	AND.B	D0,$42(A0)	; character attributes
+	OR.B	D1,$42(A0)
+L01E4A:
+	MOVEQ	#0,D0
+	RTS
+L01E4E:
+	DC.W	$0608,$0C10	; table for x-increment
+				; (6,8,12,16 pixel)
+L01E52:
+	DC.W	$0A14		; table for y-increment
+				; (10,20 pixel)
+; Sets graphics cursor position
+L01E54:
+SD_GCUR:
+	LEA	$18(A1),A4
+	JSR	L021DC(PC)	;*/undomodify BSR L021DC
+	MOVE.L	L02242(PC),-(A1)	;*/undomodify MOVE.L $2242,-(A1)
+	MOVE.W	L02240(PC),-(A1)	;*/undomodify MOVE.L $2240,-(A1)
+	JSR	L020D8(PC)	;*/undomodify BSR L020D8
+	LEA	L01E90(PC),A3
+	JSR	RI_A1_EXecb(PC)	;*/undomodify BSR RI_A1_EXecb
+				; Essentially RI.EXECB
+	LEA	$18(A1),A1
+	BSR.S	L01E8A
+	MOVE.W	(A1)+,D1
+	BSR.S	L01E8A
+	MOVE.W	$1E(A0),D2
+	SUB.W	(A1)+,D2
+	BSET	#$07,$42(A0)	; graphics positioned
+				; characters
+	JMP	L01C88(PC)	;*/undomodify BRA L01C88
+L01E8A:
+	MOVEQ	#$02,D0
+	JMP	RI_EXEC_a1(PC)	;*/undomodify BRA RI_EXEC_a1
+; table for calculation of pixel graphics
+L01E90:
+	DC.B	$12,$10,$16,$EE,$DC,$0C,$0E,$FA,$0C,$FB,$E8,$E2
+	DC.B	$0C,$0E,$0E,$F4,$0A,$F5,0,0
+;	ABS / DUP RCL ? RCL ? - * RCL ?  - STO ? RCL ? RCL ?
+;	- * * RCL ? + STO ? END
+; set window scale
+L01EA4:
+SD_SCALE:
+	LEA	$4A(A0),A2
+	MOVEQ	#$12,D0
+L01EAA:
+	MOVE.W	(A1)+,(A2)+
+	SUBQ.W	#2,D0		; reduction *?*
+	BNE.S	L01EAA
+	RTS
+; turns area flood on and off
+SD_FLOOD:
+	MOVEA.L	A0,A4
+	TST.L	D1
+	BNE.S	L01EC2
+	BSR.S	L01EFA
+	MOVE.B	#0,$49(A4)	; fill mode off
+	BRA.S	L01EF4
+L01EC2:
+	CMPI.L	#$01,D1
+	BNE.S	L01EE4
+	BSR.S	L01EFA
+	MOVE.B	#1,$49(A4)	; fill mode on
+	MOVE.L	#$0410,D1
+	JSR	MM_ALCHP(PC)	;*/undomodify BSR MM_ALCHP
+				; Allocate common heap
+	BNE.S	L01EF6
+	MOVE.L	A0,$5C(A4)	; pointer to fill buffer
+	BRA.S	L01EF4
+L01EE4:
+	BTST	#0,D1
+	BEQ.S	L01EF0
+	CLR.L	$60(A4)		; clear pointer to user
+				; defined fill vectors
+	BRA.S	L01EF4
+L01EF0:
+	MOVE.L	D1,$60(A4)	; set pointer to fill
+				; vectors
+L01EF4:
+	MOVEQ	#0,D0
+L01EF6:
+	MOVEA.L	A4,A0
+	RTS
+L01EFA:
+	TST.B	$49(A4)		; fill mode
+	BEQ.S	L01F08
+	MOVEA.L	$5C(A4),A0	; pointer to fill buffer
+	JSR	MM_RECHP(PC)	;*/undomodify BSR MM_RECHP
+				; release common heap
+L01F08:
+	RTS
+SD_POINT ; plots a point
+	MOVE.L	A4,-(A7)
+	LEA	$C(A1),A4	; Duplicate coordinates
+	MOVE.L	-(A4),-(A1)
+	MOVE.L	-(A4),-(A1)
+	MOVE.L	-(A4),-(A1)
+	MOVEA.L	(A7)+,A4 	; and plot line
+SD_LINE	; plots a line
+	MOVEM.L	A3/A5,-(A7)
+	LEA	L01F26(PC),A3
+	SUBQ.L	#6,A1
+	BRA	L02100
+L01F26	DC.W	1		; displ. for point and line
+				; routine 1
+	DC.W	LINE_TB_end-1-*	; calculate nothing
+	DC.W	L0205C-* 	; first routine for
+				; calculation
+	DC.W	LINE_TB-*	; address of 2nd op. table
+	DC.W	L02136-* 	; second routine for
+				; calculation
+LINE_TB:
+	DC.W	$DC16,$D00C,$1616,$1616,$E8F4
+	;       RCL 36 DUP RCL 48 - DUP DUP DUP DUP RCL 24 RCL
+	; 12
+	DC.W	$0CBE,$0EFA,$EE0C,$BE0E,$DC16,$1600
+	;       - RCL 66 * RCL 6 RCL 18 - RCL 66 * RCL 36 DUP
+	; DUP END
+LINE_TB_end:
+SD_ARC	; plots an arc
+	MOVEM.L	A3/A5,-(A7)
+	LEA	2(A1),A4
+	TST.L	(A4)+
+	BGT.S	L01F64
+	MOVEQ	#$14,D0		; RI.NEG
+	JSR	RI_EXEC_a1(PC)	;*/undomodify BSR RI_EXEC_a1
+				; essentially RI.EXEC
+	MOVEM.L	(A4)+,D2-D7
+	MOVEM.L	D2-D4,-(A4)
+	MOVEM.L	D5-D7,-(A4)
+L01F64	LEA	L01F6C(PC),A3
+	BRA	L02100
+L01F6C	DC.W	3		; routine and table
+	DC.W	LINE_TB_end-1-*	; Calculate nothing
+	DC.W	L0205C-* 	; first calculation routine
+	DC.W	ARC_TB1-*	; $C = 12 table of operators
+	DC.W	L01FA8-* 	; calculation routine
+	DC.W	ARC_TB2-*	; operator table
+	DC.W	L01FCE-* 	; RTS
+	DC.W	ARC_TB3-*	; operator table
+	DC.W	L02136-* 	; calculation routine
+ARC_TB1:
+	DC.W	$FAEE,$0CE2,$C40E,$B810,$D00A,$F4E8,$0C16
+	DC.W	$160E,$A616,$0E0A,$E2CA,$101A,$160A,$160E,$1016
+	DC.W	$289A,$A6B2,$0A10,$24E2,$CA10,$0C00
+L01FA8	TST.B	-$58(A4) 	; -88(A4)
+	BMI.S	L01FBC
+	MOVE.L	L0224E(PC),-(A1)	; PI floating point Mantissa
+	MOVE.W	L0224C(PC),-(A1)	;    exponent
+	MOVEQ	#$0A,D0		; RI.ADD
+	BSR	RI_EXEC_a1
+L01FBC	MOVE.L	-$1E(A4),D0
+	SWAP	D0
+	SUBQ.W	#1,D0
+	SWAP	D0
+	CMP.L	L0224C(PC),D0	; PI ?
+	BLT.S	L01FCE
+	CLR.L	D2
+L01FCE	RTS
+ARC_TB2	; second arithmetic commandstring from SD_ARC
+	DC.W	$16E2,$0A16,$0A18,$D00A,$A716,$1816,$8E0E
+	DC.W	$CA8E,$1016,$B9B3,$881A,$168E,$0E89,$8F94,$9B00
+;    DUP RCL 30 + DUP + COS RCL 48 + STO 90 DUP COS DUP RCL 114
+; *
+;    RCL 54 RCL 114 / DUP STO 72 STO 78 RCL 120 SIN DUP RCL 114
+; * STO 120
+;    STO 114 RCL 108 STO 102 END
+SD_ELLIPs ; plots an ellipse
+	MOVEM.L	A3/A5,-(A7)
+	LEA	L01FFC(PC),A3
+	BRA	L02100
+L01FFA	RTS
+L01FFC	DC.W	3
+	DC.W	ELLIPS_1tb-*
+	DC.W	ELLIPS_Do-*
+	DC.W	END_ELLIps_1tb-1-* ; do nothing
+	DC.W	L0205C-*
+	DC.W	ELLIPS_2tb-*
+	DC.W	L01FFA-* 	; RTS
+	DC.W	ARC_TB3-*
+	DC.W	L02136-*
+ELLIPS_1tb:
+	DC.W	$E812,$E9EE,$EE12,$E80E,$EF00
+END_ELLIps_1tb:
+ELLIPS_Do:
+	CMPI.W	#$0801,(A1)
+	ADDQ.W	#6,A1		;*/undomend ADDQ.L #6,A1
+	BGE.S	L02032
+	MOVE.L	#$6487ED51,-(A1)	; 1.570796 = PI/2
+	MOVE.W	#$0801,-(A1)
+	LEA	L02034(PC),A3
+	JSR	RI_A1_EXecb(PC)	;*/undomodify BSR RI_A1_EXecb
+				; essentially RI.EXECB
+L02032	RTS
+L02034	DC.B	$0A,$EE,$E8,$EF,$E9,0
+;	       + RCL 18 RCL 24 STO 18 STO 24 END
+ELLIPS_2tb:
+	DC.W	$DCC4,$160A,$E816,$0EEE,$160E,$E21A,$16E8,$0E16
+	DC.W	$FA0A,$16FB,$EFE2,$1816,$E80E,$1614,$F40A,$16F5
+	DC.W	$E900
+L0205C	; called by SD_LINE and SD_ARC before coordinate
+	; calculation
+	MOVEM.L	D0-D1/A4,-(A7)
+	CLR.L	-(A1)
+	CLR.W	-(A1)
+	MOVEQ	#1,D0
+	ROR.L	#2,D0
+	MOVE.W	#$0800,D1
+	MOVEQ	#4,D2
+L0206E	MOVE.L	D0,-(A1)
+	MOVE.W	D1,-(A1)
+	ADDQ.W	#1,D1
+	DBF	D2,L0206E
+	ADDQ.W	#1,(A1)
+	LEA	L02252(PC),A3
+	MOVEQ	#8,D2
+L02080	MOVE.W	-(A3),-(A1)
+	DBF	D2,L02080
+;*/beginoverlay
+;*/beginremove
+;	 MOVE.W	 $1C(A0),-$1A(A6)  ; window size X
+;	 MOVE.W	 $1E(A0),-$1E(A6)  ; Y size
+;	 CLR.W	 -$1C(A6)
+;	 CLR.W	 -$20(A6)
+;	 MOVE.W	 $18(A0),-$34(A6)  ; window top left
+;	 MOVE.W	 $1A(A0),-$38(A6)
+;	 CLR.W	 -$36(A6)
+;	 CLR.W	 -$3A(A6)
+;	 MOVE.B	 $42(A0),-$23(A6)  ; character attributes
+;	 MOVE.B	 $49(A0),-$32(A6)  ; fill mode
+;	 MOVE.L	 $5C(A0),-$2A(A6)  ; pointer to fill buffer
+;	 MOVE.L	 $60(A0),-$2E(A6)  ; pointer to fill vectors
+;*/endremove
+;*/begininsert
+	lea	-$3E(a6),a3
+	move.l	A0,(a3)+ 	; channel def
+	clr.w	(a3)+
+	MOVE.W	SD_YMIN(A0),(a3)+ ; window top
+	clr.w	(a3)+
+	MOVE.W	SD_XMIN(A0),(a3)+ ; window left
+	MOVE.B	SD_FMOD(A0),(a3)	; fill mode
+	lea	$4(a3),a3
+	MOVE.L	SD_FUSE(A0),(a3)+ ; pointer to fill vectors
+	MOVE.L	SD_FBUF(A0),(a3)+ ; pointer to fill buffer
+	lea	$3(a3),a3
+	MOVE.B	SD_CATTR(A0),(a3)+ ; character attributes
+	lea	$2(a3),a3
+	clr.w	(a3)+
+	MOVE.W	SD_YSIZE(A0),(a3)+ ; window Y size
+	clr.w	(a3)+
+	MOVE.W	SD_XSIZE(A0),(a3)+ ; window X size
+;*/endinsert
+	MOVEQ	#1,D2
+	BSR.S	L020D8
+	LEA	L020EE(PC),A3	; operation list (now
+	BSR	RI_A1_EXecb
+	MOVEM.L	(A7)+,D0-D1/A4
+	RTS
+; -------------------------------------------------
+L020D8	MOVE.W	$1E(A0),-(A1)	; Y-size of Window
+	SUBQ.W	#1,(A1)
+	MOVEQ	#$08,D0		; Convert integer to float
+	BSR	RI_EXEC_a1
+	MOVE.L	$58(A0),-(A1)	; scale factor (float)
+	MOVE.W	$56(A0),-(A1)
+	RTS
+; -------------------------------------------------
+L020EE	DC.B	$12,$10,$16,$FA,$0E,$FB,$16,$F4,$0E,$F5
+	DC.B	$16,$EE,$0E,$EF,$E8,$0E,$E9,0
+;	        ABS / DUP RCL ? * STO ? DUP RCL ? * STO ?
+;	        DUP RCL ? * STO ? RCL ? * STO ? END
+L02100	MOVEM.L	D1-D7/A0/A2/A4-A6,-(A7)
+	link	a6,#-$3E 	;*/modify LINK A6,#-$3A
+	LEA	$1E(A1),A4
+	MOVE.W	(A3)+,D1
+L0210E	PEA	$02(A3)
+	ADDA.W	(A3),A3
+	BSR	RI_A1_EXecb
+	MOVEA.L	(A7)+,A3
+	PEA	$02(A3)
+	ADDA.W	(A3),A3
+	JSR	(A3)
+	MOVEA.L	(A7)+,A3
+	DBF	D1,L0210E
+	UNLK	A6
+	MOVEM.L	(A7)+,D1-D7/A0/A2/A4-A6
+	MOVEM.L	(A7)+,A3/A5
+	MOVEQ	#0,D0
+	RTS
+; ----------------------------------------------
+L02136	; called from SD_LINE and SD_ARC and SD_ELLIPs
+	MOVEM.L	D0-D1/A3,-(A7)
+	TST.L	D2
+	BEQ	L021C4
+	MOVE.L	D2,-$10(A6)
+	MOVEQ	#-1,D3
+	move.l	(a6),a3		;*/modify
+	btst	#3,SV_MCSTA(a3)	;*/modify BTST #3,$28034
+	BEQ.S	L02158
+	ADD.L	D2,D2
+	LSL.L	#1,D3
+	ADDQ.W	#1,-$30(A4)
+L02158	MOVE.W	D3,-$22(A6)
+	NEG.L	D2
+	MOVE.L	D2,-4(A6)
+	MOVE.L	D2,-12(A6)
+	CLR.L	-8(A6)
+	BSR	L020D8
+	MOVEQ	#$10,D0		; RI.DIV
+	BSR	RI_EXEC_a1
+	BSR.S	L021DC
+	LEA	L02218(PC),A3
+	BSR	RI_A1_EXecb
+	BSR.S	L021CA
+	MOVE.L	D1,D2
+	BSR.S	L021CA
+	MOVE.L	D1,D3
+	BSR.S	L021CA
+	MOVE.L	D1,D4
+	BSR.S	L021CA
+	MOVE.L	D1,D6
+	BSR.S	L021CA
+	MOVE.L	D1,D7
+	LEA	-$60(A4),A1
+	BSR.S	L021D6
+	MOVEA.W	(A1)+,A5
+	LEA	-$18(A4),A1
+	BSR.S	L021D2
+	MOVE.L	(A1)+,-$18(A6)
+	BSR.S	L021D2
+	MOVE.L	(A1)+,D1
+	AND.W	-$22(A6),D1
+	MOVE.L	D1,-$14(A6)
+	BSR.S	L021D2
+	MOVE.L	(A1)+,D1
+	BSR.S	L021D2
+	MOVE.L	(A1)+,D0
+	AND.W	-$22(A6),D0
+	BSR	L02252		; QQQQQQQQQQQQQQQQQQQQQQQ
+	BSR	L022CA
+L021C4	MOVEM.L	(A7)+,D0-D1/A3
+	RTS
+L021CA	ADDQ.W	#4,(A1)
+	BSR.S	L021D2
+	MOVE.L	(A1)+,D1
+	RTS
+L021D2	MOVEQ	#6,D0		; RI_NLINT
+	BRA.S	L021D8
+L021D6	MOVEQ	#2,D0		; RI_NINT
+L021D8	JMP	RI_EXEC_a1(PC)	;*/undomodify BRA RI_EXEC_a1
+L021DC	MOVE.L	$52(A0),-(A1)	; graphics window origin
+				; (float)
+	MOVE.L	$4E(A0),-(A1)	; continues ...
+	MOVE.L	$4A(A0),-(A1)	; up to here
+	RTS
+; table to calculate convex. of arc & ellipse
+ARC_TB3:
+	DC.W	$949A,$0C82,$0E8E,$0E8E,$160E,$169A,$0E82,$160E
+	DC.W	$169A,$0E70,$940E,$0A71,$940E,$0A16,$7C0E,$7688
+	DC.W	$0E0A,$1470,$880E,$767C,$0E0A,$837D,$0000
+L02218	DC.B	$64,$0E,$14,$16,$F4,$0A,$F5,$E8,$0A,$E9,$0E,$14
+	DC.B	$16,$FA,$0A,$AC
+L02228	DC.B	$0E,$FB,$EE,$0A,$AC,$0E,$EF,$D0
+	DC.B	$AC,$10,$16,$76,$0E,$77,$16,$82,$0E,$83,$16,$0E
+	DC.B	$70,$0E,$71,$00
+L02240	DC.W	$0801		; 1.355 (Compression factor
+				; in X direction)
+L02242	DC.L	$56B851EC
+L02246	DC.W	$07F7		; 0.001
+	DC.L	$4189374C
+L0224C	DC.W	$0802		; PI
+L0224E	DC.L	$6487ED51
+L02252	CMPA.L	#-1,A5
+	BEQ.S	L02264
+	TST.L	D2
+	BEQ.S	L022C0
+	TST.L	D3
+	BEQ.S	L022C0
+	BRA.S	L02266
+L02264:
+	SUBA.L	A5,A5
+L02266:
+	MOVEA.L	D3,A1
+	MOVEA.L	D4,A2
+	ADDA.L	A1,A2
+	MOVEA.L	D2,A3
+	ADDA.L	D4,A3
+	ADDA.L	A2,A3
+	ADD.L	D4,D3
+	NEG.L	D3
+	ASR.L	#1,D3
+	ADD.L	D7,D3
+	MOVE.L	D6,D4
+	SUB.L	D3,D4
+	ASR.L	#2,D2
+	NEG.L	D2
+	SUB.L	D6,D2
+	ASR.L	#1,D2
+	ADD.L	D3,D2
+	MOVE.L	A5,-(A7)
+	MOVE.L	D2,-(A7)
+	MOVE.L	D3,D7
+	MOVE.L	D4,D6
+	JSR	GET_PIXEladr_rel(PC);*/undomodify BSR GET_PIXEladr_rel
+	MOVEA.L	(A7)+,A0
+	MOVEA.W	#8,A4		;*/undomend MOVEA.L
+				;*/note #8 sign extended long
+	MOVE.B	#$FF,-$24(A6)
+L022A0:
+	TST.L	D7
+	BLT.S	L022A8
+	TST.L	D6
+	BGE.S	L022C6
+L022A8	TST.B	-$24(A6)
+	BGE.S	L022B4
+	BSR	L0238A
+	BRA.S	L022B8
+L022B4	BSR	L023D0
+L022B8	CMPA.W	#0,A4
+	BGT.S	L022A0
+	ADDQ.L	#4,A7
+L022C0	ADDQ.L	#4,A7
+	JMP	L021C4(PC)	;*/undomodify BRA L021C4
+L022C6	MOVEA.L	(A7)+,A4
+	RTS
+L022CA:
+	move.l	a0,-(a7) 	;*/insertcode
+	move.l	-$3E(a6),a0	;*/insertcode
+	BSR	L0248A
+	move.l	(a7)+,a0 	;*/insertcode
+	BSR.S	L02330
+	MOVE.L	A0,D4
+	BGE.S	L022E4
+	movem.l	-8(a6),d4-d5	;*/modify MOVE.L	 -4(A6),D4
+				;*/modify MOVE.L	 -8(A6),D5
+	SUB.L	A1,D7
+	ADD.L	A2,D6
+	ADDA.L	D7,A0
+	BRA.S	L022F2
+L022E4	movem.l	-$10(a6),d4-d5	;*/modify MOVE.L	 -$0C(A6),D4
+				;*/modify MOVE.L	 -$10(A6),D5
+	SUB.L	A2,D7
+	ADD.L	A3,D6
+	SUBA.L	D6,A0
+L022F2	add.l	d5,d0		;*/modify ADD.L	 D4,D0
+	add.l	d4,d1		;*/modify ADD.L	 D5,D1
+	tst.l	d4		;*/modify TST.L	 D5
+	BGE.S	L02302
+	lea	$80(a5),a5	;*/modify ADDA.L	 #$80,A5
+	BRA.S	L0230A
+L02302	BEQ.S	L0230C
+	lea	-$80(a5),a5	;*/modify SUBA.L	 #$80,A5
+L0230A	SWAP	D3
+L0230C	moveq	#1,d4		;*/modify MOVEQ	 #1,D5
+	move.l	a3,-(a7) 	;*/insert
+	move.l	(a6),a3		;*/modify
+	btst	#3,SV_MCSTA(a3)	;*/modify BTST	 #3,$28034
+	move.l	(a7)+,a3 	;*/insert
+	BEQ.S	L0231A
+	moveq	#2,d4		;*/modify MOVEQ	 #2,D5
+L0231A	tst.l	d5		;*/modify TST.L	 D4
+	BGE.S	L02326
+	rol.w	d4,d2		;*/modify ROL.W	 D5,D2
+	BCC.S	L0232E
+	SUBQ.L	#2,A5
+	BRA.S	L0232E
+L02326	BEQ.S	L0232E
+	ror.w	d4,d2		;*/modify ROR.W	 D5,D2
+	BCC.S	L0232E
+	ADDQ.L	#2,A5
+L0232E	BRA.S	L022CA
+L02330	MOVE.W	A4,D4
+	BLT.S	L02386
+	SUBQ.W	#2,D4
+	BGT.S	L02360
+	MOVE.L	D1,D4
+	SUB.L	-$18(A6),D4
+	BGE.S	L02342
+	NEG.L	D4
+L02342	SUBQ.L	#1,D4
+	BGT.S	L02360
+	MOVE.L	D0,D4
+	SUB.L	-$14(A6),D4
+	BGE.S	L02350
+	NEG.L	D4
+L02350:
+	exg	d5,a3		;*/insert
+	move.l	(a6),a3		;*/modify
+	btst	#3,SV_MCSTA(a3)	;*/modify BTST	 #3,$28034
+	exg	d5,a3		;*/insert
+	BEQ.S	L0235C
+	SUBQ.L	#1,D4
+L0235C	SUBQ.L	#1,D4
+	BLE.S	L02386
+L02360	TST.L	D7
+	BNE.S	L02368
+	TST.L	D6
+	BEQ.S	L02386
+L02368:
+	BGE.S	L02376
+	TST.B	-$24(A6)
+	BGT.S	L02376
+	BSR.L	L0238A		;*/undomodify BSR.S L0238A
+				;*/undomodify nop
+	BRA.S	L02330
+L02376:
+	TST.L	D6
+	BGE.S	L02388
+	TST.B	-$24(A6)
+	BLT.S	L02388
+	BSR.L	L023D0		;*/undomodify BSR.S L023D0
+				;*/undomodify nop
+	BRA.S	L02330
+L02386:
+	ADDQ.L	#4,A7
+L02388:
+	RTS
+L0238A	TST.L	-$04(A6)
+	BNE.S	L02394
+	NEG.L	-$0C(A6)
+L02394	TST.L	-$08(A6)
+	BNE.S	L0239E
+	NEG.L	-$10(A6)
+L0239E	MOVE.L	A1,D4
+	NEG.L	D4
+	MOVEA.L	D4,A1
+	ADD.L	A2,D4
+	MOVEA.L	D4,A2
+	ADDA.L	A1,A2
+	MOVE.L	D4,D5
+	LSL.L	#2,D5
+	SUB.L	A3,D5
+	MOVEA.L	D5,A3
+	NEG.L	D7
+	SUB.L	D4,D7
+	MOVE.L	A0,D5
+	NEG.L	D5
+	SUB.L	D6,D5
+	ADD.L	D7,D5
+	MOVEA.L	D5,A0
+	SUB.L	D7,D6
+	SUB.L	D7,D6
+	SUB.L	D4,D6
+	SUBQ.L	#1,A4
+	MOVE.B	#1,-$24(A6)
+	RTS
+L023D0	TST.L	-8(A6)
+	BNE.S	L023E2
+	CLR.L	-4(A6)
+	MOVE.L	-16(A6),-8(A6)
+	BRA.S	L023F2
+L023E2	TST.L	-4(A6)
+	BNE.S	L023F2
+	CLR.L	-8(A6)
+	MOVE.L	-$0C(A6),-4(A6)
+L023F2	MOVE.L	A2,D4
+	LSL.L	#1,D4
+	SUB.L	A3,D4
+	MOVE.L	D4,D5
+	SUB.L	A1,D5
+	MOVEA.L	D5,A1
+	SUBA.L	A3,A2
+	MOVE.L	A3,D5
+	NEG.L	D5
+	MOVEA.L	D5,A3
+	MOVE.L	A2,D5
+	ASR.L	#1,D5
+	NEG.L	D5
+	ADD.L	D6,D5
+	ADD.L	D5,D7
+	MOVE.L	D6,D5
+	ASR.L	#1,D5
+	NEG.L	D5
+	SUB.L	A0,D5
+	ADD.L	D7,D5
+	MOVEA.L	D5,A0
+	MOVE.L	A3,D5
+	ASR.L	#3,D5
+	ADDA.L	D5,A0
+	NEG.L	D6
+	ASR.L	#1,D4
+	ADD.L	D4,D6
+	SUBQ.L	#1,A4
+	MOVE.B	#$FF,-$24(A6)
+	RTS
+; -------------------------------------------------------------
+; return pixel pattern (D2) and address (A0) relative to window
+; coordinates.
+; D0=X  D1=Y
+; -------------------------------------------------------------
+GET_PIXEladr_rel:
+	MOVEM.L	D0-D1,-(A7)
+	CLR.L	D2		; pixel pattern on return
+	NEG.L	D1		; x=0,y=0 is in the bottom
+				; left corner
+	SUBQ.L	#1,D1		; y=1-512 -> 0-511
+	MOVE.W	$1E(A0),D2	; Y-size
+	ADD.W	$1A(A0),D2	; y-min (window top)
+	ADD.L	D2,D1
+	MOVE.W	$18(A0),D2	; x-min (window left)
+	ADD.L	D2,D0		; reduction possible  *?*
+	MOVE.L	$3E(A0),D3	; INK colour mask
+	BTST	#0,D1
+	BEQ.S	L02458
+	SWAP	D3
+L02458:
+	MOVEQ	#0,D2
+	MOVE.W	#$8080,D2
+	move.l	(a6),a5		;*/insertcode
+	btst	#3,SV_MCSTA(a5)	;*/modify BTST #3,$28034
+	BEQ.S	L02482
+	MOVE.W	#$C0C0,D2	; for 256 mode
+L02482:
+	move.l	SD_SCRB(a0),a5	;*/modify MOVEA.L  #$20000,A5
+	LSL.L	#7,D1		; Y*128
+	ADDA.L	D1,A5		; row address
+	MOVE.L	D0,D1		; X
+	LSR.L	#3,D1		; X byte
+	LSL.L	#1,D1		; only even address
+	ADDA.L	D1,A5		; word in which the pixel
+				; lies
+	ANDI.W	#15,D0		; extract bit
+
+	ROR.W	D0,D2		; pixel pattern in D2
+	MOVEM.L	(A7)+,D0-D1
+	RTS
+L0248A	CMP.L	-$20(A6),D1
+	BCC	L02546
+	TST.B	-$32(A6)
+	BEQ	L0251C
+	MOVEM.L	D0-D3/A0-A1,-(A7)
+	movea.l	d1,a1		;*/modify MOVEA.L  D1,A0
+	adda.l	a1,a1		;*/modify ADDA.L	 A0,A0
+	adda.l	a1,a1		;*/modify ADDA.L	 A0,A0
+	adda.l	#$10,a1		;*/modify ADDA.L	 #$10,A0
+	adda.l	-$2A(a6),a1	;*/modify ADDA.L	 -$2A(A6),A0
+	move.l	(a1),d2		;*/modify MOVE.L	 (A0),D2
+	BSET	#$1F,D0
+	move.l	d0,(a1)		;*/modify MOVE.L	 D0,(A0)
+;*/endoverlay
+	LSL.L	#1,D0
+	ASR.L	#1,D0
+	LSL.L	#1,D2
+	BCC.S	L02516
+	ASR.L	#1,D2
+	MOVE.L	D2,D4
+	SUB.L	D0,D4
+	BGE.S	L024C8
+	EXG	D0,D2
+L024C8	TST.L	D0
+	BGE.S	L024CE
+	MOVEQ	#0,D0
+L024CE	TST.L	D2
+	BLT.S	L02516
+	CMP.L	-$1C(A6),D0
+	BGE.S	L02516
+	CMP.L	-$1C(A6),D2
+	BLT.S	L024E2
+	MOVE.L	-$1C(A6),D2
+L024E2	SUB.L	D0,D2
+	ADD.L	-$36(A6),D0
+	NEG.L	D1
+	ADD.L	-$3A(A6),D1
+	ADD.L	-$20(A6),D1
+	SUBQ.L	#1,D1
+	MOVE.W	D3,-(A7)
+	MOVE.W	D3,-(A7)
+	SWAP	D3
+	MOVE.W	D3,-(A7)
+	MOVE.W	D3,-(A7)
+	MOVEA.L	A7,A1
+	MOVEQ	#$01,D3
+	BTST	#$03,-$23(A6)
+	BNE.S	L02510
+	JSR	L025BE(PC)	;*/undomodify BSR L025BE
+	BRA.S	L02514
+L02510	JSR	L025CA(PC)	;*/undomodify BSR L025CA
+L02514	ADDQ.L	#8,A7
+L02516	MOVEM.L	(A7)+,D0-D3/A0-A1
+	RTS
+L0251C	CMP.L	-$1C(A6),D0
+	BCC.S	L02546
+	SWAP	D2
+	SWAP	D3
+	MOVE.L	D3,D4
+	AND.L	D2,D4
+	BTST	#$03,-$23(A6)
+	BNE.S	L02540
+	MOVE.L	(A5),D5
+	NOT.L	D2
+	AND.L	D2,D5
+	NOT.L	D2
+	OR.L	D4,D5
+	MOVE.L	D5,(A5)
+	BRA.S	L02542
+L02540	EOR.L	D4,(A5)
+L02542	SWAP	D2
+	SWAP	D3
+L02546	RTS
+; ------------------------------------------------------------
+L02548:
+	MOVEM.L	D0-D7/A0-A6,-(A7)
+	BSR.S	L0256A
+	MOVE.L	#$FF00FF,D6
+	MOVE.L	D6,D7
+	BRA.S	L025D0
+L02558	MOVE.L	(A1),D6
+	MOVE.W	D6,D7
+	SWAP	D7
+	MOVE.W	D6,D7
+	MOVE.W	(A1),D6
+	BTST	#0,D1
+	BNE.S	L0256A
+	EXG	D6,D7
+L0256A	LSL.W	#7,D1		; Y*128
+	move.l	SD_SCRB(a0),a1	;*/modify MOVEA.L  #$20000,A1
+	nop			;*/modify
+	ADDA.W	D1,A1		; Row address
+	LSL.W	#6,D3
+	MOVEA.W	D3,A2
+	ADDA.L	A2,A2
+	MOVE.W	D0,D1
+	LSR.W	#4,D1
+	LSL.W	#2,D1
+	ADDA.W	D1,A1
+	ADDA.L	A1,A2
+	MOVEA.W	#128,A3
+	LSR.W	#2,D1
+	ADD.W	D0,D2
+	MOVE.W	D2,D3
+	SUBQ.W	#1,D3
+	ASR.W	#4,D3
+	SUB.W	D1,D3
+	MOVEA.W	D3,A5
+	ADDA.W	A5,A5
+	ADDA.W	A5,A5
+	BSR.S	L025AA
+	MOVE.L	D5,D4
+	MOVE.W	D2,D0
+	BSR.S	L025AA
+	NOT.L	D5
+	BNE.S	L025A8
+	MOVEQ	#-1,D5
+L025A8	RTS
+L025AA	MOVEQ	#-1,D5
+	ANDI.W	#15,D0
+	LSR.W	D0,D5
+	MOVE.W	D5,D0
+	LSL.L	#8,D5
+	MOVE.W	D0,D5
+	LSL.L	#8,D5
+	MOVE.B	D0,D5
+	RTS
+; ----------------------------------------------------------
+L025BE	MOVEM.L	D0-D7/A0-A6,-(A7)
+	BSR.S	L02558
+L025C4	LEA	L026EC(PC),A6
+	BRA.S	L025F4
+L025CA	MOVEM.L	D0-D7/A0-A6,-(A7)
+	BSR.S	L02558
+L025D0	LEA	L026F4(PC),A6
+	BRA.S	L025F4
+L025D6	MOVEM.L	D0-D7/A0-A6,-(A7)
+	MOVEA.L	A1,A4
+	BSR.S	L0256A
+	ADD.W	D3,D3
+	ADDQ.W	#1,D3
+	bsr.l	MDTSTFIX 	;*/modify BTST #3,$34(A6)
+	nop			;*/modify
+	BNE.S	L025F0
+	LEA	L0273E(PC),A6
+	BRA.S	L025F4
+L025F0	LEA	L02708(PC),A6
+L025F4	BSR	L026E6
+	MOVEM.L	(A7)+,D0-D7/A0-A6
+	RTS
+; -------------------------------------------------------------
+L025FE	MOVEM.L	D0-D7/A0-A6,-(A7)
+	BSR	L02558
+	MOVE.W	$12(A7),D2
+	NEG.W	D2
+	LSL.W	#7,D2
+	BVS.S	L025C4
+	BGT.S	L02630
+	EXG	A2,A1
+	MOVEA.W	#$FF80,A3
+	ADDA.L	A3,A1
+	ADDA.L	A3,A2
+	MOVE.W	A1,D0
+	SUB.W	A2,D0
+	TST.B	D0
+	BNE.S	L02626
+	EXG	D6,D7
+L02626	LEA	0(A1,D2.W),A4
+	CMPA.L	A2,A4
+	BLS.S	L025C4
+	BRA.S	L02638
+L02630	LEA	0(A1,D2.W),A4
+	CMPA.L	A4,A2
+	BLS.S	L025C4
+L02638	LEA	L026FC(PC),A6
+	SUBA.W	D2,A2
+	BSR	L026E6
+	ADDA.W	D2,A2
+	BRA	L025C4
+L02648	MOVEM.L	D0-D7/A0-A6,-(A7)
+	BSR	L02558
+	SWAP	D3
+	MOVE.W	$12(A7),D2
+	NEG.W	D2
+	BGT.S	L0268A
+	NEG.W	D2
+	MOVE.W	D2,D3
+	ANDI.W	#$0F,D3
+	ADDI.W	#$10,D3
+	SWAP	D3
+	LSR.W	#4,D2
+	CMP.W	D3,D2
+	BHI	L025C4
+	SUB.W	D2,D3
+	MOVEA.W	#$FFFC,A0
+	ADDA.W	A5,A1
+	ADDA.W	A5,A2
+	MOVEA.L	A1,A4
+	LSL.W	#2,D2
+	SUBA.W	D2,A4
+	MOVE.L	A5,D2
+	NEG.L	D2
+	MOVEA.L	D2,A5
+	EXG	D4,D5
+	BRA.S	L026AC
+L0268A	MOVEA.W	#$04,A0
+	MOVE.W	D2,D3
+	ANDI.W	#$0F,D3
+	NEG.W	D3
+	ADDI.W	#$10,D3
+	SWAP	D3
+	LSR.W	#4,D2
+	CMP.W	D3,D2
+	BHI	L025C4
+	SUB.W	D2,D3
+	LSL.W	#2,D2
+	LEA	0(A1,D2.W),A4
+L026AC	ADDQ.W	#1,D3
+	LEA	L02770(PC),A6
+	BRA	L025F4
+L026B6	MOVE.W	D3,D0
+	BMI.S	L026EA
+	EXG	D6,D7
+	MOVE.L	(A1),-(A7)
+	MOVE.L	0(A1,A5.W),-(A7)
+	JMP	(A6)
+L026C4	SUBQ.W	#4,A1
+L026C6	MOVE.L	(A1),D0
+	AND.L	D5,D0
+	MOVE.L	D5,D1
+	NOT.L	D1
+	AND.L	(A7)+,D1
+	OR.L	D1,D0
+	MOVE.L	D0,(A1)
+	SUBA.L	A5,A1
+	MOVE.L	(A1),D0
+	AND.L	D4,D0
+	MOVE.L	D4,D1
+	NOT.L	D1
+	AND.L	(A7)+,D1
+	OR.L	D1,D0
+	MOVE.L	D0,(A1)
+	ADDA.L	A3,A1
+L026E6	CMPA.L	A2,A1
+	BNE.S	L026B6
+L026EA	RTS
+L026EC	MOVE.L	D6,(A1)+
+	DBF	D0,L026EC
+	BRA.S	L026C4
+L026F4	EOR.L	D6,(A1)+
+	DBF	D0,L026F4
+	BRA.S	L026C4
+L026FC	LEA	0(A1,D2.W),A4
+L02700	MOVE.L	(A4)+,(A1)+
+	DBF	D0,L02700
+	BRA.S	L026C4
+L02708	MOVE.B	(A1),D6
+	MOVE.B	1(A1),D7
+	MOVEQ	#3,D1
+L02710	MOVEQ	#0,D2
+	MOVE.B	D6,D2
+	LSL.B	#6,D2
+	LSL.W	#1,D2
+	MOVE.B	D7,D2
+	LSL.B	#6,D2
+	LSR.W	#6,D2
+	MOVE.B	0(A4,D2.W),D2
+	ROXR.B	#1,D2
+	ROXR.B	#1,D7
+	ROXR.B	#1,D2
+	ROXR.B	#1,D7
+	ROR.B	#1,D6
+	ROXR.B	#1,D2
+	ROXR.B	#1,D6
+	DBF	D1,L02710
+	MOVE.B	D6,(A1)+
+	MOVE.B	D7,(A1)+
+	DBF	D0,L02708
+	BRA.S	L026C4
+L0273E	MOVE.B	(A1),D6
+	MOVE.B	1(A1),D7
+	MOVEQ	#7,D1
+L02746	MOVEQ	#0,D2
+	MOVE.B	D6,D2
+	LSL.B	#7,D2
+	LSL.W	#1,D2
+	MOVE.B	D7,D2
+	LSL.B	#7,D2
+	LSR.W	#6,D2
+	MOVE.B	0(A4,D2.W),D2
+	ROXR.B	#2,D2
+	ROXR.B	#1,D7
+	ROXR.B	#1,D2
+	ROXR.B	#1,D6
+	DBF	D1,L02746
+	MOVE.B	D6,(A1)+
+	MOVE.B	D7,(A1)+
+	DBF	D0,L0273E
+	BRA	L026C4
+L02770:
+	MOVE.W	A5,-(A7)
+	MOVE.L	A4,-(A7)
+	MOVE.L	D6,-(A7)
+	ADDA.L	A1,A5
+	MOVE.L	(A5),D2
+	AND.L	D5,D2
+	MOVE.L	D5,D1
+	NOT.L	D1
+	AND.L	D6,D1
+	OR.L	D1,D2
+	MOVE.L	D2,(A5)
+	ADDA.L	A0,A5
+	SWAP	D3
+	MOVEP.W	0(A4),D1
+	DC.L	$050C0001	;*/note equ MOVEP.W 1(A4),D2
+				;*/note A68k can't handle it
+	BRA.S	L027B4
+L02794:
+	ADDA.L	A0,A4
+L02796:
+	SWAP	D1
+	SWAP	D2
+	MOVEP.W 0(A4),D1
+	DC.L	$050C0001	;*/note equ MOVEP.W 1(A4),D2
+				;*/note A68k can't handle it
+	MOVE.L	D1,D6
+	ROR.L	D3,D6
+	MOVEP.W D6,0(A1)
+	MOVE.L	D2,D6
+	ROR.L	D3,D6
+	DC.L	$0D890001	;*/note equ MOVEP.W D6,1(A1)
+				;*/note A68k can't handle it
+	ADDA.L	A0,A1
+L027B4:
+	SUBQ.W	#1,D0
+	BGT.S	L02794
+	BLT.S	L027BE
+	MOVEA.L	A7,A4
+	BRA.S	L02796
+L027BE:
+	MOVE.L	(A7)+,D6
+	MOVEA.L	(A7)+,A4
+	SWAP	D3
+	BRA.S	L027CA
+L027C6:
+	MOVE.L	D6,(A1)
+	ADDA.L	A0,A1
+L027CA:
+	CMPA.L	A1,A5
+	BNE.S	L027C6
+	MOVEA.W	(A7)+,A5
+	ADDA.L	A3,A4
+	SUBA.L	A0,A1
+	BRA	L026C6
+L027D8:
+	MOVEM.L	D1-D2,-(A7)
+	BSR.S	L0281E
+	MOVE.W	D2,(A1)
+	MOVE.W	D2,2(A1)
+	LSR.B	#3,D1
+	BEQ.S	L02818
+	BSR.S	L0281E
+	LSR.B	#3,D1
+	BTST	#0,D1
+	BEQ.S	L027F6
+	EOR.W	D2,2(A1)
+L027F6:
+	CMPI.B	#$01,D1
+	BEQ.S	L02818
+	bsr.l	MDTSTFIX 	;*/modify BTST #3,$34(A6)
+	nop			;*/modify
+	BEQ.S	L0280A
+	ANDI.W	#$3333,D2	; colour bits
+	BRA.S	L0280E
+L0280A:
+	ANDI.W	#$5555,D2	; colour bits
+L0280E:
+	EOR.W	D2,(A1)
+	TST.B	D1
+	BEQ.S	L02818
+	EOR.W	D2,2(A1)
+L02818:
+	MOVEM.L	(A7)+,D1-D2
+	RTS
+; ------------------------------------------------------
+L0281E	MOVE.B	D1,D2
+	ANDI.W	#7,D2
+	ROR.L	#2,D2
+	LSL.W	#7,D2
+	ROL.L	#2,D2
+	bsr.l	MDTSTFIX 	;*/modify BTST #3,$34(A6)
+	nop			;*/modify
+	BEQ.S	L02838
+	MULU	#85,D2
+	BRA.S	L0283E
+L02838	LSR.W	#1,D2
+	MULU	#$FF,D2
+L0283E	RTS
+OUT_CHAR ; Write character (D2) with font (A2) at D0,D1
+	MOVEM.L	D0-D7/A0-A6,-(A7)
+	MOVEM.L	(A1),D6-D7	; D7= ink mask
+	BTST	#0,D1		; odd address
+	BNE.S	L02852
+	SWAP	D6		; invert mask
+	SWAP	D7
+L02852	ANDI.W	#$FF,D2		; character to print
+	MOVEA.L	A2,A4		; pointer to first character
+				; font
+	SUB.B	(A4)+,D2 	; higher ?
+	CMP.B	(A4)+,D2
+	BLS.S	L0286A		; no
+	ADD.B	(A2),D2
+	MOVEA.L	A3,A4		; second character font
+	SUB.B	(A4)+,D2
+	CMP.B	(A4)+,D2
+	BLS.S	L0286A		; ok
+	MOVEQ	#0,D2		; character not printable
+; character pixel plot : D0=X,D1=Y
+L0286A	ADDA.W	D2,A4		; get value in charlist
+	LSL.W	#3,D2
+	ADDA.W	D2,A4
+	move.l	SD_SCRB(a0),a1	;*/modify MOVEA.L  #$20000,A1
+	nop			;*/modify ; screen start
+	LSL.W	#7,D1		; Y*128
+	ADDA.W	D1,A1		; Y address
+	MOVE.W	D0,D1		; X -> D1
+	LSR.W	#3,D0		; extract byte in X -
+				; Direction
+	ADD.W	D0,D0		; only even address
+	ADDA.W	D0,A1		; address of byte
+	ANDI.W	#7,D1		; extract Bits to be set
+	MOVEA.W	#$FFFF,A5
+	BTST	#0,D3		; underline bit ?
+	BEQ.S	L02892		; no
+	ADDQ.W	#2,A5		;*/undomend ADDQ.L #2,A5
+L02892	MOVEQ	#0,D0
+	MOVEQ	#$7E,D2
+	ADD.W	D2,D2		; D2= $FC
+	MOVEQ	#0,D5
+	BTST	#6,D3		; double width ?
+	BEQ.S	L028B4
+	MOVEQ	#-1,D0
+	MOVE.W	#$FFF0,D2
+	ADDQ.W	#8,D1		; bits to be set
+	BTST	#1,D3		; flash ?
+	BEQ.S	L028B4
+	MOVE.W	#$4010,D5
+	ROR.L	D1,D5		; bits to be set
+L028B4	BTST	#5,D3		; extendet width ?
+	BEQ.S	L028BC
+	ASR.B	#4,D2
+L028BC	MOVEQ	#0,D4
+	BTST	#4,D3		; double height bit
+	BEQ.S	L028C6
+	MOVEQ	#-1,D4
+L028C6	ROR.L	D1,D2
+	lea	L02924(pc),a3	;*/modify LEA L02924(PC),A6
+				; pixel plot mode (PAPER
+				; background)
+	BTST	#2,D3		; transparent background ?
+	BEQ.S	L028E0
+	lea	L0293A(pc),a3	;*/modify LEA L0293A(PC),A6
+				; pixel exor mode (now
+	BTST	#3,D3		; XOR character ?
+	BEQ.S	L028E0
+	lea	L02936(pc),a3	;*/modify LEA L02936(PC),A6
+				; pixel set mode
+				; (transparent background)
+L028E0	MOVEA.L	A1,A2		; address on screen
+	MOVE.B	D2,D0		; copy byte to print in long
+				; word
+	LSL.W	#8,D2
+	MOVE.B	D0,D2
+	LSL.W	#8,D5
+	MOVE.W	#9,D0		; number of pixel rows per
+				; character
+	MOVEQ	#0,D3
+	BRA.S	L0291C		; address to odd mask
+L028F2	MOVEQ	#0,D3
+	CMP.W	A5,D0		; underline ?
+	BNE.S	L028FE
+	MOVEQ	#-1,D3
+	ADDQ.W	#1,A4		;*/undomend ADDQ.L #1,A4
+	BRA.S	L02914
+L028FE	MOVE.B	(A4)+,D3 	; char-matrix in D3
+	BEQ.S	L0291C
+	TST.L	D0		; 6 or 8 pixel size
+	BGE.S	L0290C
+	LSR.B	#1,D3
+	MOVE.W	CVT_6_12(PC,D3.W),D3 ; convert-table 6*9 to
+				   ; 12*9
+L0290C	ROR.W	D1,D3		; Calculate any pixel
+				; depending on size
+	MOVE.B	D3,D4		; and char matrix
+	LSL.W	#8,D3
+	MOVE.B	D4,D3
+L02914	AND.W	D2,D3
+	MOVE.W	D3,D4
+	SWAP	D3
+	MOVE.W	D4,D3		; AND pattern in D3
+L0291C	MOVE.W	D3,D4
+	AND.W	D7,D4
+	OR.W	D5,D4		; pixel bits in D4
+	jmp	(a3)		;*/modify JMP (A6)
+				; 293A/2936/2924
+; pixel plot mode
+L02924	EOR.W	D2,D3
+	AND.W	D6,D3
+	OR.W	D4,D3
+	MOVE.W	D2,D4
+	NOT.W	D4
+	AND.W	(A1),D4		; keep old pixels
+	OR.W	D3,D4		; insert new ones
+	MOVE.W	D4,(A1)		; set pixel
+	BRA.S	L02942
+; pixel eor mode
+L02936	EOR.W	D4,(A1)		; exor pixel
+	BRA.S	L02942
+L0293A	NOT.W	D3
+; pixel set mode
+	AND.W	(A1),D3		; keep old  pixels
+	OR.W	D4,D3		; insert new ones
+	MOVE.W	D3,(A1)		; set pixel
+L02942	SWAP	D6
+	SWAP	D7
+	ADDA.W	#$80,A1
+	TST.L	D4		; normal size
+	BGE.S	L02956		; yes
+	SWAP	D3		; get other part of
+				; character
+	BCHG	#30,D4
+	BNE.S	L0291C		; plot other part
+L02956	DBF	D0,L028F2	; next pixel row for
+				; character
+	CLR.W	D2
+	ROL.L	#8,D2
+	BEQ.S	L02976		; character written -> end
+	CLR.W	D5
+	ROL.L	#8,D5
+	SUBQ.B	#8,D1
+	ANDI.B	#15,D1
+	MOVEA.L	A2,A1
+	ADDQ.W	#2,A1		;*/undomend ADDQ.L #2,A1
+	SUBA.W	#9,A4
+	BRA	L028E0		; double height or double
+				; width ??
+L02976	MOVEM.L	(A7)+,D0-D7/A0-A6
+	RTS
+; ******************************************************
+; *	 End of graphic subroutines ??		 *
+; ******************************************************
+; screen-pixel translate code
+; transfers 6*9 matrix to 12*9matrix
+L0297C:
+CVT_6_12:
+	DC.L	$00000030,$00C000F0,$03000330,$03C003F0
+	DC.L	$0C000C30,$0CC00CF0,$0F000F30,$0FC00FF0
+	DC.L	$30003030,$30C030F0,$33003330,$33C033F0
+	DC.L	$3C003C30,$3CC03CF0,$3F003F30,$3FC03FF0
+	DC.L	$C000C030,$C0C0C0F0,$C300C330,$C3C0C3F0
+	DC.L	$CC00CC30,$CCC0CCF0,$CF00CF30,$CFC0CFF0
+	DC.L	$F000F030,$F0C0F0F0,$F300F330,$F3C0F3F0
+	DC.L	$FC00FC30,$FCC0FCF0,$FF00FF30,$FFC0FFF0
+; --------------------------------------------------------------
+;*/endfile

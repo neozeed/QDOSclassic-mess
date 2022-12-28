@@ -1,0 +1,101 @@
+FailAt 21
+
+If EXISTS devs:fd.device
+
+ If EXISTS l:xfsd
+
+  Assign >NIL: DF0: EXISTS
+  If NOT WARN
+
+   Assign >NIL: FD0: EXISTS
+   If WARN
+
+    Version >NIL: CLI 37 internal
+    If NOT WARN
+     Echo "Mounting FD0: (multi filesys)"
+     Mount FD0:
+    Else
+     Echo "Mounting FD0: (multi filesys)"
+     Mount FD0: FROM devs:mountlist.xfs
+    EndIf
+
+   EndIf
+
+  EndIf
+
+  Assign >NIL: DF1: EXISTS
+  If NOT WARN
+
+   Assign >NIL: FD1: EXISTS
+   If WARN
+
+    Version >NIL: CLI 37 internal
+    If NOT WARN
+     Echo "Mounting FD1: (multi filesys)"
+     Mount FD1:
+    Else
+     Echo "Mounting FD1: (multi filesys)"
+     Mount FD1: FROM devs:mountlist.xfs
+    EndIf
+
+   EndIf
+
+  EndIf
+
+ Else
+
+  If EXISTS QLrun:l/QLFileSystem
+
+   Assign >NIL: DF0: EXISTS
+   If NOT WARN
+
+    Assign >NIL: QL0: EXISTS
+    If WARN
+
+     Version >NIL: CLI 37 internal
+     If NOT WARN
+      Echo "Mounting QL0: (QL filesys)"
+      Mount QLrun:devs/dosdrivers/QL0
+     Else
+      Echo "Mounting QL0: (QL filesys)"
+      Mount QL0: FROM QLrun:devs/mountlist.ql
+     EndIf
+
+    EndIf
+
+   EndIf
+
+   Assign >NIL: DF1: EXISTS
+   If NOT WARN
+
+    Assign >NIL: QL1: EXISTS
+    If WARN
+
+     Version >NIL: CLI 37 internal
+     If NOT WARN
+      Echo "Mounting QL1: (QL filesys)"
+      Mount QLrun:devs/dosdrivers/QL1
+     Else
+      Echo "Mounting QL1: (QL filesys)"
+      Mount QL1: FROM QLrun:devs/mountlist.ql
+     EndIf
+
+    EndIf
+
+   EndIf
+
+  Else
+   Echo "Please install Xfilesystem components"
+  EndIf
+
+ EndIf
+
+Else
+
+ Echo "Please copy fd.device to devs: "
+
+EndIf
+
+Status >ram:ttt COMMAND=WAIT
+Break <ram:ttt >NIL: ?
+

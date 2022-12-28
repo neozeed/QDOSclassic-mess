@@ -1,0 +1,2008 @@
+	SECTION PDTK
+	DATA	0
+
+	NOLIST
+	INCLUDE 'DEV_ASM_QDOS_DEFINES_inc'
+	LIST
+; --------------------------------------------------------------
+; PDTK_asm - Freeware toolkit
+;	   - last modified 05/09/99
+
+;	 ... by Mark J Swift - All rights reserved.
+
+; to assemble with the GST/QUANTA assembler use the command line:
+;   PDTK_asm -nolink -nolist -bin PDTK_rext
+
+; to assemble with HISOFT DEVPAC remove the SECTION directive,
+; and change the line "bra.l TK_START" to "bra TK_START"
+
+; set TABS to EIGHT characters before editing this file
+
+VERSTAG  EQU	  '1.14'
+
+; --------------------------------------------------------------
+;  ROM header
+
+BASE:
+
+;  *** Comment out ONE of the following two lines to	***
+;  ***	 create either a ROM or a BASIC toolkit.	***
+
+	bra.l	TK_START	; ...If I'm a BASIC toolkit!
+
+;	dc.l	$4AFB0001	; ROM recognition code
+
+	dc.w	PROC_DEF-BASE	; add BASIC procs here
+	dc.w	ROM_START-BASE
+
+BANNER:
+	dc.b	0,33
+	dc.b	'PDTK Freeware BASIC toolkit '
+	dc.l	VERSTAG
+	dc.b	$A,0
+
+; --------------------------------------------------------------
+;  start of ROM code
+; --------------------------------------------------------------
+TK_START:
+	movem.l d1-d3/a0-a3,-(a7)
+
+	lea	PROC_DEF(pc),a1
+	move.w	BP.INIT,a2
+	jsr	(a2)
+
+	lea	BANNER(pc),a1	; start of message
+	suba.l	a0,a0		; output channel 0
+	move.w	UT.MTEXT,a2
+	jsr	(a2)		; print it
+
+	bra.s	TK_DOIT
+
+ROM_START:
+	movem.l d1-d3/a0-a3,-(a7)
+
+TK_DOIT:
+	bsr	TKILL
+
+	moveq	#ERR.OK,d0
+
+	movem.l (a7)+,d1-d3/a0-a3
+	rts
+
+; -------------------------------------------------------------
+PROC_DEF:
+	dc.w	11
+	dc.w	PDTK_EXT-*
+	dc.b	8,'PDTK_EXT',0
+	dc.w	EXTRAS-*
+	dc.b	6,'EXTRAS',0
+	dc.w	TOOLKILL-*
+	dc.b	8,'TOOLKILL',0
+	dc.w	P_TRACE-*
+	dc.b	7,'P_TRACE'
+	dc.w	J_TRACE-*
+	dc.b	7,'J_TRACE'
+	dc.w	J_TRACE_W-*
+	dc.b	9,'J_TRACE_W'
+;	 dc.w	 MC_TRACE-*
+;	 dc.b	 8,'MC_TRACE',0
+	dc.w	0
+
+	dc.w	4
+	dc.w	PDTK_VER-*
+	dc.b	9,'PDTK_VER$'
+	dc.w	WHERE-*
+	dc.b	5,'WHERE'
+	dc.w	F_TRACE-*
+	dc.b	7,'F_TRACE'
+
+	dc.w	0
+
+; -------------------------------------------------------------
+PDTK_EXT:
+	lea	PDTK_DEF(pc),a1
+	move.w	$110,a2
+	jsr	(a2)
+
+	bra.s	TKILL
+
+; -------------------------------------------------------------
+EXTRAS:
+	moveq	#1,d1
+	bsr	FETCH_CH
+	bne.s	EXTRASX
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	move.l	a0,a4		; channel ID
+	move.l	BV_NTBAS(a6),a3
+	move.l	BV_NTP(a6),a5
+
+EX_TYPE:
+	move.w	0(a6,a3.l),d3
+	beq.s	EX_SKIP
+	cmp.w	#$0800,d3
+	beq.s	EX_CONT
+	cmp.w	#$0900,d3
+	bne.s	EX_SKIP
+
+EX_CONT:
+	cmp.l	#$C000,4(a6,a3.l)
+	blt.s	EX_SKIP
+
+	move.l	BV_NLBAS(a6),a1
+	adda.w	2(a6,a3.l),a1
+	move.b	0(a6,a1.l),d2
+	ext.w	d2		; length of string
+	beq.s	EX_SKIP
+
+	addq.l	#1,a1		; address of string
+	move.l	a4,a0		; channel ID
+	moveq	#-1,d3
+	trap	#4		; relative to a6
+	moveq	#IO.SSTRG,d0
+	trap	#3		; print string
+
+	tst.l	d0
+	bne.s	EXTRASX
+
+	moveq	#$0A,d1 	; linefeed
+	moveq	#-1,d3
+	moveq	#IO.SBYTE,d0
+	trap	#3
+
+	tst.l	d0
+	bne.s	EXTRASX
+
+EX_SKIP:
+	addq.l	#8,a3
+	cmp.l	a3,a5
+	bne	EX_TYPE
+
+	moveq	#0,d0
+
+EXTRASX:
+	rts
+
+; -------------------------------------------------------------
+TOOLKILL:
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+TKILL:
+	move.l	BV_NTBAS(a6),a2
+	move.l	BV_NTP(a6),a5
+	bra	TK_TYPNXT
+
+TK_TYPLUP:
+	move.w	0(a6,a5.l),d3
+	beq	TK_TYPNXT
+
+	cmp.w	#$0900,d3
+	beq.s	TK_CONT
+
+	cmp.w	#$0800,d3
+	bne	TK_TYPNXT
+
+TK_CONT:
+	move.l	a5,a3
+	bra	TK_FNPRC
+
+TK_DUPLUP:
+	move.w	0(a6,a3.l),d4
+	beq	TK_DUPNXT
+
+	cmp.w	#$0800,d4
+	beq.s	TK_NPTR
+
+	cmp.w	#$0900,d4
+	beq.s	TK_NPTR
+
+	cmp.w	#$0303,d4
+	bgt.s	TK_DUPNXT
+
+TK_NPTR:
+	move.l	BV_NLBAS(a6),a1
+	move.l	a1,a0
+	adda.w	2(a6,a4.l),a1	; name list entry
+	adda.w	2(a6,a3.l),a0
+	move.b	0(a6,a1.l),d1	; length of name
+	cmp.b	0(a6,a0.l),d1
+	bne.s	TK_DUPNXT
+
+	ext.w	d1
+	beq.s	TK_DUPNXT
+
+	subq.w	#1,d1
+
+TK_NAMLUP:
+	addq.l	#1,a1
+	addq.l	#1,a0
+
+	move.b	0(a6,a0.l),d0
+	move.b	0(a6,a1.l),d2
+	eor.b	d2,d0
+	andi.b	#223,d0 	; compare name
+	bne.s	TK_DUPNXT
+
+	dbra	d1,TK_NAMLUP
+
+	cmp.w	#$0303,d4
+	ble.s	TK_TYP3
+
+	cmp.b	#'$',d2
+	bne.s	TK_TYP1
+
+	move.w	#$0001,d4	; set to unset $ var
+	bra.s	TK_TYP3
+
+TK_TYP1:
+	cmp.b	#'%',d2
+	bne.s	TK_TYP2
+
+	move.w	#$0003,d4	; set to unset % var
+	bra.s	TK_TYP3
+
+TK_TYP2:
+	move.w	#$0002,d4	; set to unset FP var
+
+TK_TYP3:
+	move.w	0(a6,a4.l),0(a6,a3.l) ; copy old to new
+	move.w	d4,0(a6,a4.l)	      ; & set old type
+
+;	 move.w  2(a6,a3.l),d0
+;	 move.w  2(a6,a4.l),2(a6,a3.l)
+;	 move.w  d0,2(a6,a4.l)	      ; swap name pointer
+;
+	move.l	4(a6,a3.l),d0
+	move.l	4(a6,a4.l),4(a6,a3.l)
+	move.l	d0,4(a6,a4.l)	       ; swap 'value'
+
+
+TK_FNPRC:
+	move.l	a3,a4		; new fn/proc
+
+TK_DUPNXT:
+	subq.l	#8,a3
+	cmp.l	a3,a2
+	ble	TK_DUPLUP
+
+TK_TYPNXT:
+	subq.l	#8,a5
+	cmp.l	a5,a2
+	ble	TK_TYPLUP
+
+TK_EXIT:
+	moveq	#0,d0
+	rts
+
+; -------------------------------------------------------------
+PDTK_VER:
+	cmp.l	a3,a5
+	bne	RPORT.BP
+	move.l	#VERSTAG,d1
+	bra	RET_4S
+
+; -------------------------------------------------------------
+J_TRACE:
+	moveq	#0,d5
+	bra.s	J_TRC1
+
+J_TRACE_W:
+	moveq	#-1,d5
+
+J_TRC1:
+	moveq	#1,d7		; old shared device
+
+	bsr	FL_ID
+	bne	FEXIT
+
+	move.l	a4,d4		; channel ID to close
+
+	bsr	HEDR1		; read file header
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne	SDONE1
+
+	moveq	#MT.CJOB,d0	; create job in trns prog
+	moveq	#-1,d1		; owner of job
+	move.l	0(a2),d2	; length
+	move.l	6(a2),d3	; dataspace
+	suba.l	a1,a1		; start address
+	trap	#1
+	movea.l a0,a4		; allocated start
+
+	tst.l	d0
+	bne	SDONE1
+
+	move.l	d1,d6		; save Job ID
+
+	move.l	d4,a0		; File ID
+	move.l	a4,a1		; location to load
+	moveq	#-1,d3		; infinite timeout
+	moveq	#FS.LOAD,d0
+	trap	#3		; load file
+
+	bsr	SDONE1
+
+	tst.l	d0
+	bne.s	J_TRCR
+
+	ori.w	#$8000,-JB_END+JB_SR(a4) ; trace on
+
+	moveq	#MT.ACTIV,d0	; activate the job
+	move.l	d6,d1		; restore Job ID
+	moveq	#$20,d2 	; priority
+	move.l	d5,d3		; timeout
+	trap	#1
+
+	tst.l	d0
+	bne.s	J_TRCR
+
+	tst.l	d5
+	bne.s	J_TRCX
+
+	moveq	#MT.SUSJB,d0	; suspend a job
+	moveq	#-1,d1		; me (usually BASIC)
+	moveq	#$19,d3 	; timeout
+	suba.l	a1,a1		; no flag
+	trap	#1
+
+J_TRCX:
+	rts
+
+J_TRCR:
+	move.l	d0,d7		; save error code
+	moveq	#MT.RJOB,d0	; remove job
+	move.l	d6,d1		; restore Job ID
+	trap	#1
+	move.l	d7,d0		; restore error code
+	rts
+
+; -------------------------------------------------------------
+F_TRACE:
+	bsr	FETCH_S
+	bne.s	TRACEX
+
+	bsr.s	WHEREIS 	; find address of FN/PROC
+
+	cmpi.w	#$0900,d0
+	beq.s	TRACEON
+
+	bra	RPORT.BP
+; -------------------------------------------------------------
+P_TRACE:
+	bsr	FETCH_S
+	bne.s	TRACEX
+
+	bsr.s	WHEREIS 	; find address of FN/PROC
+
+	cmpi.w	#$0800,d0
+	bne	RPORT.BP
+
+; -------------------------------------------------------------
+TRACEON:
+	trap	#0		; enter supervisor mode
+	ori.w	#$8000,sr	; trace on
+	andi.w	#$DFFF,sr	; enter user mode
+
+	jsr	(a0)		; do FN/PROC
+
+TRACEOFF:
+	trap	#0		; enter supervisor mode
+	andi.w	#$1FFF,sr	; clear trace, exit supervisor
+
+TRACEX:
+	rts
+
+; -------------------------------------------------------------
+;MC_TRACE:
+;	 bsr	 FETCH_W
+;	 bne.s	 MC_TXIT
+
+;	 tst.w	 d1
+;	 beq.s	 MC_TOFF
+
+;	 trap	 #0
+;	 ori.w	 #$8000,sr
+;	 andi.w  #$DFFF,sr
+;	 rts
+
+;MC_TOFF:
+;	 trap	 #0
+;	 andi.w  #$1FFF,sr
+
+;MC_TXIT:
+;	 rts
+
+; -------------------------------------------------------------
+WHERE:
+	bsr	FETCH_S
+	bne.s	WHEREX
+
+	cmp.l	a3,a5
+	bne	RPORT.NO
+
+	bsr.s	WHEREIS
+	move.l	a0,d1
+	bra	RET_L
+
+WHEREX:
+
+; -------------------------------------------------------------
+;  Enter: A1=pointer to fn/proc NAME (string) on math stack
+
+;   Exit: A1=updated pointer
+;	 D0=NAME type (i.e. proc=$0800, fn=$0900)
+;	 A0=address of fn/proc
+
+WHEREIS:
+	movem.l d1-d2/a2-a5,-(a7)
+
+	move.w	0(a6,a1.l),d0
+	beq.s	WHER_FAIL
+
+	cmp.w	#256,d0
+	bcc.s	WHER_FAIL
+
+	addq.l	#1,a1
+	move.l	a1,a3
+	move.l	BV_NTBAS(a6),a4
+	move.l	BV_NTP(a6),a5
+
+WHER_LUP1:
+	move.l	BV_NLBAS(a6),a2
+	add.w	2(a6,a4.l),a2
+	move.b	0(a6,a1.l),d0
+	cmp.b	0(a6,a2.l),d0
+	bne.s	WHER_NXT
+	ext.w	d0
+	subq.w	#1,d0
+
+WHER_LUP2:
+	addq.l	#1,a1
+	addq.l	#1,a2
+	move.b	0(a6,a1.l),d1
+	move.b	0(a6,a2.l),d2
+	eor.b	d2,d1
+	andi.b	#$DF,d1
+	bne.s	WHER_NXT
+	dbra	d0,WHER_LUP2
+	move.w	0(a6,a4.l),d0	; type
+	move.l	4(a6,a4.l),a0	; address
+	bra.s	WHER_RTS
+
+WHER_NXT:
+	move.l	a3,a1
+	addq.l	#8,a4
+	cmp.l	a5,a4
+	bne	WHER_LUP1
+
+WHER_FAIL:
+	moveq	#0,d0
+	move.l	d0,a0
+
+WHER_RTS:
+	move.l	a3,a1
+	subq.l	#1,a1
+
+	moveq	#3,d1		; get total length of string
+	add.w	0(a6,a1.l),d1
+	bclr	#0,d1
+	add.l	d1,a1		; and update a1
+
+	movem.l (a7)+,d1-d2/a2-a5
+	rts
+
+; -------------------------------------------------------------
+PDTK_DEF:
+	dc.w	17
+
+	dc.w	RESET-*
+	dc.b	5,'RESET'
+	dc.w	RECHP-*
+	dc.b	5,'RECHP'
+	dc.w	CLCHP-*
+	dc.b	5,'CLCHP'
+	dc.w	LRESPR-*
+	dc.b	6,'LRESPR',0
+	dc.w	DDLIST-*
+	dc.b	6,'DDLIST',0
+	dc.w	SACS-*
+	dc.b	9,'SET_FACCS'
+	dc.w	STYP-*
+	dc.b	8,'SET_FTYP',0
+	dc.w	SDAT-*
+	dc.b	8,'SET_FDAT',0
+	dc.w	SXTRA-*
+	dc.b	9,'SET_FXTRA'
+	dc.w	SPOSN-*
+	dc.b	12,'SET_POSITION',0
+	dc.w	CURSEN-*
+	dc.b	6,'CURSEN',0
+	dc.w	CURDIS-*
+	dc.b	6,'CURDIS',0
+
+	dc.w	0
+
+	dc.w	29
+
+	dc.w	QDOS-*
+	dc.b	5,'QDOS$'
+	dc.w	SYSBASE-*
+	dc.b	7,'SYSBASE'
+	dc.w	ALCHP-*
+	dc.b	5,'ALCHP'
+	dc.w	FREE_MEM-*
+	dc.b	8,'FREE_MEM',0
+	dc.w	FLEN-*
+	dc.b	4,'FLEN',0
+	dc.w	FACS-*
+	dc.b	5,'FACCS'
+	dc.w	FTYP-*
+	dc.b	4,'FTYP',0
+	dc.w	FDAT-*
+	dc.b	4,'FDAT',0
+	dc.w	FXTRA-*
+	dc.b	5,'FXTRA'
+	dc.w	FTEST-*
+	dc.b	5,'FTEST'
+	dc.w	DDTEST-*
+	dc.b	6,'DDTEST',0
+	dc.w	POSITION-*
+	dc.b	8,'POSITION',0
+	dc.w	HEXS-*
+	dc.b	4,'HEX$',0
+	dc.w	HEX-*
+	dc.b	3,'HEX'
+	dc.w	INTEGERS-*
+	dc.b	8,'INTEGER$',0
+	dc.w	LONGINTS-*
+	dc.b	8,'LONGINT$',0
+	dc.w	FLOATS-*
+	dc.b	6,'FLOAT$',0
+	dc.w	STRINGS-*
+	dc.b	7,'STRING$'
+	dc.w	STRINGI-*
+	dc.b	7,'STRING%'
+	dc.w	STRINGL-*
+	dc.b	7,'STRINGL'
+	dc.w	STRINGF-*
+	dc.b	7,'STRINGF'
+	dc.w	GETW-*
+	dc.b	4,'GET%',0
+	dc.w	GETF-*
+	dc.b	4,'GETF',0
+	dc.w	GETS-*
+	dc.b	4,'GET$',0
+	dc.w	INPUTS-*
+	dc.b	6,'INPUT$',0
+
+	dc.w	0
+
+; -------------------------------------------------------------
+QDOS:
+	cmp.l	a3,a5
+	bne	RPORT.BP
+	moveq	#MT.INF,d0
+	trap	#1
+	move.l	d2,d1
+	bra	RET_4S
+
+; -------------------------------------------------------------
+SYSBASE:
+	cmp.l	a3,a5
+	bne	RPORT.BP
+	moveq	#MT.INF,d0
+	trap	#1
+	move.l	a0,d1
+	bra	RET_L
+
+; -------------------------------------------------------------
+RESET:
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	trap	#0
+	ori.w	#$0700,sr
+
+	move.l	$0,a7		; reset supervisor stack
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6
+
+	suba.l	a0,a0
+
+	tst.b	161(a6) 	; skip if not 010+
+	beq.s	RESET2
+
+	dc.w	$4E7A,$8801	; movec vbr,a0
+
+RESET2:
+	move.l	$4(a0),-(a7)	; jump to reset routine
+	rts
+
+; -------------------------------------------------------------
+RECHP:
+	bsr	FETCH_L
+	bne.s	RECHX
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	subq.l	#4,d1		; compensate for link
+
+	lea	$E0(a6),a1	; BASICs list of allocations
+RECHL:
+	move.l	(a1),d0
+	beq	RPORT.OR	; indicate error if no link
+
+	move.l	d0,a1
+	cmp.l	d0,d1		; look for allocation in list
+	bne.s	RECHL
+
+	move.l	d1,a0		; address of link
+	lea	$E0(a6),a1	; BASICs list of allocations
+	move.w	UT.UNLNK,a4
+	jsr	(a4)		; remove from linked list
+
+	moveq	#MT.RECHP,d0
+	trap	#1		; release memory
+
+RECHX:
+	rts
+
+; -------------------------------------------------------------
+CLCHP:
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	lea	$E0(a6),a1	; BASICs list of allocations
+	move.l	(a1),d0
+	beq.s	CLCHPX
+
+	clr.l	(a1)
+CLCHPL:
+	move.l	d0,a4
+	move.l	d0,a0
+	moveq	#MT.RECHP,d0
+	trap	#1
+	move.l	(a4),d0
+	bne.s	CLCHPL
+
+CLCHPX:
+	rts
+
+; -------------------------------------------------------------
+;    ALCHP(HP.REQ)
+; or ALCHP(JB.ID,HP.REQ)
+; or ALCHP(JB.NUM,JB.TAG,HP.REQ)
+
+ALCHP:
+	move.l	a5,d5
+	sub.l	a3,d5
+	beq	RPORT.BP
+
+	moveq	#-1,d2		; default job ID
+
+	cmp.w	#1*8,d5 	; one parameter?
+	beq.s	ALCH1P
+
+	cmp.w	#3*8,d5
+	bgt	RPORT.BP
+
+	move.l	a5,-(a7)
+	lea	-8(a5),a5
+	bsr	FETCH_ID	; get job ID
+	movea.l a5,a3
+	movea.l (a7)+,a5
+	bne.s	ALCHX
+	move.l	d1,d2		; in d2!
+
+ALCH1P:
+	bsr	FETCH_L
+	bne.s	ALCHX
+
+	tst.l	d1
+	ble	RPORT.OR	; shouldn't allocate nought
+
+	addq.l	#4,d1		; room for link
+
+	moveq	#MT.ALCHP,d0
+	trap	#1
+	tst.l	d0
+	bne.s	ALCHX
+
+	lea	$E0(a6),a1	; BASICs list of allocations
+	move.w	UT.LINK,a4
+	jsr	(a4)		; add to linked list
+
+	move.l	a0,d1		; address of allocation
+	addq.l	#4,d1		; skip over link
+
+	bra	RET_L
+
+ALCHX:
+	rts
+
+; -------------------------------------------------------------
+FREE_MEM:
+	moveq	#MT.INF,d0
+	trap	#1
+	move.l	SV_BASIC(a0),d1
+	sub.l	SV_FREE(a0),d1
+	subi.l	#$400,d1	; a bit of lea-way
+	bra	RET_L
+
+; -------------------------------------------------------------
+LRESPR:
+	moveq	#1,d7		; old shared device
+
+	bsr	FL_ID
+	bne	FEXIT
+
+	move.l	a4,d4		; channel ID to close
+
+	bsr	HEDR1		; read file header
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne	SDONE1
+
+	move.l	0(a2),d1	; get length of file
+
+	movem.l d1/a2,-(a7)	; save len & header buffer
+
+	moveq	#MT.ALRES,d0
+	trap	#1		; allocate space
+	move.l	a0,a1		; location
+
+	movem.l (a7)+,d2/a2	; restore len & header buffer
+
+	tst.l	d0
+	bne	SDONE1		; no room so quit
+
+	move.l	a1,-(a7)	; stack return address
+
+	move.l	a4,a0		; File ID
+	moveq	#-1,d3		; infinite timeout
+	moveq	#FS.LOAD,d0
+	trap	#3		; load file
+
+	tst.l	d0
+	beq	SDONE1		; no errors.
+
+	addq.l	#4,a7		; failed to load
+
+	bra	SDONE1
+
+; -------------------------------------------------------------
+FLEN:
+	moveq	#1,d7		; old shared device
+
+	bsr	FGEN
+	bne	SDONE1
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne	SDONE1
+
+	move.l	0(a2),d6
+	bra.s	FDONE
+
+; -------------------------------------------------------------
+FACS:
+	moveq	#1,d7		; old shared device
+
+	bsr	FGEN
+	bne	SDONE1
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne	SDONE1
+
+	move.b	4(a2),d6
+	ext.w	d6
+	ext.l	d6
+	bra.s	FDONE
+
+; -------------------------------------------------------------
+FTYP:
+	moveq	#1,d7		; old shared device
+
+	bsr	FGEN
+	bne	SDONE1
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne	SDONE1
+
+	move.b	5(a2),d6
+	ext.w	d6
+	ext.l	d6
+	bra.s	FDONE
+
+; -------------------------------------------------------------
+FDAT:
+	moveq	#1,d7		; old shared device
+
+	bsr	FGEN
+	bne	SDONE1
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne	SDONE1
+
+	move.l	6(a2),d6
+	bra.s	FDONE
+
+; -------------------------------------------------------------
+FXTRA:
+	moveq	#1,d7		; old shared device
+
+	bsr	FGEN
+	bne	SDONE1
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne.s	SDONE1
+
+	move.l	$A(a2),d6
+
+; -------------------------------------------------------------
+FDONE:
+	moveq	#ERR.OK,d0	; no errors
+
+	bsr.s	SDONE1
+
+FDONE1:
+	move.l	d6,d1
+	bra	RET_L
+
+; -------------------------------------------------------------
+FEXIT:
+	rts
+
+; -------------------------------------------------------------
+SACS:
+	moveq	#0,d7		; old exclusive device
+
+	bsr	FGEN
+	bne.s	SDONE1
+
+	bsr	FETCH_W
+	bne.s	SDONE1
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne.s	SDONE1
+
+	move.b	d1,4(a2)
+	bra.s	SDONE
+
+; -------------------------------------------------------------
+STYP:
+	moveq	#0,d7		; old exclusive device
+
+	bsr.s	FGEN
+	bne.s	SDONE1
+
+	bsr	FETCH_W
+	bne.s	SDONE1
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne.s	SDONE1
+
+	move.b	d1,5(a2)
+	bra.s	SDONE
+
+; -------------------------------------------------------------
+SDAT:
+	moveq	#0,d7		; old exclusive device
+
+	bsr.s	FGEN
+	bne.s	SDONE1
+
+	bsr	FETCH_L
+	bne.s	SDONE1
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne.s	SDONE1
+
+	move.l	d1,6(a2)
+	bra.s	SDONE
+
+; -------------------------------------------------------------
+SXTRA:
+	moveq	#0,d7		; old exclusive device
+
+	bsr.s	FGEN
+	bne.s	SDONE1
+
+	bsr	FETCH_L
+	bne.s	SDONE1
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne.s	SDONE1
+
+	move.l	d1,$A(a2)
+
+; -------------------------------------------------------------
+SDONE:
+	moveq	#ERR.OK,d0	; no errors
+
+	move.l	a4,a0		; channel ID
+	move.l	a2,a1		; location of header
+	moveq	#14,d2
+	moveq	#-1,d3
+	moveq	#FS.HEADS,d0	; set header
+	trap	#3
+
+SDONE1:
+	move.l	d0,d7		; save error code
+
+	move.l	a2,d0
+	beq.s	SDONE2
+
+	move.l	a2,a0
+	moveq	#MT.RECHP,d0
+	trap	#1		; release buffer
+
+SDONE2:
+	tst.l	d4
+	beq.s	SEXIT
+
+	move.l	d4,a0
+	moveq	#IO.CLOSE,d0	; close file
+	trap	#2
+
+SEXIT:
+	move.l	d7,d0		; restore error code
+
+	rts
+
+; -------------------------------------------------------------
+FGEN:
+	moveq	#0,d4		; no channel to close yet
+
+	bsr	BKSLSH
+	beq.s	FGEN1
+
+	moveq	#1,d1		; default channel
+	bsr	FETCH_CH
+	bne.s	FGENX
+
+	move.l	a0,a4		; store channel ID
+	bra.s	FGEN3
+
+FGEN1:
+	bsr	FETCH_N
+	bne.s	FGENX
+
+FGEN2:
+	bsr.s	FL_ID
+	bne.s	FGENX
+
+	move.l	a4,d4		; channel ID to close
+
+FGEN3:
+	bsr.s	HEDR1		; read file header
+
+FGENX:
+	rts
+
+; -------------------------------------------------------------
+FL_ID:
+	bsr	GET1_FNAMES
+	bne.s	FL_IDX
+
+FL_ID1:
+	moveq	#0,d1
+	move.w	0(a6,a1.l),d1	; length of filename
+
+	move.l	a1,a0		; address of filename
+	move.l	d7,d3		; shared or exclusive...
+	moveq	#-1,d1		; current job
+	trap	#4		; relative to a6
+	moveq	#IO.OPEN,d0	; try to open file
+	trap	#2
+
+	tst.l	d0
+	bne.s	FL_IDX		; error
+
+	move.l	a0,a4		; store channel ID
+
+FL_IDX:
+	rts
+
+; -------------------------------------------------------------
+HEDR1:
+	movem.l d2-d3/d7/a1/a3,-(a7)
+
+	moveq	#64,d1		; space required
+	moveq	#-1,d2		; owner job = me
+	moveq	#MT.ALCHP,d0
+	trap	#1
+
+	tst.l	d0
+	bne.s	HEDRX
+
+	move.l	a0,a2		; address of buffer
+
+	move.l	a4,a0		; channel ID
+	move.l	a2,a1		; location for header
+	moveq	#64,d2
+	moveq	#-1,d3
+	moveq	#FS.HEADR,d0	; get 64 bytes of header
+	trap	#3
+
+	tst.l	d0
+	beq.s	HEDRX		; no errors... exit
+
+	move.l	d0,d7		; save error code
+
+	move.l	a2,a0
+	moveq	#MT.RECHP,d0
+	trap	#1		; release buffer
+	suba.l	a2,a2		; indicate no buffer
+
+	move.l	d7,d0		; restore error
+
+HEDRX:
+	movem.l (a7)+,d2-d3/d7/a1/a3
+	rts
+
+; -------------------------------------------------------------
+FTEST:
+	bsr	GET1_FNAMES
+	bne	RPORT.BP
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#0,d1
+	move.w	0(a6,a1.l),d1	; length of filename
+
+	move.l	a1,a0		; address of filename
+	moveq	#0,d3		; old exclusive device
+	moveq	#-1,d1		; current job
+	trap	#4		; relative to a6
+	moveq	#IO.OPEN,d0	; try to open file
+	trap	#2
+
+	move.l	d0,d6
+	bne.s	FTEST1
+
+	moveq	#IO.CLOSE,d0	; close file
+	trap	#2
+
+FTEST1:
+	move.l	d6,d1
+	bra	RET_L
+
+; -------------------------------------------------------------
+DDTEST:
+	bsr	FETCH_S
+	bne	RPORT.BP
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#MT.INF,d0
+	trap	#1
+	move.l	SV_DDLST(a0),a0
+
+	bra.s	DDTST1
+
+DDTSTL:
+	move.l	(a0),a0
+
+DDTST1:
+	move.l	a0,d0
+	beq.s	DDTST.NF	; device not in list
+
+	lea	$24(a0),a4	; address of name
+
+	move.l	a1,a2
+
+	move.w	(a4)+,d0
+	cmp.w	0(a6,a2.l),d0
+	bne.s	DDTSTL
+
+	addq.l	#2,a2
+	bra.s	DDTST2
+
+DDTSTL2:
+	move.b	(a4)+,d1
+	move.b	0(a6,a2.l),d2
+	eor.b	d2,d1
+	andi.b	#$DF,d1
+	bne.s	DDTSTL
+
+	addq.l	#1,a2
+
+DDTST2:
+	dbra	d0,DDTSTL2
+
+	moveq	#ERR.OK,d1
+	bra.s	DDTSTX
+
+DDTST.NF:
+	moveq	#ERR.NF,d1
+
+DDTSTX:
+	bra	RET_L
+
+; -------------------------------------------------------------
+DDLIST:
+	moveq	#1,d1
+	bsr	FETCH_CH
+	bne.s	DDLISTX
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	move.l	a0,a3		; save channel id
+
+	moveq	#MT.INF,d0
+	trap	#1		; get address of sys vars in a0
+	move.l	SV_DDLST(a0),a4 ; address of first device driver
+	move.l	a3,a0		; restore channel id
+
+DDLISTL:
+	lea	$24(a4),a1
+	bsr	IOSTRG
+	bne.s	DDLISTX
+
+	moveq	#$0A,d1 	; linefeed
+	moveq	#-1,d3
+	moveq	#IO.SBYTE,d0
+	trap	#3
+
+	tst.l	d0
+	bne.s	DDLISTX
+
+	move.l	(a4),a4
+	move.l	a4,d0
+	tst.l	d0
+	bne.s	DDLISTL
+
+DDLISTX:
+	rts
+
+; -------------------------------------------------------------
+SPOSN:
+	moveq	#1,d1
+	bsr	FETCH_CH
+	bne.s	SPOSNX
+
+	bsr	FETCH_L
+	bne.s	SPOSNX
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#-1,d3
+	moveq	#FS.POSAB,d0	; set file pointer
+	trap	#3
+
+SPOSNX:
+	rts
+
+; -------------------------------------------------------------
+POSITION:
+	moveq	#1,d1
+	bsr	FETCH_CH
+	bne.s	POSITIONX
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#0,d1
+	moveq	#-1,d3
+	moveq	#FS.POSRE,d0	; set file pointer rel to 0
+	trap	#3
+
+	bra	RET_L		; return file pointer
+
+POSITIONX:
+	rts
+
+; -------------------------------------------------------------
+HEXS:
+	bsr	FETCH_L
+	bne.s	HEXSX
+
+	move.l	d1,d2
+	bsr	FETCH_W
+	bne.s	HEXSX
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	cmp.w	#32,d1
+	bgt	RPORT.OR
+
+	addq.w	#3,d1
+	lsr.w	#2,d1		; number of digits
+	beq	RPORT.OR
+
+	move.l	BV_RIP(a6),a1
+
+	btst	#0,d1
+	beq.s	HEXS1
+
+	subq.l	#1,a1
+
+HEXS1:
+	move.w	d1,d3
+	subq.w	#1,d3
+HEXSL:
+	move.l	d2,d0
+	andi.b	#15,d0
+	cmpi.b	#10,d0
+	blt.s	HEXS2
+
+	addq.b	#7,d0
+HEXS2:
+	addi.b	#48,d0
+	subq.l	#1,a1
+	move.b	d0,0(a6,a1.l)
+	lsr.l	#4,d2
+	dbra	d3,HEXSL
+
+	subq.l	#2,a1
+	move.w	d1,0(a6,a1.l)
+	move.l	a1,BV_RIP(a6)
+
+	moveq	#1,d4
+	moveq	#ERR.OK,d0
+
+HEXSX:
+	rts
+
+; -------------------------------------------------------------
+HEX:
+	bsr	FETCH_S
+	bne	RPORT.BP
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	move.w	0(a6,a1.l),d1
+	beq	RPORT.BP
+
+	cmp.w	#8,d1
+	bgt	RPORT.BP
+
+	addq.l	#2,a1
+	subq.w	#1,d1
+	moveq	#0,d2
+
+HEXL:
+	move.b	0(a6,a1.l),d0
+	addq.l	#1,a1
+	subi.b	#48,d0
+	bmi	RPORT.OR
+
+	cmpi.b	#10,d0
+	blt.s	HEX1
+
+	andi.b	#223,d0
+
+	cmpi.b	#17,d0
+	blt	RPORT.OR
+
+	subq.b	#7,d0
+
+	cmpi.b	#15,d0
+	bgt	RPORT.OR
+HEX1:
+	lsl.l	#4,d2
+	or.b	d0,d2
+
+	dbra	d1,HEXL
+
+	move.l	d2,d1
+	bra	RET_L
+
+; -------------------------------------------------------------
+STRINGL:
+	bsr	FETCH_S
+	bne	RPORT.BP
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	move.w	0(a6,a1.l),d1
+	cmp.w	#4,d1
+	bne	RPORT.BP
+
+	move.l	2(a6,a1.l),d1
+
+	bra	RET_L
+
+; -------------------------------------------------------------
+STRINGI:
+	bsr	FETCH_S
+	bne	RPORT.BP
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#2,d2
+	moveq	#3,d4
+	bra.s	NUMFORM
+
+; -------------------------------------------------------------
+STRINGF:
+	bsr	FETCH_S
+	bne	RPORT.BP
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#6,d2
+	moveq	#2,d4
+
+NUMFORM:
+	move.w	0(a6,a1.l),d1
+	cmp.w	d2,d1
+	bne	RPORT.BP
+	addq.l	#2,a1
+	move.l	a1,BV_RIP(a6)
+	rts
+
+; -------------------------------------------------------------
+INTEGERS:
+	bsr	FETCH_W
+	bne	RPORT.BP
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#2,d4
+	bra.s	STRFORM
+
+; -------------------------------------------------------------
+LONGINTS:
+	move.w	CA.GTLIN,a2
+	bsr	GET_ONE
+	bne	RPORT.BP
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#4,d4
+	bra.s	STRFORM
+
+; -------------------------------------------------------------
+FLOATS:
+	bsr	FETCH_F
+	bne	RPORT.BP
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#6,d4
+	bra.s	STRFORM
+
+; -------------------------------------------------------------
+STRINGS:
+	bsr	FETCH_S
+	bne	RPORT.BP
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	move.w	0(a6,a1.l),d4
+	addq.w	#2,d4
+
+STRFORM:
+;	 moveq.l  #2,d1
+;	 move.w  BV.CHRIX,a2
+;	 jsr	 (a2)
+
+	subq.l	#2,a1		; 2 bytes for string len
+	move.l	a1,BV_RIP(a6)
+
+	move.w	d4,0(a6,a1.l)
+	moveq	#1,d4
+	moveq	#0,d0
+	rts
+
+; -------------------------------------------------------------
+GETW:
+	moveq	#1,d1
+	bsr	FETCH_CH
+	bne.s	GETWX
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#2,d1
+	bsr.s	INPUTC
+
+	moveq.l #3,d4		; return integer
+
+GETWX:
+	rts
+
+; -------------------------------------------------------------
+GETF:
+	moveq	#1,d1
+	bsr	FETCH_CH
+	bne.s	GETFX
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#6,d1
+	bsr.s	INPUTC
+
+	moveq.l #2,d4		; return float
+
+GETFX:
+	rts
+
+; -------------------------------------------------------------
+GETS:
+	moveq	#1,d1
+	bsr	FETCH_CH
+	bne.s	INPUTSX
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	moveq	#2,d1
+	bsr.s	INPUTC
+	bne.s	INPUTSX
+
+	move.w	0(a6,a1.l),d1	; get length
+	addq.l	#2,a1
+	move.l	a1,BV_RIP(a6)
+
+	bra.s	INPUTS1
+
+; -------------------------------------------------------------
+INPUTS:
+	moveq	#1,d1
+	bsr	FETCH_CH
+	bne.s	INPUTSX
+
+	bsr	FETCH_L
+	bne.s	INPUTSX
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+INPUTS1:
+	bsr.s	INPUTC		; get d1 characters to ri stack
+	bne.s	INPUTSX
+
+	subq.l	#2,a1
+	move.l	a1,BV_RIP(a6)
+	move.w	d1,0(a6,a1.l)	; store length
+
+	moveq	#1,d4		; return string
+
+INPUTSX:
+	rts
+
+; -------------------------------------------------------------
+INPUTC:
+	move.l	d1,d4		; save D1
+	addq.l	#2,d1		; make sure that ri stack has
+	move.w	BV.CHRIX,a2	; space for num chars to fetch
+	jsr	(a2)		; (+2 for flexibility)
+
+	move.l	BV_RIP(a6),a1	; address on ri stack
+	suba.l	d4,a1		; for chars to fetch
+
+	move.l	d4,d2
+	moveq	#-1,d3
+	trap	#4
+	moveq	#IO.FSTRG,d0
+	trap	#3
+
+	tst.l	d0		; error?
+	bne.s	INPUTCX
+
+	move.l	BV_RIP(a6),a1
+	suba.l	d4,a1
+	move.l	a1,BV_RIP(a6)	; update ri stack
+
+	tst.l	d0
+
+INPUTCX:
+	rts
+
+; -------------------------------------------------------------
+CURSEN:
+	moveq	#SD.CURE,d5
+	bra.s	CURSR
+
+CURDIS:
+	moveq	#SD.CURS,d5
+
+CURSR:
+	moveq	#1,d1
+	bsr	FETCH_CH
+	bne.s	CURSR_X
+
+	cmp.l	a3,a5
+	bne	RPORT.BP
+
+	move.w	#-1,d3
+	move.b	d5,d0
+	trap	#3
+CURSR_X:
+	rts
+
+; -------------------------------------------------------------
+; Entry: A3.L	pointer to first parameter
+;	A5.L   pointer to last parameter
+;
+; Exit: A3.L   updated
+;	A5.L   updated
+;	A1.L   pointer to result
+;	D0.L...error code
+;	D1.W   result (or mantissa or string length)
+
+; Fetch one null parameter
+
+FETCH_N:
+	move.b	1(a6,a1.l),d0
+	andi.w	#$0F,d0
+	bne	RPORT.BP
+
+	addq.l	#8,a3
+	rts
+
+; --------------------------------------------------------------
+; Fetch one Word
+
+FETCH_W:
+	move.l	a2,-(a7)
+
+	move.w	CA.GTINT,a2
+	bsr.s	GET_ONE
+	bne.s	FETCH_WX
+
+	move.l	a1,BV_RIP(a6)
+	moveq	#0,d1
+	move.w	0(a6,a1.l),d1
+	addq.l	#2,BV_RIP(a6)
+
+FETCH_WX:
+	move.l	(a7)+,a2
+	tst.l	d0
+	rts
+
+; --------------------------------------------------------------
+; Fetch one long word
+
+FETCH_L:
+	move.l	a2,-(a7)
+
+	move.w	CA.GTLIN,a2
+	bsr.s	GET_ONE
+	bne.s	FETCH_LX
+
+	move.l	a1,BV_RIP(a6)
+	move.l	0(a6,a1.l),d1
+	addq.l	#4,BV_RIP(a6)
+
+FETCH_LX:
+	move.l	(a7)+,a2
+	tst.l	d0
+	rts
+
+; --------------------------------------------------------------
+; Fetch one floating point number
+
+FETCH_F:
+	move.l	a2,-(a7)
+
+	move.w	CA.GTFP,a2
+	bsr.s	GET_ONE
+	bne.s	FETCH_FX
+
+	move.l	a1,BV_RIP(a6)
+	move.w	0(a6,a1.l),d1
+	move.l	2(a6,a1.l),d2
+	addq.l	#6,BV_RIP(a6)
+
+FETCH_FX:
+	move.l	(a7)+,a2
+	tst.l	d0
+	rts
+
+; --------------------------------------------------------------
+; Fetch one string
+
+FETCH_S:
+	move.l	a2,-(a7)
+
+	move.w	CA.GTSTR,a2
+	bsr.s	GET_ONE
+	bne.s	FETCH_SX
+
+	move.l	a1,BV_RIP(a6)
+	moveq	#3,d1		; get total length of string
+	add.w	0(a6,a1.l),d1
+	bclr	#0,d1
+	add.l	d1,BV_RIP(a6)	; and reset ri stack pointer
+
+FETCH_SX:
+	move.l	(a7)+,a2
+	tst.l	d0
+	rts
+
+; --------------------------------------------------------------
+;  This routine gets one parameter and returns it on the maths
+;  stack, pointed to by (A1).
+;
+; Entry: A2.L	routine to call (i.e. CA.GTINT)
+;	A3.L   pointer to first parameter
+;	A5.L   pointer to last parameter
+;
+; Exit: A3.L   updated
+;	A5.L   updated
+;	A1.L   updated pointer to top of maths stack
+;	D0.L   error code
+;
+
+GET_ONE:
+	movem.l d1-d6/a0/a2,-(a7)
+
+	lea	8(a3),a0
+	cmp.l	a0,a5
+	blt.s	GET_ONEBp
+
+	move.l	BV_RIP(a6),a1
+	movem.l a0/a5,-(a7)
+	move.l	a0,a5
+	jsr	(a2)
+	movem.l (a7)+,a0/a5
+
+	tst.l	d0
+	bne.s	GET_ONEX
+
+	move.l	a0,a3
+	move.l	a1,BV_RIP(a6)
+
+	bra.s	GET_ONEX
+
+GET_ONEBp:
+	moveq	#ERR.BP,d0
+
+GET_ONEX:
+	movem.l (a7)+,d1-d6/a0/a2
+	tst.l	d0
+	rts
+
+; --------------------------------------------------------------
+; Get a filename on the stack
+;
+; Entry: A3.L	pointer to first parameter
+;	A5.L   pointer to last parameter
+;
+; Exit: A3.L   updated
+;	A5.L   updated
+;	D0.L...error code
+;	A1.L   pointer to string on math stack
+
+GET1_FNAMES:
+	movem.l d1/d4/d6/a2,-(a7)
+
+	cmp.l	a3,a5
+	beq	GET1_BP
+
+	move.l	BV_RIP(a6),a1
+
+	tst.w	2(a6,a3.l)	; Test for parameter name
+	bmi.s	GET1_STR	; none? ...must be exprssn.
+
+	moveq	#$0f,d0 	; extract type of parameter.
+	and.b	1(a6,a3.l),d0
+	subq.b	#1,d0		; is it a string?
+	bne.s	GET1_NAM	; no, use name instead
+
+GET1_STR:
+	move.l	a5,-(sp)	; save the top pointer
+	lea	8(a3),a5	; get just one string
+	move.w	CA.GTSTR,a2
+	jsr	(a2)
+	move.l	(sp)+,a5	; restore top pointer
+	tst.l	d0
+	bne.s	GET1_RTS
+
+	move.l	a1,BV_RIP(a6)
+	moveq	#3,d1		; get total length of string
+	add.w	0(a6,a1.l),d1
+	bclr	#0,d1
+	add.l	d1,BV_RIP(a6)	; and reset ri stack pointer
+	bra.s	GET1_OK
+
+GET1_NAM:
+	moveq	#0,d1
+	move.w	2(a6,a3.l),d1	; pointer to real entry
+	bmi.s	GET1_BP 	; ... expression is no good
+
+	lsl.l	#3,d1		; in multiples of 8 bytes
+	add.l	BV_NTBAS(a6),d1
+	moveq	#0,d6
+	move.w	2(a6,d1.l),d6	; pointer to the name
+	add.l	BV_NLBAS(a6),d6
+	moveq	#0,d1		; get the length of the name
+	move.b	0(a6,d6.l),d1	; as a long word.
+	addq.l	#1,d1		; rounded up
+	bclr	#0,d1
+	move.w	d1,d4		; and save it
+	addq.l	#2,d1		; space required is +2 bytes
+	move.w	BV.CHRIX,a2	; on ri stack
+	jsr	(a2)
+	move.l	BV_RIP(a6),a1
+	add.w	d4,d6		; move to end of string
+
+GET1_NMLUP:
+	subq.l	#1,a1		; copy one byte at a time
+	move.b	0(a6,d6.l),0(a6,a1.l)
+	subq.l	#1,d6
+	dbra	d4,GET1_NMLUP	; including the (byte) name
+*				  length
+	subq.l	#1,a1		; put a zero on to make it a
+	clr.b	0(a6,a1.l)	; word
+
+GET1_OK:
+	lea	8(a3),a3	; update parameter pointer
+	moveq	#ERR.OK,d0
+	bra.s	GET1_RTS
+
+GET1_BP:
+	moveq	#ERR.BP,d0
+
+GET1_RTS:
+	tst.l	d0
+	movem.l (a7)+,d1/d4/d6/a2
+	rts
+
+; --------------------------------------------------------------
+;  Get channel parameter
+
+; Entry: A3.L	pointer to first parameter
+;	A5.L   pointer to last parameter
+;	D1.L   default channel #
+;
+; Exit: A0.L   CH.ID (default d1)
+;	A2.L   CH.BASE
+;	A3.L   updated
+;	A5.L   updated
+;	D0.L   error code
+;
+
+FETCH_CH:
+	movem.l d1/d3/a1,-(a7)
+
+	move.l	BV_RIP(a6),a1
+	cmp.l	a3,a5
+	beq.s	FETCH_CH1
+
+	btst	#7,1(a6,a3.l)
+	beq.s	FETCH_CH1
+
+	bsr	FETCH_W
+	bne.s	FETCH_CHX
+
+FETCH_CH1:
+	mulu	#$28,d1
+	add.l	BV_CHBAS(a6),d1
+	cmp.l	BV_CHP(a6),d1
+	bge.s	FETCH_CHNO
+
+	move.l	d1,a2
+	move.l	0(a6,a2.l),a0
+	move.w	a0,d1
+	bmi.s	FETCH_CHNO
+
+	moveq	#ERR.OK,d0
+	bra.s	FETCH_CHX
+
+FETCH_CHNO:
+	moveq	#ERR.NO,d0
+
+FETCH_CHX:
+	movem.l (a7)+,d1/d3/a1
+	rts
+
+; -------------------------------------------------------------
+; Get a job ID
+;
+; Entry: a3.L	pointer to first parameter
+;	a5.L   pointer to last parameter
+;
+; Exit: d1.l   JOB ID
+;	a3.L   updated
+;	a5.L   updated
+;	d0.L   error code
+
+FETCH_ID:
+	movem.l d2/d5,-(a7)
+
+	move.l	a5,d5
+	sub.l	a3,d5
+	beq.s	ID_BP
+
+	subq.w	#8,d5
+	bne.s	ID_1
+
+	bsr	FETCH_L 	; JOB ID
+	bra.s	ID_X
+
+ID_1:
+	subq.w	#8,d5
+	bne.s	ID_BP
+
+	bsr.s	COMMA
+	bne.s	ID_BP
+
+	bsr	FETCH_W 	; JOB No
+	bne.s	ID_X
+	move.w	d1,d2
+	swap	d2
+
+	bsr	FETCH_W 	; JOB tag
+	bne.s	ID_X
+	move.w	d1,d2
+	move.l	d2,d1
+
+	moveq	#ERR.OK,d0
+	bra.s	ID_X
+
+ID_BP:
+	moveq	#ERR.BP,d0
+
+ID_X:
+	movem.l (a7)+,d2/d5
+	rts
+
+; -------------------------------------------------------------
+COMMA:
+	move.b	1(a6,a3.l),d0
+	and.w	#$70,d0
+	cmpi.b	#$10,d0 	; ','
+	rts
+
+BKSLSH:
+	move.b	1(a6,a3.l),d0
+	and.w	#$70,d0
+	cmpi.b	#$30,d0 	; '\'
+	rts
+
+; -------------------------------------------------------------
+;  Return true or false back to BASIC
+
+RET_FLS:
+	moveq	#0,d1
+	bra.s	RET_W
+
+RET_TRU:
+	moveq	#1,d1
+
+; --------------------------------------------------------------
+;  Return word d1.w to BASIC
+
+RET_W:
+	move.l	d1,d4
+	moveq.l #2,d1
+	move.w	BV.CHRIX,a2
+	jsr	(a2)
+	move.l	d4,d1
+
+	move.l	BV_RIP(a6),a1	; Get arith stack pointer
+	subq.l	#2,a1		; room for 2 bytes
+	move.l	a1,BV_RIP(a6)
+	move.w	d1,0(a6,a1.l)	; Put int number on stack
+	moveq.l #3,d4		; set Integer type
+
+	moveq.l #ERR.OK,d0	; no errors
+	rts
+
+; -------------------------------------------------------------
+;    Return long Integer d1.l to BASIC
+
+RET_L:
+	move.l	d1,d4
+	moveq.l #6,d1
+	move.w	BV.CHRIX,a2
+	jsr	(a2)
+	move.l	d4,d1
+
+	bsr.s	CONV_L2F
+	subq.l	#6,BV_RIP(a6)
+	move.l	BV_RIP(a6),a1
+	move.w	d2,0(a6,a1.l)
+	move.l	d1,2(a6,a1.l)
+	moveq.l #2,d4
+
+	moveq.l #ERR.OK,d0
+	rts
+
+; -------------------------------------------------------------
+;  convert long Integer to floating point form.
+;  Entry: d1.l = long int
+;  Exit:  d1.w = mantissa
+;	 d2.l = exponent
+
+CONV_L2F:
+	move.l	d1,d2
+	beq.s	CONV_L2FX
+
+	move.w	#$81F,d2
+	move.l	d1,-(a7)
+
+CONV_L2F1:
+	add.l	d1,d1
+	bvs.s	CONV_L2F2
+
+	subq.w	#1,d2
+	move.l	d1,(a7)
+	bra.s	CONV_L2F1
+
+CONV_L2F2:
+	move.l	(a7)+,d1
+
+CONV_L2FX:
+	rts
+
+; -------------------------------------------------------------
+;    Return 4 character string d1.l to BASIC
+
+RET_4S:
+	move.l	d1,d4
+	moveq.l #6,d1
+	move.w	BV.CHRIX,a2
+	jsr	(a2)
+	move.l	d4,d1
+
+	subq.l	#6,BV_RIP(a6)
+	move.l	BV_RIP(a6),a1
+	move.w	#4,0(a6,a1.l)
+	move.l	d1,2(a6,a1.l)
+	moveq	#1,d4
+
+	moveq	#ERR.OK,d0
+	rts
+
+; -------------------------------------------------------------
+;    print string at (a1) to channel with id a0
+
+IOSTRG:
+	movem.l d1-d3/a1-a2,-(a7)
+
+	move.w	UT.MTEXT,a2
+	jsr	(a2)
+
+	movem.l (a7)+,d1-d3/a1-a2
+	rts
+
+; --------------------------------------------------------------
+RPORT.OR moveq	#ERR.OR,d0
+	rts
+
+RPORT.NO moveq	#ERR.NO,d0
+	rts
+
+RPORT.BP moveq	#ERR.BP,d0
+	rts
+
+; --------------------------------------------------------------
+
+	END

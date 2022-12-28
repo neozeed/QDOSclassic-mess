@@ -1,0 +1,167 @@
+Short:    A re-engineered Turbo Toolkit
+Author:   See 4.2 below
+Version:  3b27
+Type:     util/rext
+
+
+ARCHIVE CONTENTS
+
+ TURBO_TK_code   - the toolkit
+ TURBO_TK_readme - this file
+
+
+FEATURES
+
+* Bug fixes
+* Freely distributable
+
+
+1. Changes and fixes in the Turbo Toolkit version 3b27:
+
+1.1/ This version of the Turbo Toolkit was produced by David Gilham and Mark
+Knight; David debugged and rewrote some of the existing code and Mark wrote
+the new keyword code.  The work was done by disassembling the last official
+version (3.22) and then translating the labels as far as we could to more
+meaningful ones.  Without comments in the source it is hard to unravel
+assembly code written by other people, but David is pretty good at this sort
+of thing.  Testing has been an interesting process assisted by several
+helpful souls including Alf Kendal, Geoff Wicks, Roy Wood (unwittingly!) and
+Ron Dunnet (also probably without knowing).
+
+1.2/ The Turbo Toolkit remains mostly as Chas Dillon last left it, but we did
+find and fix several bugs.  In addition Chas did not have access to a Minerva
+ROM, and when he last updated Turbo Toolkit SMSQ/E did not yet exist, so
+there were a few compatibility problems.  A few bugs remain, notably in
+CHARGE and the EXECUTE keywords and LINK_LOAD keywords.  These do not stop
+the commands working, but restrict them a little; the code is complex enough
+so that we will fix it when we have commented source, which is much easier
+than working from a disassembly.
+
+1.3/ Some of the keywords to access SuperBASIC/SBASIC structures will not
+work with multi-tasking SBASICs, only in the main resident interpreter, and
+the same applies to Minerva's multitasking SuperBASICs too.  This version of
+Turbo Toolkit is so compatible with SMSQ/E that it can be installed as an
+SMSQ/E module, which will save you having to load the toolkit just to run the
+odd program.
+
+1.4/ Many of the accusations leveled at Turbo Toolkit turned out to be false
+when we investigated the disassembled listing.  There were no direct accesses
+to system or SuperBASIC variables, in every case the system was properly
+called to locate such structures; this is one example.  Also, far from being
+"riddled with bugs" as one knowledgeable QL source once informed me, we found
+just seven; most of these were so trivial that they didn't stop the relevant
+keywords working, they simply restricted their use slightly.
+
+1.5/ This version of Turbo Toolkit works well, and runs on all the systems we
+have tried it on; these are AH, JM, JS and MG ROM QLs, Minerva 1.97, SMSQ/E
+running on Atari ST, TT and QXL hardware, SMSQ on a QXL and within QPC.  Some
+Turbo compiled programs which previously would not run under SMSQ/E with
+older versions of Turbo Toolkit loaded will run with this version loaded,
+which is a fair testament to the work we have done.
+
+1.6/ There now follows a list of the problems we have fixed, additions made
+and a few comments.
+
+2/ Fixes:
+
+2.1/ TYPE_IN now works again and is compatible with Minerva, SMSQ and SMSQ/E.
+
+2.2/ ALLOCATION and DEALLOCATE now use a watermarking method similar to that
+used in DIY toolkit; checks for some other problems including odd addresses
+have also been added.  Older versions used to crash the system if you tried
+to DEALLOCATE memory not grabbed with ALLOCATE (or already DEALLOCATEd), now
+you will get an error message.
+
+2.3/ COMMAND_LINE bug fixed, also now works with Minerva and SBASIC (main
+interpreter only, not daughter jobs).
+
+2.4/ SET_PRIORITY changed to work with values from -128 to 255 to allow both
+sorts of priority scheme, the old QDOS 0 to 255 and the new Minerva and
+SMSQ/E -128 to 127.  Also will allow job 0 to be set to a priority of 0, and
+so it should - if you do this inappropriately on your own head be it, but
+there are times when it is appropriate.
+
+2.5/ Code used to test if a job is compiled or interpreted is completely
+rewritten to work with Minerva, SMSQ, SMSQ/E, SBASIC, Turbo and even
+Q-Liberator (David insisted) so now IF COMPILED works in all known
+environments.
+
+3/ Additions:
+
+3.1/ LONGINTEGER
+
+Converts any string of 4 bytes into a floating point number equal to the
+signed long integer value of the bytes.  The string must be 4 bytes long or
+an error message will result.  Example:
+
+x=LONGINTEGER(Any$)
+
+3.2/ LONGINTEGER$
+
+Function to convert any floating point number in the long integer range
+(-2,147,483,648 to 2,147,483,647) into a string of 4 bytes.  This function
+and the previous one are handy for putting long integer values into strings
+or files when database programming; example:
+
+Any$=LONGINTEGER$(x)
+
+3.3/ FWINDOW%
+
+Function to help write programs which will work on a standard QL screen but
+which can also use high resolution screens.  This function takes the same
+parameters as WINDOW though the channel parameter is not optional.  Returns
+an error code if the window can't be redefined, otherwise redefines it just
+as WINDOW does and returns 0.  Enclosed is a suitable SuperBASIC program, a
+smaller example follows:
+
+1000 WindowError=FWINDOW%(#0,512,384,0,0)
+1010 IF WindowError<0 THEN
+1020   WINDOW#0,512,256,0,0
+1030 END IF
+
+3.4/ POKE_F
+
+Procedure, works as you would expect, pokes the 6-byte internal form of a
+floating point number into memory at the specified address.  The address must
+be even.  Example:
+
+POKE_F NewAddress,NewValue
+
+4/ Final comments:
+
+4.1/ This version of Turbo Toolkit is fully ROMable (we think Turbo Toolkit
+has been since v3.00).  You can use this version of Turbo Toolkit freely and
+give it away, and if running a public domain or similar library it may be
+sold on disk for the usual small copying fee.  You are not allowed to sell
+this toolkit commercially.  You may give it away with programs compiled with
+Turbo (commercial or otherwise) so users can run your programs.  You should
+always include this text file and the other files connected with Turbo
+Toolkit in this set.
+
+4.2/ Turbo Toolkit is copyright the Turbo Team, that is (in alphabetical
+order) Charles T Dillon, Simon N Goodwin and Gerry Jackson.  Additions and
+updates by David Gilham and Mark Knight are copyright their respective
+authors.
+
+4.3/ The DEMOS_BAS file is the same Turbo Toolkit demos file supplied by
+Digital Precision, but updated to use SYS_VARS rather than PEEKing and
+POKEing about in the system varables without asking the system if they have
+been moved.
+
+4.4/ None of this software, that is Turbo Toolkit 3b27, TurboPatch,
+CONFIGURE, the DEMOS_BAS file or the ReSize_BAS file, is or can be guaranteed
+to be either bug free or suitable for any particular purpose.  You must bear
+the entire responsibility for determining if it is useful to you, and if any
+lurking bugs may harm your system.  It's free software and comes with no
+warranty of any kind, so there.
+
+4.5/ The above said, we think it's great stuff!  Further bug reports,
+comments suggestions or praise to:
+
+Mark Knight,
+304 Portobello Road,
+Notting Hill,
+LONDON,
+W10 5TA.
+
+23 October 1998.

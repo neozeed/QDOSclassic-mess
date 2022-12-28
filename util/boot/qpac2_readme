@@ -1,0 +1,47 @@
+Short:    Example BOOT program for QPAC2 on QDOS classic
+Author:   Mark J Swift
+Version:  1.00
+Uploader: msw@blackpool.ac.uk
+Type:     util/boot
+
+
+The BASIC program QPAC2_bas is an example BOOT program
+that shows how to get QPAC2 up and running on QDOS classic.
+
+
+ARCHIVE CONTENTS
+
+ QPAC2_boot   - Example BOOT program for QPAC2 on QDOS classic
+ QPAC2_readme - This file.
+
+
+COMPATIBILITY
+
+Works with the versions of QPAC2 that I have tried.
+
+
+WHY IS IT NECESSARY?
+
+HOT_rext (part of the QPAC2 package) expects the THING list
+to be empty when it is initialised. However this is not the
+case since QDOS classic makes extensive use of the THING
+list for its own internal variables.
+
+The example BOOT program temporarily dislocates the THING list
+while HOT_REXT loads. After HOT_rext is loaded, the THING list
+is restored.
+
+QDOS classic continues to work while the THING list is dislocated
+because if it doesn't find what it wants in the THING list, it
+will search the COMMON HEAP instead. However this takes time
+so things will S-L-O-W D-O-W-N. Restoring the THING list will
+bring the system back up to speed.
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

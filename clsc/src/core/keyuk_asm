@@ -1,0 +1,118 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_KBD_inc'
+
+	SECTION	KEYUK
+
+	XREF	LNG_KTAB
+	XREF.S	KTB_OFFS_CT,KTB_OFFS_SH,KTB_OFFS_GR
+
+	XREF.L	HARDTAG
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; KEYUK_asm - UK keyboard routines
+;	   - originated July 98 - Mark Swift
+;	   - last modified 11/08/99 (MSW)
+
+; The source necessary to implement a UK keymap
+
+VERSTAG	EQU	'1.14'
+THNGTAG	EQU	'aKBD'
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  ROM header
+
+BASE:
+	dc.l	$4AFB0001	; ROM recognition code
+	dc.w	PROC_DEF-BASE	; add BASIC procs here
+	dc.w	B_KEYUK-BASE
+
+	dc.b	0,19
+	dc.l	HARDTAG
+	dc.b	'UK keymap '
+	dc.l	VERSTAG
+	dc.b	$A,0
+
+*******************************************************************
+*
+*  find 'THING' from XINT list
+*
+*  enter a6 = system variables
+*  exit	a3 = address of private variables
+*
+*  corrupts = d0
+*
+*  11/08/99 Since the THING is no longer hanging off the THING list
+*	   we have to search via SV_I2LST
+
+FIND_THG:
+	lea	SV_I2LST(a6),a3  ; start of XINT list
+
+FIND_NXTTHG:
+	move.l	(a3),d0
+	beq.s	DEAD_THG
+
+	move.l	d0,a3
+
+	cmp.w	#4,-$38-SV_LXINT+$2A(a3)
+	bne.s	FIND_NXTTHG
+
+	cmp.l	#THNGTAG,-$38-SV_LXINT+$2C(a3)
+	bne.s	FIND_NXTTHG
+
+FIND_OK:
+	lea	SV_LXINT(a3),a3	; return with a3 pointing
+				; to first variable
+
+	moveq	#ERR.OK,d0
+	rts
+
+DEAD_THG:
+	moveq	#ERR.NF,d0
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  BASIC extensions
+
+PROC_DEF:
+	dc.w	2
+	dc.w	B_KEYUK-*
+	dc.b	5,'KEYUK'
+	dc.w	B_KEYUK-*
+	dc.b	5,'KEZUK'
+	dc.w	0
+
+	dc.w	0
+	dc.w	0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  BASIC proc to link in UK keymap again, should it become
+;  dislocated for some reason.
+
+B_KEYUK:
+	movem.l	a0-a4/a6,-(a7)
+
+	moveq	#MT.INF,d0	; get sys vars
+	trap	#1
+	move.l	a0,a6
+	bsr	FIND_THG
+	bne.s	B_KEYUKX 	; exit if THING not found
+
+	lea	LNG_KTAB(pc),a0
+	move.l	a0,VAR.KEYtab(a3)
+
+	moveq	#0,d0
+
+B_KEYUKX:
+	movem.l	(a7)+,a0-a4/a6
+	rts
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad2:
+	DCB.w ((0-(NOPpad2-BASE))&$3)/2,$4E71
+
+*******************************************************************
+
+	END

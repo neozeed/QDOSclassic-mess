@@ -1,0 +1,139 @@
+Short:    The current QDOS CLASSIC ROM for the Q40
+Author:   Mark J Swift
+Version:  3.25 (beta p)
+Uploader: msw@blackpool.ac.uk
+Type:     clsc/run/q40
+
+
+This is the most recent QDOS CLASSIC ROM for the Q40.
+
+
+HOW TO LOAD THE ROM on SMSQ/E systems
+
+  Firstly, load the SOFTROM toolkit with the following command:
+
+  LRESPR SOFTROM_rext
+
+This toolkit adds a single keyword - SOFTROM - to BASIC.
+The SOFTROM keyword allows ROM images to be loaded into the system ROM
+area on the Q40 computer. A hard reset will re-enable the real ROM.
+
+  Now, type:
+
+  SOFTROM CLASSICp_ROM
+
+This will load QDOS Classic into the system ROM area.
+The machine will then reboot.
+
+
+HOW TO LOAD THE ROM on QDOS Classic systems
+
+  Type:
+
+  SOFTROM CLASSICp_ROM
+
+This will load QDOS Classic into the system ROM area.
+The machine will then reboot.
+
+
+PATCHING TK2 INTO THE ROM
+
+Note TK2 is NOT included in this archive.
+
+If you have a legal/spare version of TK2 you should
+first, save it to disk (from a real QL) as follows:
+
+  SBYTES flp1_TK2_ROM,16384*INT(WHERE("TK2_ext")/16384),16384
+
+  (This requires the PD toolkit: PDTK_rext)
+
+then, patch it into the CLASSIC ROM as follows:
+
+  a=ALCHP(98304)
+  LBYTES flp1_CLASSICp_ROM,a
+  LBYTES flp1_TK2_ROM,a+49152
+  SBYTES flp1_CLASSICp_ROM,a,98304
+  RECHP(a)
+
+
+ARCHIVE CONTENTS
+
+ CLASSICp_ROM     - The latest ROM
+ CLASSICp_readme  - This file.
+
+
+HISTORY
+
+BETA p
+
+* Implemented BEEP command (all possible convolutions)
+* Peripheral ROM sources changed to compile with GST asembler
+  (BASIC make file included)
+* Removed THINGs. QPAC2 no longer needs a special BOOT program for
+  QDOS classic. You should be able to use your old QL one.
+* Minimised patch-code delay.
+  Explanation: The main system ROM does not know about the hardware, so
+  it is necessary for the external ROMs to patch into the system vectors.
+  BOOTSTRAP patches the LVL2 int vector and redirects other ints through
+  the LVL2 code which distinguishes between FRAME and EXTERNAL ints.
+  CLOCK patches into TRAP1 for MT.RCLCK, MT.SCLCK & MT.ACLCK
+  KEYBOARD patches into TRAP1 for MT.IPCOM
+  SERIAL patches into TRAP1 for MT.BAUD
+  SAMPLED SOUND SYSTEM patches into the LVL4 & LVL6 int vectors
+  All this Redirection adds to the time it takes to process these vectors,
+  this delay has been minimised as much as possible in this version.
+
+BETA o
+
+* Implemented SER2.
+* Implemented FLP2.
+* Implemented an SMSQ/E compatible Sampled Sound System
+
+BETA n
+
+* Fixed bug in direct sector read/write (e.g. Flp1_*D<n><d>)
+* Tidied up SOFTROM code. Created SOFTROM_rext toolkit for
+  Q40 systems that lack QDOS Classic.
+
+BETA m
+
+* Fixed bug in memory check. 4mb & 20mb systems now work.
+* F1 chosen automatically from F1/F2 screen if no key is
+  pressed within 10 seconds.
+* QubIDE times out properly if no hard drive h/w is present.
+
+BETA l
+
+* Fixed bug where some function keys didn't work.
+* Added some rudimentary support for sound.
+
+BETA k
+
+* Fix to take account of PTR_GENs bad manners.
+  PTR_GEN/WMAN combination now work.
+* Some changes to allow QPAC2 to run, see QPAC2_boot and
+  QPAC2_readme for example.
+* Fixed bug in BREAK (<CTRL><SPACE>) that occasionally showed
+  junk on screen.
+* Fixed bug in SOFTROM that always showed junk on screen.
+* <ALT><cursor key(s)> now repeats properly.
+* Keyboard buffer is emptied at boot-time (hence slight delay)
+  to fix some KEYROW problems from junk keystrokes.
+* SERial now uses 2 stop bits for compatibility with QL (oops)
+* By request, location $280a7 holds $11 to signify Q40 hardware
+* Some documentation at last (see CLASSIC.txt)
+
+
+THINGS TO DO
+
+* Implement PAR
+* Think up a good use for the NVR ram
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

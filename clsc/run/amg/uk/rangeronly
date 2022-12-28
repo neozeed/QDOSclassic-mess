@@ -1,0 +1,7 @@
+; For ALL users - autoconfigures
+
+; If you wish to activate this file from the workbench,
+; change the icon's default tool to :c/IconX
+
+CLASSIC:RUN/AMG/c/L_QDOS -qCLASSIC:ROM/SYS_ROM -pCLASSIC:ROM/AMG/BOOT_ROM CLASSIC:ROM/AMG/VDU_ROM CLASSIC:ROM/AMG/CLK_ROM CLASSIC:ROM/AMG/KBD_ROM CLASSIC:ROM/AMG/KEYUK_ROM CLASSIC:ROM/AMG/SND_ROM CLASSIC:ROM/AMG/SER_ROM CLASSIC:ROM/AMG/FLP_ROM
+

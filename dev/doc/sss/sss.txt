@@ -1,0 +1,137 @@
+SAMPLED SOUND SYSTEM
+
+The sampled sound system uses a 2-byte wide queue (left, right)
+and a sample rate of 20khz. The sample queue is 200 kilobytes long
+which acounts for approximately 5 seconds of sound.
+
+As the samples are sounded and removed from the queue, the sound
+generator (i.e a sound device driver) is expected to stuff more pairs
+of bytes into the queue until the sound data is exhausted.
+
+Sound samples are byte values between 0 and 255. The "zero" level is 128.
+The last two samples (left, right) written to the sound queues should
+be at "zero" level.
+
+Four functions are provided to help manage the sound queue.
+
+The functions should be accessed in supervisor mode via the level 4
+auto vector. You should access the level 4 vector via the vector base
+register (VBR) as follows:
+
+        movec   vbr,a3          68010 and above only
+        move.l  $70(a3),a3      interrupt level 4 auto vector
+
+Access to the four sampled sound system functions is then as follows:
+
+        suba.l  a3,a3
+        tst.b   161(a6)
+        beq.s   NOVBR
+
+        movec   vbr,a3          68010 and above only
+
+NOVBR:
+        move.l  $70(a3),a3      interrupt level 4 auto vector
+        move.l  -(a3),a2        address of sample sound system functions
+        cmp.l   #'SSSS',-(a3)   SMSQ/E Sampled Sound System
+        bne.s   oops
+
+        jsr     $04(a2)         add a sample
+        jsr     $08(a2)         set up to add multiple samples
+        jsr     $0c(a2)         notify that multiple samples have been added
+        jsr     $10(a2)         kill the sound
+
+
+**************************************************************
+*
+* SSS_ADD1 ($04)
+*
+* This call is used to add one sample to the sound queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*        D1 (byte) left hand sound level
+*        D2 (byte) right hand sound level
+*
+* Exit:  A1 smashed
+*        status Z if operation not complete due to queue full
+
+(This call does not return a standard error)
+
+
+**************************************************************
+*
+* SSS_SETM ($08)
+*
+* This call sets up to add multiple samples to the sound queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*
+* Exit:  A1 (long) pointer to the next free byte pair in the queue
+*        A2 (long) pointer past the last free byte pair in the queue
+
+The calling routine can fill the area from A1 to A2 with pairs
+of bytes. It does not need to fill the whole of the area.
+
+After it has put samples into the queue, it should call SSS_ADDM
+to notify the sampled sound system.
+
+
+**************************************************************
+*
+* SSS_ADDM ($0C)
+*
+* This call notifies that samples have been added to the
+* sound queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*        A1 (long) the updated pointer to the next free byte pair
+*                  in the queue
+
+Example:
+
+        movec   vbr,a3          68010 and above only
+        move.l  $70(a3),a3      interrupt level 4 auto vector
+        move.l  -(a3),a2        address of sample sound system functions
+        cmp.l   #'SSSS',-(a3)   SMSQ/E Sampled Sound System
+        bne.s   oops
+
+        jsr     sss_setm(a2)    set up
+        bra.s   end_loop
+
+loop
+
+* calculate next sample in d1.b, d2.b
+
+        move.b  d1,(a1)+        add left sample
+        move.b  d2,(a1)+        add right sample
+
+end_loop
+        cmp.l   a2,a1           more samples to do?
+        blt.s   loop
+
+        move.l  4(a3),a2        restore a2
+        jsr     sss_addm(a2)    notify sampled sound system
+
+
+**************************************************************
+*
+* SSS_KILL ($10)
+*
+* This call stops the sound system and throws the queue away.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+
+
+**************************************************************
+*
+* SSS_SAMPLE ($14)
+*
+* This call estimates the number of samples remaining in the queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*
+* Exit:  D0 (long) number of samples remaining in queue
+
+Divided the result by 400 to give the length of the sound in
+ticks or divide by 20000 to give the length of sound in seconds.
+
+

@@ -1,0 +1,114 @@
+*******************************************************************
+*
+* KBD_asm - Keyboard routines
+*	 - for hardware that is compatible with 804X driver
+*	 - originated July 98 - Mark Swift
+*	 - last modified 22/09/99 (MSW)
+
+AWKCOD	EQU	74		; awkward key that doesn't fit
+AWKASC	EQU	'/'		; into scheme if NUMLOCK is on
+
+*******************************************************************
+*
+*  Subroutine to decode raw keyboard value
+
+KEY_decode:
+
+; --------------------------------------------------------------
+; first test for SHIFT, CTRL, ALT, etc...
+
+	cmp.b	#224,d0		; modify next keycode?
+	beq.s	KEY_mSTO
+
+	cmp.b	#225,d0		; modify next keycode?
+	bne.s	KEY_rTST
+
+KEY_mSTO
+	move.b	d0,VAR.MODflg(a3)
+	bra	KEY_none
+
+KEY_rTST:
+	cmp.b	#240,d0		; key release?
+	bne.s	KEY_sTST
+
+	move.b	d0,VAR.RLSflg(a3)
+	bra.s	KEY_none
+
+KEY_sTST:
+	cmp.b	#18,d0		; left shift?
+	beq.s	KEY_sDO
+
+	cmp.b	#89,d0		; right shift?
+	bne.s	KEY_cTST
+
+KEY_sDO:
+	tst.b	VAR.RLSflg(a3)
+	beq.s	KEY_sSTO
+
+	moveq	#0,d0
+
+KEY_sSTO
+	move.b	d0,VAR.SHFflg(a3)
+	bra.s	KEY_done
+
+KEY_cTST:
+	cmp.b	#20,d0		; control?
+	bne.s	KEY_aTST
+
+	tst.b	VAR.RLSflg(a3)
+	beq.s	KEY_cSTO
+
+	clr.b	VAR.MODflg(a3)	; clear the weird flag
+	moveq	#0,d0
+
+KEY_cSTO
+	move.b	d0,VAR.CTLflg(a3)
+	bra.s	KEY_done
+
+KEY_aTST:
+	cmp.b	#17,d0		; alt?
+	bne.s	KEY_nTST
+
+	tst.b	VAR.RLSflg(a3)
+	beq.s	KEY_aSTO
+
+KEY_aCLR
+	clr.b	VAR.MODflg(a3)	; clear the weird flag
+	clr.b	VAR.GFXflg(a3)	; clear ALT-Gr flag
+	moveq	#0,d0
+
+KEY_aSTO
+	move.b	d0,VAR.ALTflg(a3)
+
+	tst.b	VAR.MODflg(a3)	; test the weird flag
+	beq.s	KEY_done
+
+	move.b	d0,VAR.GFXflg(a3) ; possible ALT-Gr character
+	bra.s	KEY_done
+
+KEY_nTST:
+	cmp.b	#119,d0		; NUMLOCK?
+	bne.s	KEY_doKEY
+
+	tst.b	VAR.RLSflg(a3)
+	bne.s	KEY_done
+
+	not.b	VAR.NLKflg(a3)	; set NUMLOCK flag
+	bsr	HW_DO_LEDS
+	bra.s	KEY_done
+
+KEY_doKEY:
+	move.b	d0,VAR.ACTkey(a3) ; store keycode
+	bra.s	KEY_exit
+
+KEY_done:
+	clr.b	VAR.MODflg(a3)	; clear the weird flag
+	clr.b	VAR.RLSflg(a3)	; and the release flag
+
+KEY_none:
+	clr.b	VAR.ACTkey(a3)	; clear the ACTUAL keycode
+	clr.b	VAR.ASCkey(a3)	; clear the ASCII keycode
+
+KEY_exit:
+	rts
+

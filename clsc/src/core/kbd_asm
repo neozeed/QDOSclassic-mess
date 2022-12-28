@@ -1,0 +1,1373 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_KBD_inc'
+
+	SECTION	KBD
+
+	XDEF	RDKEYB,DO_CAPS
+
+	XREF	HW_RESET,HW_ENABLE
+	XREF	HW_DO_LEDS,HW_KEY_read
+	XREF	XINT_SERver
+
+	XREF	LNG_KTAB
+	XREF.S	KTB_OFFS_CT,KTB_OFFS_SH,KTB_OFFS_GR
+	XREF.S	AWKCOD,AWKASC
+
+	XREF	HW_VCTR_BEG
+	XREF.S	HW_VCTR.LEN
+
+	XREF.L	HARDTAG
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; KBD_asm - Keyboard routines
+;	 - originated July 98 - Mark Swift
+;	 - last modified 11/08/99 (MSW)
+
+VERSTAG	EQU	'1.51'
+THNGTAG	EQU	'aKBD'
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  ROM header
+
+BASE:
+	dc.l	$4AFB0001	; ROM recognition code
+	dc.w	PROC_DEF-BASE	; add BASIC procs here
+	dc.w	ROM_START-BASE
+
+	dc.b	0,27
+	dc.l	HARDTAG
+	dc.b	'KEYBOARD routines '
+	dc.l	VERSTAG
+	dc.b	$A,0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  start of ROM code
+
+ROM_START:
+
+; --------------------------------------------------------------
+;  enter supervisor mode and disable interrupts
+
+	trap	#0
+	ori.w	#$0700,sr	; disable interrupts
+
+; --------------------------------------------------------------
+;  save register entry values
+
+	movem.l	d0-d3/d6-d7/a0-a4/a6,-(a7)
+
+; --------------------------------------------------------------
+;  initialise hardware
+
+	bsr	HW_RESET
+
+; --------------------------------------------------------------
+;  allocate a THING entry for local variables
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+	bsr	MAKE_THG 	; a3 now points to vars
+	bne	ROM_EXIT
+
+; --------------------------------------------------------------
+;  disable caches on '020 and above
+
+	bsr	CACHOFF		; disable caches
+	move.l	d0,d7		; save cacr value
+
+; --------------------------------------------------------------
+;  get address of system vectors
+
+	suba.l	a0,a0		; a handy reference point
+
+	tst.b	161(a6)
+	beq.s	NOVBR
+
+	dc.w	$4E7A,$8801	; movec vbr,a0 (010+)
+
+NOVBR:
+
+; --------------------------------------------------------------
+;  Copy custom vector routines into THING
+
+	move.l	#VCTR.LEN+HW_VCTR.LEN,d2	; will always be multiple of 4
+	lsr.w	#2,d2
+	subq.w	#1,d2
+	lea	VCTR_BEG(pc),a2
+	lea	THNG.VCTR(a3),a4
+
+CPY_VCTR:
+	move.l	(a2)+,(a4)+
+	dbra	d2,CPY_VCTR
+
+; --------------------------------------------------------------
+;  Redirect TRAP 1 routine
+
+	move.l	$84(a0),THNG.VCTR+VCTR.TRP1_OLD(a3) ; save old address
+
+	lea	THNG.VCTR+VCTR.TRP1_NEW(a3),a1
+	move.l	a1,$84(a0)			; redirect TRAP 1
+
+; --------------------------------------------------------------
+;  Redirect RESET routine
+
+	move.l	$04(a0),THNG.VCTR+VCTR.RSET_OLD(a3) ; save old address
+
+	lea	THNG.VCTR+VCTR.RSET_NEW(a3),a1
+	move.l	a1,$04(a0)			; redirect RESET
+
+; --------------------------------------------------------------
+;  set ASCII table and clear actual key.
+
+	lea	LNG_KTAB(pc),a0
+	move.l	a0,VAR.KEYtab(a3)
+
+	clr.b	VAR.KEYdwc(a3)	; clear held down key count
+
+	lea	VAR.KEYraw(a3),a0
+	clr.l	(a0)+
+	clr.l	(a0)+		; invalidate KEYROW bits
+
+	lea	VAR.CTLflg(a3),a0
+
+	clr.w	(a0)+
+	move.w	#$00FF,(a0)+
+	clr.l	(a0)+		; clear/set the flags
+
+	lea	VAR.ACTkey(a3),a0
+	clr.w	(a0)+		; clear keycodes
+
+	clr.w	$90(a6)		; disable key repeat
+
+; -------------------------------------------------------------
+; link in external interrupt to act on keyboard press
+
+	lea	XINT_SERver(pc),a1 ; address of routine
+	lea	SV_LXINT(a3),a0
+	move.l	a1,4(a0)
+	moveq	#MT.LXINT,d0
+	trap	#1
+
+; --------------------------------------------------------------
+;  initialise relevant hardware
+
+	bsr	HW_ENABLE
+	bsr	HW_DO_LEDS	; set the keyboard LEDs
+
+; --------------------------------------------------------------
+;  link in polled task routine to handle keyboard
+
+	lea	POLL_SERver(pc),a1 ; address of routine
+	lea	SV_LPOLL(a3),a0
+	move.l	a1,4(a0) 	; address of polled task
+	moveq	#MT.LPOLL,d0
+	trap	#1
+
+; --------------------------------------------------------------
+;  restore caches
+
+	move.l	d7,d0
+	bsr	SETCACH
+
+; --------------------------------------------------------------
+;  restore register entry values
+
+ROM_EXIT:
+	movem.l	(a7)+,d0-d3/d6-d7/a0-a4/a6
+
+;  enable interrupts and re-enter user mode
+
+	andi.w	#$D8FF,sr
+	rts
+
+*******************************************************************
+*
+*  make 'THING' for me
+*
+*  enter a6 = system variables
+*  exit	a3 = address of your private variables
+*
+*  corrupts = d0,d2,a1 - etc...
+*
+*  11/08/99 Make the THING but do not add it to the THING list.
+*	   We will thus keep it private.
+
+MAKE_THG:
+;	 lea	 SV_THINGL(a6),a3  ; start of THING list
+;
+;NEXT_THG:
+;	 move.l	 (a3),d0
+;	 beq.s	 ALOC_THG
+;
+;	 move.l	 d0,a3
+;
+;	 cmp.w	 #4,$2A(a3)
+;	 bne.s	 NEXT_THG
+;
+;	 cmp.l	 #THNGTAG,$2C(a3)
+;	 bne.s	 NEXT_THG
+;
+;	 bra.s	 OKAY_THG
+;
+ALOC_THG:
+	moveq	#0,d2		; owner is superBASIC
+	move.l	#$38+VAR.LEN+VCTR.LEN+HW_VCTR.LEN,d1  ; length
+	moveq	#MT.ALCHP,d0
+	trap	#1		; allocate space
+
+	tst.l	d0
+	bne.s	EXIT_THG 	; exit if error
+
+	move.l	a0,a3
+
+INIT_THG:
+	move.l	#VERSTAG,$26(a3)	; version number
+	move.w	#4,$2A(a3)	; name length
+	move.l	#THNGTAG,$2C(a3)	; name
+	move.l	#'THG%',$30(a3)	; thing variables follow
+	move.l	#2,$34(a3)	; freeform shared code
+
+	lea	$30(a3),a1	; ptr to thing data area
+	move.l	a1,$10(a3)	; store ptr to variables
+
+;	 lea	 SV_THINGL(a6),a1
+;	 move.l	 (a1),(a3)	 ; extend thing list
+;	 move.l	 a3,(a1) 	 ; put THIS thing at start
+
+OKAY_THG:
+	move.l	$10(a3),a3	; address of data area
+	addq.l	#8,a3		; return with a3 pointing
+				; to first variable
+
+EXIT_THG:
+	tst.l	d0
+	rts
+
+*******************************************************************
+*
+*  find 'THING' from XINT list
+*
+*  enter a6 = system variables
+*  exit	a3 = address of private variables
+*
+*  corrupts = d0
+*
+*  11/08/99 Since the THING is no longer hanging off the THING list
+*	   we have to search via SV_I2LST
+
+FIND_THG:
+	lea	SV_I2LST(a6),a3  ; start of XINT list
+
+FIND_NXTTHG:
+	move.l	(a3),d0
+	beq.s	DEAD_THG
+
+	move.l	d0,a3
+
+	cmp.w	#4,-$38-SV_LXINT+$2A(a3)
+	bne.s	FIND_NXTTHG
+
+	cmp.l	#THNGTAG,-$38-SV_LXINT+$2C(a3)
+	bne.s	FIND_NXTTHG
+
+FIND_OK:
+	lea	SV_LXINT(a3),a3	; return with a3 pointing
+				; to first variable
+
+	moveq	#ERR.OK,d0
+	rts
+
+DEAD_THG:
+	moveq	#ERR.NF,d0
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; Conversion tables for translating ASCII to KEYROW
+;
+; The organization is (in ASCII order):
+;  CTRL(bit7) SHFT(bit6) ROWnumber(bits5-3) COLnumber(bits2-0)
+
+QLRAWKEY:
+ dc.b @225,@244,@224,@223,@246,@264,@234,@236
+ dc.b @242,@053,@010,@232,@240,@226,@276,@257
+ dc.b @245,@263,@254,@233,@266,@267,@274,@251
+ dc.b @273,@256,@221,@013,@315,@320,@325,@313
+ dc.b @016,@143,@127,@141,@106,@102,@107,@027
+ dc.b @150,@165,@160,@135,@077,@055,@022,@075
+ dc.b @065,@043,@061,@041,@006,@002,@062,@007
+ dc.b @060,@050,@137,@037,@177,@035,@122,@175
+ dc.b @161,@144,@124,@123,@146,@164,@134,@136
+ dc.b @142,@152,@147,@132,@140,@126,@176,@157
+ dc.b @145,@163,@154,@133,@166,@167,@174,@151
+ dc.b @173,@156,@121,@030,@015,@020,@162,@155
+ dc.b @025,@044,@024,@023,@046,@064,@034,@036
+ dc.b @042,@052,@047,@032,@040,@026,@076,@057
+ dc.b @045,@063,@054,@033,@066,@067,@074,@051
+ dc.b @073,@056,@021,@130,@115,@120,@125,@113
+ dc.b @213,@343,@327,@341,@306,@302,@307,@227
+ dc.b @350,@365,@360,@335,@277,@255,@222,@275
+ dc.b @265,@243,@261,@241,@206,@202,@262,@207
+ dc.b @260,@250,@337,@237,@377,@235,@322,@375
+ dc.b @361,@344,@324,@323,@346,@364,@334,@336
+ dc.b @342,@352,@347,@332,@340,@326,@376,@357
+ dc.b @345,@363,@354,@333,@366,@367,@374,@351
+ dc.b @373,@356,@321,@230,@215,@220,@362,@355
+ dc.b @011,@011,@211,@211,@111,@111,@311,@311
+ dc.b @014,@014,@214,@214,@114,@114,@314,@314
+ dc.b @012,@012,@212,@212,@112,@112,@312,@312
+ dc.b @017,@017,@217,@217,@117,@106,@317,@317
+ dc.b @031,@031,@231,@231,@131,@131,@331,@331
+ dc.b @001,@201,@101,@301,@003,@203,@103,@303
+ dc.b @004,@204,@104,@304,@000,@200,@100,@300
+ dc.b @005,@205,@105,@305,@116,@153,@110,@072
+
+QLRAWEND:
+
+; --------------------------------------------------------------
+;  Handle key event - response to a keyboard interrupt
+
+RDKEYB:
+	movem.l	d0/d1/a3/a6,-(a7)
+
+	bsr	HW_KEY_read	; read keyboard
+	tst.b	VAR.ACTkey(a3)
+	bne.s	RDKEYB0		; branch if alpha-char
+
+	bsr	KR_DOIT		; else keyrow for SHF/CTL/ALT
+	bra.s	RDKEYBX		; ...and exit
+
+RDKEYB0:
+	bsr.s	KEY_conv 	; convert to ASCII
+
+	tst.b	VAR.ASCkey(a3)
+	bne.s	RDKEYB1		; branch if valid key-stroke
+
+	bsr	KR_DOIT		; else keyrow for SHF/CTL/ALT
+	bra.s	RDKEYB3
+
+RDKEYB1:
+	tst.b	VAR.RLSflg(a3)
+	beq.s	RDKEYB2		; branch if key-down event
+
+	bsr	KR_REMV		; remove key from key-down-list
+	bra.s	RDKEYB3
+
+RDKEYB2:
+	bsr	KR_ENTR		; enter key into key-down-list
+	clr.w	$90(a6)		; disable key repeat
+	tst.b	VAR.ALTflg(a3)	; if part of ALT combination
+	bne.s	RDKEYBX		; exit now & let polled int
+				; put key into Q
+
+	bsr	POLL_K		; otherwise put into Q
+	bra.s	RDKEYBX
+
+RDKEYB3:
+	clr.b	VAR.RLSflg(a3)	; clear the release flag
+	clr.b	VAR.ASCkey(a3)	; clear the ASCII keycode
+
+RDKEYB4:
+	clr.b	VAR.ACTkey(a3)	; clear the ACTUAL keycode
+	CLR.W	$8A(A6)		; reset Autorepeat buffer
+
+RDKEYBX:
+	movem.l	(a7)+,d0/d1/a3/a6
+	rts
+
+; --------------------------------------------------------------
+;  convert key-stroke to ASCII
+
+KEY_conv:
+	movem.l	d0/a0,-(a7)
+
+	clr.b	VAR.ASCkey(a3)	; clear the ASCII keycode
+
+	moveq	#0,d0
+	move.b	VAR.ACTkey(a3),d0 ; get keycode key
+	beq	KEY_convX	; exit if not alpha key
+
+	cmpi.l	#KTB_OFFS_CT,d0
+	bcc	KEY_convX	; exit if out-of-bounds
+
+	tst.b	VAR.RLSflg(a3)
+	bne.s	KEY_conv0	; skip if a key-up event
+
+; check for special-action non-ascii key-combinations
+
+	tst.b	VAR.CTLflg(a3)
+	sne.b	d1
+	lsl.l	#8,d1
+
+	tst.b	VAR.SHFflg(a3)
+	sne.b	d1
+	lsl.l	#8,d1
+
+	tst.b	VAR.ALTflg(a3)
+	sne.b	d1
+	lsl.l	#8,d1
+
+	move.l	VAR.KEYtab(a3),a0 ; KEYtab defaults
+	move.b	0(a0,d0.w),d1	; get "unshifted" ASCII value
+
+	cmpi.l	#$FF000020,d1	; try <CTL><SPC>
+	beq	DO_BREAK
+
+	cmpi.l	#$FF000009,d1	; try <CTL><TAB>
+	beq	DO_FLIP
+
+	cmpi.l	#$FFFFFF09,d1	; try <CTL><SHF><ALT><TAB>
+	beq	DO_RESET
+
+; --------------------------------------------------------------
+; convert to ASCII
+
+KEY_conv0:
+	tst.b	VAR.GFXflg(a3)	; try gfx
+	beq.s	KEY_conv1
+
+	move.l	VAR.KEYtab(a3),a0 ; KEYtab defaults
+	lea	KTB_OFFS_GR(a0),a0 ; adjust for ALT-Gr chars
+
+	moveq	#0,d0
+	move.b	VAR.ACTkey(a3),d0 ; get keycode key
+	move.b	0(a0,d0.w),d0	; convert to ASCII value
+	bne.s	KEY_conv6	; branch if an OK char
+
+	clr.b	VAR.GFXflg(a3)
+
+KEY_conv1
+	move.l	VAR.KEYtab(a3),a0 ; KEYtab defaults
+
+	tst.b	VAR.CTLflg(a3)	; try control
+	beq.s	KEY_conv2
+
+	lea	KTB_OFFS_CT(a0),a0 ; adjust for control chars
+
+KEY_conv2:
+	tst.b	VAR.MODflg(a3)	; test the weird flag
+	beq.s	KEY_conv2a	; nope...
+
+	cmpi.l	#AWKCOD,d0	; the weird awkward key?
+	bne.s	KEY_conv5	; nope... ignore shift & numlock
+
+	move.l	#AWKASC,d0	; be specific with awkward key
+	bra.s	KEY_conv8
+
+KEY_conv2a:
+	moveq	#0,d0
+	move.b	VAR.ACTkey(a3),d0 ; get keycode key
+	lea	KTB_OFFS_SH(a0),a0 ; pre-adjust for shifted chars
+	move.b	0(a0,d0.w),d0	; convert to ASCII value
+
+	tst.b	VAR.SHFflg(a3)
+	sne.b	d1
+
+	cmpi.b	#'.',d0
+	beq.s	KEY_conv3	; numeric
+
+	cmpi.b	#'0',d0
+	blt.s	KEY_conv4	; not numeric
+
+	cmpi.b	#'9',d0
+	bgt.s	KEY_conv4	; not numeric
+
+KEY_conv3:
+	tst.b	VAR.NLKflg(a3)	; try numlock
+	beq.s	KEY_conv4	; nope...
+
+	not.b	d1
+
+KEY_conv4:
+	tst.b	d1
+	bne.s	KEY_conv5
+
+	suba.l	#KTB_OFFS_SH,a0	; unadjust for shifted chars
+
+KEY_conv5:
+	moveq	#0,d0
+	move.b	VAR.ACTkey(a3),d0 ; get keycode key
+	move.b	0(a0,d0.w),d0	; convert to ASCII value
+
+KEY_conv6:
+	tst.b	SV_CAPS(a6)	; check for CAPS lock
+	beq.s	KEY_conv8
+
+	cmp.b	#'a',d0		; check for lower case
+	blt.s	KEY_conv7
+
+	cmp.b	#'z',d0
+	bgt.s	KEY_conv7
+
+	sub.b	#32,d0		; change to upper case
+	bra.s	KEY_conv8
+
+KEY_conv7:
+	cmp.b	#128,d0		; check lower case accented
+	blt.s	KEY_conv8
+
+	cmp.b	#139,d0
+	bgt.s	KEY_conv8
+
+	add.b	#32,d0		; change to upper case
+
+KEY_conv8:
+	tst.b	VAR.ALTflg(a3)	; check alt flag
+	beq.s	KEY_conv9
+
+	cmpi.b	#$C0,d0		; test for cursor/caps keys
+	blt.s	KEY_conv9
+
+	cmpi.b	#$e8,d0		; test for cursor/caps keys
+	bge.s	KEY_conv9
+
+	andi.b	#$FE,d0
+	add.b	#$01,d0
+
+KEY_conv9:
+	move.b	d0,VAR.ASCkey(a3) ; store new key
+
+KEY_convA:
+	clr.b	VAR.MODflg(a3)	; clear the weird flag
+
+KEY_convX:
+	movem.l	(a7)+,d0/a0
+	rts
+
+; --------------------------------------------------------------
+;  enter key into keydown list
+
+KR_ENTR:
+	movem.l	d0-d3/a0-a1,-(a7)
+
+	move.b	VAR.ACTkey(a3),d1
+
+	moveq	#0,d0
+	move.b	VAR.KEYdwc(a3),d0
+	beq.s	KR_EADD
+
+	cmpi.b	#16,d0
+	beq.s	KR_EXIT
+
+	lea	VAR.KEYdwk(a3,d0.w),a0
+	bra.s	KR_EBEG
+
+KR_ELUP:
+	cmp.b	-(a0),d1
+	beq.s	KR_EXIT		; exit if already in list
+
+KR_EBEG
+	dbra	d0,KR_ELUP
+
+KR_EADD:
+	moveq	#0,d0
+	move.b	VAR.KEYdwc(a3),d0
+	move.b	d1,VAR.KEYdwk(a3,d0.w)	; put in list
+	move.b	VAR.ASCkey(a3),d1
+	move.b	d1,VAR.KEYdwa(a3,d0.w)	; put in list
+	addi.b	#1,VAR.KEYdwc(a3) 	; increment count
+
+	bsr.s	KR_DOIT
+
+KR_EXIT:
+	movem.l	(a7)+,d0-d3/a0-a1
+	rts
+
+; --------------------------------------------------------------
+;  remove key from keydown list
+
+KR_REMV:
+	movem.l	d0-d3/a0-a1,-(a7)
+
+	move.b	VAR.ACTkey(a3),d1
+
+	moveq	#0,d0
+	move.b	VAR.KEYdwc(a3),d0
+	beq.s	KR_RXIT
+
+	lea	VAR.KEYdwk(a3,d0.w),a0
+	bra.s	KR_RBEG
+
+KR_RLUP:
+	cmp.b	-(a0),d1
+	beq.s	KR_RDEL			; found entry
+
+KR_RBEG
+	dbra	d0,KR_RLUP
+	bra.s	KR_RXIT
+
+KR_RDEL:
+	subi.b	#1,VAR.KEYdwc(a3) 	; decrement count
+	moveq	#0,d0
+	move.b	VAR.KEYdwc(a3),d0
+	move.b	VAR.KEYdwk(a3,d0.w),(a0)	; move last entry
+	move.b	VAR.KEYdwa(a3,d0.w),(VAR.KEYdwa-VAR.KEYdwk)(a0)
+	clr.b	VAR.KEYdwk(a3,d0.w)	; delete last entry
+	clr.b	VAR.KEYdwa(a3,d0.w)
+
+	bsr.s	KR_DOIT
+
+KR_RXIT:
+	movem.l	(a7)+,d0-d3/a0-a1
+	rts
+
+; --------------------------------------------------------------
+;  set keyrow for all keys in keydown list
+
+KR_DOIT:
+	movem.l	d0-d3/a0-a1,-(a7)
+
+	lea	VAR.KEYraw(a3),a1
+	clr.l	(a1)+		; clear KEYROW entries
+	clr.l	(a1)+
+
+	moveq	#0,d0
+	move.b	VAR.KEYdwc(a3),d0
+	beq.s	KEY_KR1
+
+	lea	VAR.KEYdwa(a3,d0.w),a0
+	bra.s	KR_DBEG
+
+KR_DLUP:
+	moveq	#0,d1
+	move.b	-(a0),d1
+
+	lea	QLRAWKEY(pc),a1
+	moveq	#0,d2
+	move.b	0(a1,d1.w),d2	; get row and bit number
+
+	move.l	d2,d1		; save for later
+
+	move.l	d2,d3
+	lsr.l	#3,d3		; extract row number -> D3
+	and.w	#$7,d3
+	and.b	#$07,d2		; extract bit number -> D2
+
+	lea	VAR.KEYraw(a3),a1
+	bset	d2,0(a1,d3.w)	; set the bit in KEYROW
+
+	lsr.b	#6,d1		; set SHFT/CTL from table
+	move.b	VAR.KEYraw+7(a3),d3
+	andi.b	#$F8,d3
+	or.b	d3,d1
+	move.b	d1,VAR.KEYraw+7(a3)
+
+KR_DBEG
+	dbra	d0,KR_DLUP
+
+	bra.s	KEY_KR3		; set ALT from flag value
+
+; if keydown list empty set KEYROW for SHF/CTL/ALT keys from flags
+
+KEY_KR1:
+	move.b	VAR.KEYraw+7(a3),d1
+	andi.b	#$F8,d1
+
+	tst.b	VAR.SHFflg(a3)
+	beq.s	KEY_KR2
+
+	bset	#0,d1
+
+KEY_KR2:
+	tst.b	VAR.CTLflg(a3)
+	beq.s	KEY_KR3
+
+	bset	#1,d1
+
+KEY_KR3:
+	tst.b	VAR.ALTflg(a3)
+	beq.s	KEY_KR4
+
+	bset	#2,d1
+
+KEY_KR4:
+	move.b	d1,VAR.KEYraw+7(a3)
+
+KR_DXIT:
+	movem.l	(a7)+,d0-d3/a0-a1
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+DO_BREAK:
+	movem.l	d0/a3,-(a7)
+
+	SF	$33(A6)		; screen status
+
+	MOVEA.L	$68(A6),A3	; SV.JBBAS Pointer to base of
+				; job table
+	MOVEA.L	(A3),A3
+	SF	$F7(A3)
+	MOVE.W	$14(A3),D0	; job status (BASIC)
+	BEQ.S	L02EEA		; not suspended
+	MOVE.B	$13(A3),D0	; priority of BASIC
+	BNE.S	BRECON1
+	MOVE.B	#$20,$13(A3)	; set priority to 32 if it
+				; was set to 0
+BRECON1:
+	CLR.W	$14(A3)		; release job
+	MOVE.L	$0C(A3),D0	; pointer to byte which will
+				; be cleared when job relea
+	BEQ.S	L02EEA
+	MOVEA.L	D0,A3		; clear this byte
+	SF	(A3)
+
+L02EEA:
+	movem.l	(a7)+,d0/a3
+
+	CLR.B	VAR.ASCkey(A3)	; reset key event
+	bra	KEY_convA
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+DO_FLIP:
+	bsr.s	FLIPIT
+
+	CLR.B	VAR.ASCkey(A3)	; reset key event
+	bra	KEY_convA
+
+FLIPIT:
+	moveq	#0,d0
+	move.b	SV_MCSTA(a6),d0
+
+	swap	d1
+	lsl.w	#4,d0
+	move.b	d0,d1
+	andi.b	#%10100000,d1
+	lsr.b	#2,d1
+	andi.b	#%01010000,d0
+	or.b	d1,d0
+	lsl.b	#1,d0
+	lsr.w	#4,d0
+	swap	d1
+
+	eori.b	#1<<MC..SCRN,d0	; flip between screen 1/2
+	move.b	d0,SV_MCSTA(a6)
+	andi.b	#%10001010,d0
+	move.b	d0,MC_STAT	; switch screen if necessary
+
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  perform a reset
+
+DO_RESET:
+	ori.w	#$0700,sr	; mask out all interrupts
+
+	bsr	CACHOFF		; disable the caches
+
+	move.l	$0,a7		; reset supervisor stack
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+	suba.l	a0,a0		; a handy reference point
+
+	tst.b	161(a6)
+	beq.s	DRSET_68000
+
+	dc.w	$4E7A,$8801	; movec vbr,a0
+
+DRSET_68000:
+	move.l	$04(a0),-(a7)	; jump to RESET routine
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  Polled interrupt routine to read the keyboard
+;  enters with a6=sys vars, a3=our (keyboard) vars
+
+POLL_SERver:
+
+POLL_K:
+	MOVEA.L	$4C(A6),A2	; SV.KEYQ Pointer to a
+				; keyboard queue
+
+	MOVE.L	A2,D0
+	beq.s	NOKEY		; no con_ open
+
+	tst.b	(a2)
+	bpl.s	L02EEC		; continue if not at eof
+
+NOKEY:
+	CLR.W	$8A(A6)		; reset Autorepeat buffer
+
+POLL_EXIt:
+	rts
+
+; --------------------------------------------------------------
+L02EEC:
+	move.b	VAR.ASCkey(a3),d1
+	beq.s	AREPOLD		; branch if no new key
+
+	CLR.B	VAR.ASCkey(A3)	; reset key event
+
+	lsl.w	#8,d1
+	tst.b	VAR.ALTflg(a3)
+	sne.b	d1
+	ror.w	#8,d1
+
+KEY_kTST:
+	cmpi.w	#$00E0,d1	; CAPS?
+	beq	DO_CAPS
+
+	cmpi.w	#$00F9,d1	; <CTL><F5>? (scroll lock)
+	beq	DO_FREEZE
+
+	cmp.w	$92(A6),d1	; SV.CQCH Keyboard change
+	beq	DO_CTRLC 	; queue character code
+
+; --------------------------------------------------------------
+;  KEY REPEAT CODE - on PC keyboards software auto repeat
+;  is disabled by zeroing $8A(a6) & $8E(a6) since these
+;  keyboards have hardware key repeat
+
+	MOVE.W	D1,$8A(A6)	; store Key
+	MOVE.W	$8C(A6),$90(A6)	; delay -> count
+	BRA.S	AREPDO
+
+; --------------------------------------------------------------
+AREPOLD:
+	cmp.w	#1,SV_POLLM(a6)	; no key repeat if part of
+	bgt	POLL_EXIt	; a 'poll miss' time-slice
+
+	MOVE.W	$90(A6),D2	; get actual count
+	tst.w	d2
+	beq.s	POLL_EXIt	; exit if key-repeat disabled
+
+	SUBQ.W	#1,D2		; decrement count
+	MOVE.W	D2,$90(A6)	; and store new value
+	TST.W	D2		; 0 reached ?
+	bne	POLL_EXIt	; do nothing if not
+
+	move.w	$8A(A6),d1	; get old key
+	beq.s	POLL_EXIt	; exit if no key
+
+	MOVE.W	$8E(A6),$90(A6)	; SV.ARFRQ Autorepeat
+				; 1/frequency
+
+; --------------------------------------------------------------
+
+	move.l	d1,d3		; save key-stroke
+	move.w	IO.QTEST,a3
+	jsr	(a3)
+	beq	POLL_EXIt	; exit if queue not empty
+
+	move.l	d3,d1		; restore key-stroke
+
+; --------------------------------------------------------------
+AREPDO:
+	sf	$33(A6)		; screen status
+
+	cmpi.w	#$FF0A,d1	; <ALT>-<RTN>
+	beq	DO_HISTORY
+
+	move.w	d1,d0
+
+	ror.w	#8,d1
+	cmpi.b	#$FF,d1		; <ALT> key
+	bne.s	L02F36
+
+	cmpi.b	#$C0,d0		; test for cursor/caps keys
+	blt.s	DO_QALT
+
+	cmpi.b	#$e8,d0		; test for cursor/caps keys
+	bge.s	DO_QALT
+
+	andi.w	#$FE00,d1
+	add.w	#$0100,d1
+	bra.s	L02F36		; cursors/caps don't ALT
+
+DO_QALT:
+	SWAP	D1
+	move.w	IO.QTEST,a3
+	jsr	(a3)
+
+	CMPI.W	#2,D2
+	BLT	POLL_EXIt
+
+	SWAP	D1
+	move.w	IO.QIN,a3	; put a byte (D1) into a
+	jsr	(a3)		; queue (A2)
+
+L02F36:
+	LSR.W	#8,D1
+	move.w	IO.QIN,a3	; put a byte (D1) into a
+	jsr	(a3)		; queue (A2)
+
+	bra	POLL_EXIt
+
+; --------------------------------------------------------------
+DO_CAPS:
+	not.b	SV_CAPS(a6)	; set CAPS flag
+	bsr	HW_DO_LEDS
+
+	bra	POLL_EXIt
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+DO_FREEZE:
+	NOT.B	$33(A6)		; Screen status
+	bsr	HW_DO_LEDS
+	bra	POLL_EXIt
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+DO_CTRLC:
+
+SWITCHQ:
+	bsr	FNDCHN		; find channel base/ID
+
+	TST.B	SD_CURF(A1)	; queue waiting ?
+	BGE.S	L02F54		; cursor active
+
+	bsr	SD_CURE		; reactivate cursor
+
+L02F54:
+	MOVEA.L	(A2),A2		; next queue
+
+	bsr	FNDCHN		; find channel base/ID
+
+	TST.B	SD_CURF(A1)	; next queue active ?
+	BNE.S	CTRLC0		; yup, continue
+
+	CMPA.L	SV_KEYQ(A6),A2	; Current key Q
+	BNE.S	L02F54		; next Q <> this Q
+
+CTRLC0:
+	move.b	SV_MCSTA(a6),d0
+
+	cmp.l	#$20000,SD_SCRB(a1)
+	bne.s	CTRLC1
+
+	andi.b	#$FF-(1<<MC..SCRN),d0
+	bra.s	CTRLC2
+
+CTRLC1:
+	cmp.l	#$28000,SD_SCRB(a1)
+	bne.s	CTRLC3
+
+	ori.b	#1<<MC..SCRN,d0
+
+CTRLC2:
+	cmp.b	SV_MCSTA(a6),d0
+	beq.s	CTRLC3
+
+	bsr	FLIPIT		; switch screen if necessary
+
+CTRLC3:
+	MOVE.L	A2,SV_KEYQ(A6)	; set current keyboard queue
+	CLR.W	$AA(A6)		; flashing cursor status
+				; (word)
+	MOVEQ	#6,D6
+
+	bra	POLL_EXIt
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+DO_HISTORY:
+	move.l	Q_NEXTIN(a2),a3
+	cmp.l	Q_NXTOUT(a2),a3
+	bne	POLL_EXIt
+
+	lea	$10(a2),a4
+
+DO_HLUP1:
+	cmp.l	a4,a3
+	bne.s	DO_HIS1
+
+	move.l	Q_END(a2),a3
+
+DO_HIS1:
+	cmp.b	#$0A,-(a3)
+	beq.s	DO_HIS2
+
+	cmp.l	Q_NXTOUT(a2),a3
+	bne.s	DO_HLUP1
+
+	bra	POLL_EXIt
+
+DO_HIS2:
+	move.l	a3,Q_NEXTIN(a2)
+	move.l	a3,Q_NXTOUT(a2)
+
+DO_HLUP2:
+	cmp.l	a4,a3
+	bne.s	DO_HIS3
+
+	move.l	Q_END(a2),a3
+
+DO_HIS3:
+	cmp.b	#$0A,-(a3)
+	bne.s	DO_HLUP2
+
+DO_HIS4:
+	addq.l	#1,a3
+	cmpa.l	Q_END(a2),a3
+	blt.s	DO_HIS5
+
+	lea	$10(a2),a3
+
+DO_HIS5:
+	move.l	a3,Q_NXTOUT(a2)
+
+	bra	POLL_EXIt
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SD_CURE:
+;	 movem.l  d0-d1/d3/a0-a2,-(a7)
+;
+;	 move.l	 a1,a0
+;	 jsr	 $1B86
+;
+;	 movem.l  (a7)+,d0-d1/d3/a0-a2
+;	 rts
+;
+;	 movem.l  d0-d1/d3/a1-a2,-(a7)
+;
+;	 moveq	 #-1,d3
+;	 moveq	 #SD.CURE,d0
+;	 trap	 #3
+;
+;	 movem.l  (a7)+,d0-d1/d3/a1-a2
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; Entry: A2 = pointer to keyboard queue
+
+; Exit:	A0 = Channel ID
+;	A1 = Channel base
+
+FNDCHN:
+	movem.l	d0-d1/a3-a4,-(a7)
+
+	move.l	SV_CHBAS(a6),a0
+	move.l	SV_CHTOP(a6),a4
+	moveq	#0,d0
+
+FNDLUP:
+	move.l	(a0),a1		; channel vars?
+	cmpa.l	a1,a2
+	blt.s	FNDCNT
+
+	move.l	(a1),d1
+	lea	0(a1,d1.w),a3
+	cmpa.l	a3,a2
+	blt.s	FNDDUN
+
+FNDCNT:
+	addq.w	#1,d0
+	addq.l	#4,a0
+	cmp.l	a0,a4
+	bgt.s	FNDLUP
+
+	suba.l	a1,a1
+	moveq	#0,d0
+	bra.s	FNDXIT		; not found!
+
+FNDDUN:
+	swap	d0
+	move.w	CH_TAG(a1),d0
+	swap	d0
+
+FNDXIT:
+	move.l	d0,a0		; channel ID
+
+	movem.l	(a7)+,d0-d1/a3-a4
+
+	rts
+
+*******************************************************************
+*
+* routine to disable the instruction & data caches
+* Exit:	d0 = previous CACR value
+*
+CACHOFF:
+	move.l	d1,-(a7)
+
+	moveq	#0,d0
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to set the CACR
+* Entry: d0 = value to write to CACR
+* Exit:	d0 = previous CACR value
+*
+SETCACH:
+	move.l	d1,-(a7)
+
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to alter the state of the CACR
+* callable from user or supervisor modes
+* Entry: d0 = bits to set
+*	d1 = bits to clear/alter
+* Exit:	d0 = previous CACR value
+*
+DOCACH:
+	movem.l	d2/a0/a6,-(a7)
+	movea.l	a7,a0
+	trap	#0
+	move.w	sr,-(a7)
+	ori.w	#$0700,sr	interrupts off
+
+	subq.l	#2,a0
+	cmpa.l	a0,a7
+	beq.s	DOCACHSV 	entered routine as supervisor
+
+	bclr	#5,0(a7) 	otherwise sr on exit = user mode
+
+DOCACHSV:
+	move.l	a7,d2		Calculate start of
+	andi.w	#-$8000,d2	system variables
+	move.l	d2,a6
+
+	and.l	d1,d0
+	not.l	d1
+
+	cmpi.b	#$10,$A1(a6)
+	bls.s	DOCACHX		exit if 010 or less
+
+	dc.w	$4E7A,$2002	movec	cacr,d2
+	and.l	d2,d1		mask off changed bits
+	or.l	d0,d1		or in set bits
+
+	move.l	d2,d0		store old cacr value
+
+	ori.w	#$0808,d1	always clear caches on 020/030
+
+	cmpi.b	#$30,$A1(a6)
+	bls.s	DOCACHSET
+
+	tst.w	d0		check 040 bits
+	bpl.s	DOCACHDCHK	branch if instruction cache off
+	dc.w	$F4B8		cpusha	ic
+				; otherwise update memory from cache
+
+DOCACHDCHK:
+	tst.l	d0		check 040 bits
+	bpl.s	DOCACHDINV	branch if data cache off
+	dc.w	$F478		cpusha	dc
+				; otherwise update memory from cache
+
+	tst.l	d1		check 040 bits
+	bmi.s	DOCACHIINV	branch if leaving data cache on
+
+DOCACHDINV:
+	dc.w	$F458		cinva	dc
+				; invalidate cache
+
+DOCACHIINV:
+	dc.w	$F498		cinva	ic
+				; invalidate cache
+
+DOCACHSET:
+	dc.w	$4E7B,$1002	movec	d1,cacr
+				; set the cache
+
+DOCACHX:
+	move.w	(a7)+,sr
+	movem.l	(a7)+,d2/a0/a6
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  BASIC extensions
+
+PROC_DEF:
+	dc.w	2
+	dc.w	B_KEYDT-*
+	dc.b	5,'KEYDT'
+	dc.w	B_KEYDT-*
+	dc.b	5,'KEZDT'
+	dc.w	0
+
+	dc.w	0
+	dc.w	0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  BASIC proc to link in German keymap again, should it become
+;  dislocated for some reason.
+
+B_KEYDT:
+
+	movem.l	a0-a4/a6,-(a7)
+
+	moveq	#MT.INF,d0	; get sys vars
+	trap	#1
+	move.l	a0,a6
+	bsr	FIND_THG
+	bne.s	B_KEYDTX 	; exit if THING not found
+
+	lea	LNG_KTAB(pc),a0
+	move.l	a0,VAR.KEYtab(a3)
+
+	moveq	#0,d0
+
+B_KEYDTX:
+	movem.l	(a7)+,a0-a4/a6
+	rts
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad1:
+	DCB.w ((0-(NOPpad1-BASE))&$3)/2,$4E71
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+VCTR_BEG:
+
+*******************************************************************
+*
+*  Custom TRAP 1 routine to handle calls to:
+*  MT_IPCOM (d0=$11)
+
+TRP1:
+
+VCTR.TRP1_NEW EQU TRP1-VCTR_BEG
+
+	cmp.b	#MT.IPCOM,d0
+	bne.s	TRP1JMP
+
+MT_IPCOM:
+	cmp.b	#9,(a3)		; is IPC command keyrow ?
+	beq.s	IPC_KROW
+
+; --------------------------------------------------------------
+;  Call old TRAP #1 routine
+
+TRP1JMP:
+
+VCTR.TRP1_OLD EQU (TRP1JMP-VCTR_BEG)+2
+
+	DC.W	$4EF9,$0000,$0000  ; filled in later
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; initialise A5 and A6 prior to performing a TRAP routine
+
+INI_A5A6
+	SUBQ.L	#8,A7
+	MOVE.L	8(A7),-(A7)
+	MOVEM.L	D7/A5/A6,4(A7)
+
+	move.l	a7,d7
+	andi.l	#$FFFF8000,d7
+	move.l	d7,a6		; Calc address of sys vars
+
+	LEA	4(A7),A5 	; A5 points to saved
+				; Registers D7,A5,A6
+	MOVEQ	#$7F,D7
+	AND.L	D7,D0
+	RTS
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  Handle KEYROW command: TRAP #1 with D0=$11, 0(a3)=9
+
+IPC_KROW:
+	bsr.s	INI_A5A6
+
+	MOVEM.L	D7/A3,-(A7)
+
+	MOVE.B	6(A3),D7 	; get row number
+	AND.W	#$7,D7		; only 0..7 are valid
+
+	lea	VCTR_BEG-THNG.VCTR(pc),a3
+
+	MOVE.B	VAR.KEYraw(A3,D7.W),D1
+
+IPCOM_EX:
+	MOVEM.L	(A7)+,D7/A3
+
+	moveq	#0,d0		; no errors
+
+; --------------------------------------------------------------
+;  exit from TRAP call
+
+TRP1X:
+	movem.l	(a7)+,d7/a5/a6	; exit from exception
+	rte
+
+*******************************************************************
+*
+*  Custom RESET routine to put vectors back as they were
+
+RSET:
+
+VCTR.RSET_NEW EQU RSET-VCTR_BEG
+
+	ori.w	#$0700,sr	; disable further interrupts
+
+	bsr	HW_RESET
+
+	movem.l	d0/a0/a3/a6,-(a7)
+
+	lea	VCTR_BEG-THNG.VCTR(pc),a3
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+;  Put back old vectors
+
+	suba.l	a0,a0		; a handy reference point
+
+	tst.b	161(a6)
+	beq.s	RSET68K
+
+	dc.w	$4E7A,$8801	; movec vbr,a0
+
+RSET68K:
+	move.l	THNG.VCTR+VCTR.RSET_OLD(a3),$04(a0) ; restore old RSET
+	move.l	THNG.VCTR+VCTR.TRP1_OLD(a3),$84(a0) ; restore old TRAP 1
+
+RSETX:
+	movem.l	(a7)+,d0/a0/a3/a6
+
+;  Call old RESET routine
+
+RSETJMP:
+
+VCTR.RSET_OLD EQU (RSETJMP-VCTR_BEG)+2
+
+	DC.W	$4EF9,$0000,$0000  ; filled in later
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad2:
+	DCB.w ((0-(NOPpad2-BASE))&$3)/2,$4E71
+
+*******************************************************************
+*
+* End custom vector routines
+
+VCTR_END:
+
+VCTR.LEN EQU VCTR_END-VCTR_BEG
+
+*******************************************************************
+
+; offset into thing for local variables
+
+THNG.VAR 	EQU	$0
+
+; offset into thing for custom vector routines
+
+THNG.VCTR	EQU	THNG.VAR+VAR.LEN
+THNG.HW_VCTR	EQU	THNG.VCTR+VCTR.LEN
+
+*******************************************************************
+
+	END
+

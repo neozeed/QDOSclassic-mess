@@ -1,0 +1,262 @@
+*/beginfile STARTUP_asm
+; --------------------------------------------------------------
+; STARTUP_asm - startup routines
+;	     - last modified 23/07/98
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...some changes by Mark J Swift
+; --------------------------------------------------------------
+;*/beginoverlay
+
+RST_SYS:
+SYS_STARt:
+QL_START:
+	dc.l	$2E780000	; move.l $0,a7 Get SSP !A68k
+
+	move.l	a7,d0		; Calculate start of
+	andi.w	#-$8000,d0	; system variables
+	move.l	d0,a6
+
+; set system stack and lomem
+	lea	$480(a6),a7	; Set SSP.
+	move.l	a7,a4		; Set lomem.
+
+	dc.l	$48e70001	; = movem.l a7,-(a7)
+	cmpa.l	(a7)+,a7
+	beq	CALCCRC		; branch if < 68020
+
+; Disable the caches until later - nothing should be
+; cached at this point so we SHOULD be OK.
+
+	moveq	#0,d1
+	dc.w	$4E7B,$1002	; movec d1,cacr
+	dc.w	$4E7B,$1801	; movec d1,vbr
+
+CALCCRC:
+	moveq	#0,d0		; initial CRC
+	suba.l	a0,a0		; address to check
+	move.l	#$000018000,a1	; last address to check
+
+	bra.s	CRCNEXT
+
+CRCLOOP:
+	move.b	(a0)+,d4
+	move.w	d0,d3
+	lsr.w	#8,d0
+	eor.b	d4,d0
+	move.w	d0,d4
+	lsr.w	#4,d0
+	eor.w	d4,d0
+	move.w	d0,d4
+	lsl.w	#4,d0
+	eor.w	d3,d0
+	lsl.w	#3,d0
+	eor.w	d4,d0
+	lsl.w	#5,d0
+	eor.w	d4,d0
+
+CRCNEXT:
+	cmp.l	a0,a1
+	bgt.s	CRCLOOP
+
+; clear QL screen
+CLR_SCR:
+	lea	$20000,a0
+	move.w	#$1FFF,d1
+CLR_SMEM:
+	clr.l	(a0)+
+	dbra	d1,CLR_SMEM
+;
+DO_SVARS:
+	cmpi.w	#SV.IDENT,(a6)	; Check if sys vars exist
+	bne.s	QDOS256K
+; get himem from system variables
+	move.l	SV_RAMT(a6),a5	; Get ramtop.
+	cmpa.l	a4,a5		; use only if valid
+	bgt.s	CLR_VAR
+; if lomem and himem not valid, can only assume a minimum system
+QDOS256K:
+	move.l	a0,a6		; Put sys vars after scrn#1
+	lea	$480(a6),a7	; Set SSP.
+	move.l	a7,a4		; Set lomem.
+	lea	$080000,a5	; Set ramtop
+; clear system variables.
+CLR_VAR:
+	move.l	a6,a0		; Start of memory to clear.
+CLR_VMEM:
+	clr.l	(a0)+
+	cmpa.l	a7,a0
+	bne.s	CLR_VMEM
+; clear system memory, lomem to himem
+;CLR_SYS:
+;	 move.l	 a4,a0		 ; Get start of ram.
+;CLR_SMEM:
+;	 clr.l	 (a0)+
+;	 cmpa.l	 a5,a0		 ; Clear until end of ram.
+;	 bne.s	 CLR_SMEM
+; initialise QL hardware registers
+	move.b	#$8,MC_STAT	; 8 colour mode, screen #1
+; initialise system variables.
+INISYVAR:
+	move.w	#SV.IDENT,(a6)	; Store QDOS id.
+	move.l	a5,SV_RAMT(a6)	; Store ramtop
+	move.l	a5,SV_RESPR(a6)	; base of resident procs
+	move.l	a5,SV_TRNSP(a6)	; base of transient progs
+	move.b	#-$40,SV_PCINT(a6) ; Current value for PC
+				 ; interrupt flag.
+; initialise pointers to slave blocks.
+	move.l	a5,d0		; Top of ram.
+	bsr.s	SLVTBL_LEN	; Max len of slave blk table
+	move.l	a7,a2		; First byte after sys vars
+	lea	SV_BTPNT(a6),a3	; Address of ptr to most
+				; recent slave block.
+	moveq	#0,d6
+	bsr.s	INI_TABLE	; Initialise pointers to
+				; slave blocks.
+; find combined length of job and channel tables.
+	move.l	a5,a0		; Get himem.
+	suba.l	a4,a0		; subtract lomem
+	move.l	a0,d0		; Tables are at most 1/128th
+	lsr.l	#7,d0		; the size of available ram
+	addi.l	#$80,d0		; ...but big enough for at
+				; least 8 jobs.
+	bsr.s	LIMIT_TBLS	; Limit table size to 120
+				; jobs and 360 channels.
+; tables must finish on a 512 byte boundary
+	add.l	a2,d0		; Make sure tables finish
+	addi.l	#$1FF,d0 	; on a 512 byte boundary
+	andi.w	#-$200,d0	; by tweaking the combined
+	sub.l	a2,d0		; length of channel and job
+	move.l	d0,d1		; tables. Length in d0 & d1
+	bsr.s	LIMIT_TBLS	; no more than 120 jobs.
+	lsr.l	#2,d0		; New length of job table
+	sub.l	d0,d1		; New length of channel tbl
+	move.l	a2,a0		; Save start of job table.
+;
+	moveq	#-$1,d6
+	clr.w	d6
+	lsl.l	#$8,d6		; d6 = FF00 0000
+; initialise job table.
+	bsr.s	INI_TABLE
+; initialise channel table.
+	move.l	d1,d0
+	bsr.s	INI_TABLE
+;
+	bra.s	LOW_USE
+; subroutine to limit the combined lengths of job and channel
+; tables to to that required for 120 jobs and 360 channels.
+LIMIT_TBLS:
+	moveq	#$78,d6
+	lsl.l	#4,d6		; move.l   #$780,d6
+	cmp.l	d6,d0
+	bls.s	X_LIMIT
+	move.l	d6,d0
+X_LIMIT:
+	rts
+; subroutine to return the maximum length of the slave block
+; table given d0 as himem.
+SLVTBL_LEN:
+	addi.l	#$1FF,d0
+; subroutine to find how far into the slave tables, the entry
+; for memory address d0 is.
+SLVTBL_POS:
+	sub.l	a6,d0		; Slave blocks start at the
+	andi.w	#-$200,d0	; sys vars and are each 512
+	lsr.l	#6,d0		; bytes long. Each table
+	rts			; entry is 8 bytes long.
+; subroutine to set slave, job or channel pointers.
+INI_TABLE:
+	move.l	a2,(a3)+ 	; Current entry.
+	move.l	a2,(a3)+ 	; Start of table.
+	lea	0(a2,d0.l),a0
+INI_TBL1:
+	move.l	d6,(a2)+
+	cmpa.l	a0,a2
+	blt.s	INI_TBL1
+	move.l	a2,(a3)+ 	; End of table.
+	addq.l	#4,a3
+	rts
+; continue by finding the lowest usable address.
+LOW_USE:
+	cmpa.l	a4,a2		; which is greater, lomem
+	bgt.s	SET_LOW		; or top of channel table?
+	move.l	a4,a2
+SET_LOW:
+	move.l	a2,SV_CHEAP(a6)	; Set base of common heap.
+	move.l	a2,SV_FREE(a6)	; Set base of free area.
+
+; find usable entries in the slave block table.
+	move.l	a2,d0		; Find how many are used up
+	bsr.s	SLVTBL_LEN	; by the tables themselves
+	move.l	d0,a2		; Address of first free
+	adda.l	a7,a2		; entry in ->a2.
+
+	move.l	a5,a3		; clear 512 bytes between
+	moveq	#$7F,d0		; RAMTOP and base of BASIC
+				; stack
+CLRBASLUP:
+	clr.l	-(a3)
+	dbra	d0,CLRBASLUP
+
+	move.l	a3,SV_BASIC(a6)	; address of BASIC stack.
+
+	move.l	a3,d0		; Find address of first
+	bsr.s	SLVTBL_POS	; entry made unusable by
+	move.l	d0,a3		; BASIC stack in ->a3.
+	adda.l	a7,a3
+	move.l	a2,d0		; Set SV.BTPNT half way
+	add.l	a3,d0		; between the first unused
+	lsr.l	#4,d0		; entry and the last, but
+	lsl.l	#3,d0		; must be divisible by 8.
+	move.l	d0,SV_BTPNT(a6)	; Store most recent block.
+; initialise slave table entries.
+	moveq	#$1,d0
+	ror.l	#$8,d0		; d0 = %0100 0000
+SLV_INIT:
+	move.l	d0,(a2)+ 	; Put 0100 0000 0000 0000
+	clr.l	(a2)+		; into entries for usable
+	cmpa.l	a3,a2		; blocks.
+	blt.s	SLV_INIT
+RLOC0F	move.l	#BAS_STARt-ORG0,a1
+RLOC10	move.l	#SHLST-ORG0,A5
+	MOVE.L	A5,SV_SHLST(A6)	; pointer to list of
+				; scheduler tasks
+RLOC11	move.l	#DRLST-ORG0,A5
+	MOVE.L	A5,SV_DRLST(A6)	; pointer to list of device
+				; drivers
+	ADDQ.B	#1,SV_NETNR(A6)	; network station number
+	ADDQ.B	#8,SV_MCSTA(A6)	; current value of MC status
+				; register
+	MOVE.W	#$1E,SV_ARDEL(A6) ; auto repeat delay
+	ADDQ.W	#2,SV_ARFRQ(A6)	; autorepeat 1/freq.
+	ADDQ.W	#3,SV_CQCH(A6)	; ctrl. C
+RLOC12	MOVE.L	#(MSG_LIST-ORG0),SV_MGTAB(A6) ; sys messages
+RLOC13	MOVE.L	#(KEY_TRA-ORG0),SV_TRTAB(A6) ; key trnslation
+
+; Initialise BASIC
+	MOVEA.L	SV_JBBAS(A6),A4	; pointer to base of Job
+				; table
+	MOVE.L	A4,SV_JBPNT(A6)	; pointer to current Job
+				; table entry
+	MOVEA.L	SV_TRNSP(A6),A3	; base of transient program
+				; area
+	CLR.L	-(A3)
+	MOVEA.L	SV_BASIC(A6),A0	; base of basic stack
+	MOVE.L	A0,(A4)		; address of job 0: BASIC
+	MOVE.B	#$20,JB_PRINC(A0) ; BASIC's priority increment
+
+RLOC0E	jsr	ATTN_FLGS-ORG0
+SAV_ATTN:
+	move.w	d4,SV_IDENT+2(a6) ; set attn flags
+	move.b	d5,161(a6)	; same for QDOS
+
+	MOVE.L	A3,USP
+	LEA	JB_END(A0),A6
+	MOVEA.L	A3,A5
+	SUBA.L	A6,A5		; A5 = Basic area
+	ori.w	#$0000,sr	; trace on
+	andi.w	#%1101111111111111,SR ; user mode no ints
+	jmp	(a1)		; start BASIC interpreter
+
+;*/endoverlay
+; --------------------------------------------------------------
+;*/endfile

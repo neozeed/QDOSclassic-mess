@@ -1,0 +1,93 @@
+Short:    patch over TAS instructions with Amiga-friendly code
+Author:   Mark J Swift
+Version:  1.15
+Uploader: msw@blackpool.ac.uk
+Type:     util/ptch
+
+Removes TAS instructions from binaries for Amiga compatibility.
+
+
+ARCHIVE CONTENTS
+
+ TASremove_bas   - patcher to remove TAS instructions
+ TASremove_task  - as above but TURBO compiled
+ TASrestore_bas  - patcher to restore TAS instructions
+ TASrestore_task - as above but TURBO compiled
+ TAS_readme      - this file
+
+
+WHY IS IT NECESSARY?
+
+Amiga hardware does not allow the CPU two contiguous bus cycles,
+so any read/modify/write cycle is dammed to fail. As a result,
+the TAS instruction doesn't work and can even mess up the next
+instruction fetch, causing privilege violations and illegal
+instructions
+
+
+THE PATCHER PROGRAMS
+
+* TASremove *
+
+In recognised TURBO'ed and QLIB'ed tasks, this program replaces
+TAS with equivalent QL-compatible code. If the code is not
+recognised, TAS is replaced by a Line-A instruction (which is
+programmed to emulate TAS but is not QL-compatible) or by extending
+the code.
+
+FIXES FOR QLIBERATOR
+
+The Q_Liberator runtime libraries contain a single TAS instruction
+TAS $8F(A6) in v3.22 and TAS $8F(A4) in the the budget compiler.
+As a result any program compiled to include libraries will also
+contain this instruction.
+
+TASremove automatically recognises QLIB'ed tasks, removes the TAS
+instruction and substitutes equivalent code that is compatible
+with both a 'real' QL and Amiga-QDOS.
+
+FIXES FOR TURBO COMPILER
+
+The TURBO compiler package contains a single TAS $8F(A6) in
+PARSER_task and two TAS instructions ( TAS $8F(a6) and
+TAS $17(a2) ) in CODEGEN_task. Any program compiled with TURBO
+may also contain these instructions.
+
+TASremove automatically recognises TURBO'ed tasks, removes the TAS
+instructions and substitutes equivalent code that is compatible
+with both a 'real' QL and Amiga-QDOS.
+
+FIXES FOR NON QLIB/TURBO CODE
+
+If the file is not recognisable as either QLIB or TURBO code,
+TASremove will produce a disassembly for every TAS found and will
+ask you whether or not to replace the instruction. The program
+may however, display TAS instructions where none are present.
+A good rule-of-thumb is that true CODE will be surrounded by
+other machine code instructions, whereas DATA will be liberally
+sprinkled with DC.Ws
+
+If the file is less than 32K, TASremove will replace TAS instructions
+with a BSR to code that is tagged onto the end of the file. The
+result is code that is compatible with both Amiga-QDOS and a 'real'
+QL
+
+If the file is bigger than 32K, TAS instructions are replaced
+by a Line-A instruction (which is programmed to emulate TAS).
+Line-A code is INCOMPATIBLE with a 'real' QL. Code modified in
+this way will cause a total system crash if run on a real QL
+
+
+* TASrestore *
+
+Use this program to 'put-back' TAS instructions into programs
+that have been altered by TASremove.
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

@@ -1,0 +1,122 @@
+Short:    SuperBASIC toolkit for disassembling files & memory
+Uploader: msw@blackpool.ac.uk
+Author:   frans (francis swift)
+Version:  1.27
+Type:     util/rext
+
+
+VERSION 1.27 ARCHIVE CONTENTS
+
+ D68K_rext   - The toolkit.
+ D68K_readme - This file.
+
+
+FEATURES
+
+* Disassembles files & memory
+* SMALL and FAST
+* Provides a user link for single-line disassembly
+* FREEWARE
+
+
+SUPERBASIC KEYWORDS
+
+MDIS [#<chan>,]<pc>,[<org><length>]
+
+This procedure disassembles <length> bytes of code at address
+<pc>. The disassembly is printed to #<chan> or to #1 if no
+channel is specified. Optionally relocated to address <org>.
+
+FDIS [#<chan>,]<filename$>,[<pc>,[<org>[<length>]]
+
+As above, but disassembles <length> bytes from the specified
+<filename$>.
+
+D68K <pc>,[<org><buffer>]
+
+This function disassembles one m/c instruction at address <pc>.
+The disassembly is stored as a C string (0 terminated) in an
+ASCII buffer at address <buffer>. Optionally relocated to
+address <org>. The function returns the number of bytes
+disassembled. You must allocate a buffer of at least 256 bytes
+before using this function.
+
+
+ADVANCED USER INFORMATION
+
+D68K uses an entry in the THING list to allow external
+programs to access D68Ks disassembly routines.
+
+Currently D68Ks' THING is 64 bytes long and contains the
+following entries:
+
+Offset   Value    meaning
+
+$26      '1.27'   version number
+$2A      4        name length
+$2C      'd68k'   name
+$30      'THG%'   thing variables follow
+$34      2        freeform shared code
+$38      ?        address of a 256 byte buffer (private)
+$3C      ?        address of single-line disassembly routine
+
+
+Finding D68Ks' THING entry
+
+The following machine code could be used to find D68ks' THING
+entry. It returns with the address of the thing in A4.
+
+ Entry: none
+
+ Exit:  A0 = corrupted
+        A4 = address of D68ks' thing entry or zero
+        D0 = corrupted
+        D1 = corrupted
+        D2 = corrupted
+
+FIND_THG:
+         moveq    #MT.INF,d0        ; find system variables
+         trap     #1
+
+         lea      $B8(a0),a4        ; start of THING list
+
+NEXT_THG:
+         move.l   (a4),d0
+         move.l   d0,a4
+         beq.s    EXIT              ; exit if not found
+
+         cmp.w    #4,$2A(a4)        ; compare name length
+         bne.s    NEXT_THG
+
+         cmp.l    #'d68k',$2C(a4)   ; compare name
+         bne.s    NEXT_THG
+
+EXIT:
+         rts
+
+
+Single-line disassembly routine (THING offset $3C)
+
+The routine pointed to by offset $3C in D68ks' THING entry
+disassembles one m/c instruction at address <pc>. The
+disassembly is stored as a C string (0 terminated) in an ASCII
+buffer and is optionally relocated to address <org>. Returns
+the number of bytes disassembled in d0.
+
+ Entry: A0 = <pc>
+        A1 = <org>
+        A2 = 256 byte ASCII buffer
+
+ Exit:  A0 = updated pc
+        A1 = updated org
+        A2 = updated buffer
+        d0 = number of bytes disassembled
+
+
+CONTACT
+
+ post: FRANCIS SWIFT
+       325 CHARLESTOWN ROAD
+       BLACKLEY
+       MANCHESTER M9 7BS
+       UK

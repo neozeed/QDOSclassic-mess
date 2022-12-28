@@ -1,0 +1,35 @@
+*/beginfile PROCS7_asm
+; --------------------------------------------------------------
+; PROCS7_asm - BASIC bits
+;	    - last modified 10/12/91
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...some changes by Mark J Swift
+; --------------------------------------------------------------
+; subroutines to get parameter etc.
+L064A2:
+	MOVE.L	A4,-(A7)
+	MOVEQ	#$0F,D0
+	AND.B	-7(A6,A5.L),D0
+	SUBQ.B	#1,D0
+	BEQ.S	L064D6
+	MOVEQ	#0,D0
+	MOVE.W	-6(A6,A5.L),D0
+	BLT.S	L064DC
+	MOVEA.L	$18(A6),A1	; name table
+	LSL.L	#3,D0
+	ADDA.L	D0,A1
+	MOVEA.L	$20(A6),A0	;BV.NLBAS   name list
+	ADDA.W	2(A6,A1.L),A0
+	MOVEQ	#0,D1
+	MOVE.B	0(A6,A0.L),D1
+	LEA	1(A0),A4
+	JSR	L05F88(PC)	;*/undomodify BSR L05F88
+	BRA.S	L064DE
+L064D6	JSR	L05EC8(PC)	;*/undomodify BSR L05EC8
+	BRA.S	L064DE
+L064DC	MOVEQ	#-12,D0		; bad name error
+L064DE	MOVEA.L	(A7)+,A4
+	RTS
+
+; --------------------------------------------------------------
+;*/endfile

@@ -1,0 +1,4 @@
+100 src$="WIN1_QZ_UTIL_CONV_"
+110 :
+120 SET_FTYP\src$&"DOC2RTF_task",1
+130 SET_FDAT\src$&"DOC2RTF_task",1024

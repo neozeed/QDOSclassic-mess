@@ -1,0 +1,57 @@
+Short:    QDOS CLASSIC v3.25 (QDOS support disk)
+Uploader: msw@blackpool.ac.uk
+Version:  3.25
+
+  ___   ___    ___    ___         ___  _      ___    ___   ___  _   ___
+ / _ \ |   \  / _ \  / __|       / __|| |    / _ \  / __| / __|| | / __|
+| | | || |\ \| | | | \ \   ___  | /   | |   | |_| | \ \   \ \  | || /
+| |/  \| |/ /| |_| | _\ \ |___| | \__ | |__ |  _  | _\ \  _\ \ | || \__
+ \__/\/|___/  \___/ |___/        \___||____||_| |_||___/ |___/ |_| \___|
+
+
+SUPPORT DISK FEATURES
+
+  Q40 ONLY
+
+* SOFTROM    - Toolkit to load ROM images onto Q40 computer
+* CLASSICo   - The current QDOS CLASSIC ROM for the Q40
+* Q40UTIL    - The utility ROM that shipped with early Q40s
+* MODEDEMO   - simple demo of Q40s hi-res screen modes
+
+  AMIGA ONLY
+
+* BLITTER    - Example of how to use the Amiga blitter in QDOS
+* CDPLAYER   - Hack to play CD audio tracks from an Amiga SCSI drive
+* PALETTE    - Amiga palette editor for QDOS
+* NOTAS      - patch over TAS instructions with Amiga-friendly code
+
+  PROGRAM PATCHES
+
+* C68PATCH   - patch older C68 programs to be COPYBACK friendly
+* CACHE_asm  - cache handling routines compatible with ALL processors
+* SYSREF     - patch your progs to run when sys vars are relocated
+* XCHPATCH   - patch PD XCHANGE for COPYBACK compatibility
+
+  MISCELLANEOUS
+
+* BOOT       - My personal BOOT program
+* QPAC2_boot - Example BOOT program for QPAC2 on QDOS classic
+* PDTK       - Freeware BASIC toolkit with many TK2/TURBO like commands
+* TURBO_TK   - version 3b27 of the re-engineered Turbo Toolkit
+* D68K       - SuperBASIC toolkit for disassembling files & memory
+* RAMDISC    - Small PD RAM disk
+* SETDATE    - set the date & time the easy way
+* FLPTEST    - exhaustive test of floppy disk driver
+* MEMORYMAP  - simple program to display the QDOS memory map
+* PLAYMUSIC  - program to play sheet music from a DATA statement
+* PLAYSCALE  - simple program to play a musical scale
+* DOC2RTF    - translate QUILL DOC files into .RTF form
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

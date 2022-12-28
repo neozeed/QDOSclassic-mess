@@ -1,0 +1,117 @@
+CD_PLAYER_BAS - the first SuperBASIC CD player!
+-----------------------------------------------
+
+This little hack lets Qdos users play CD Audio tracks from a SCSI 2 CD-ROM
+drive. It communicates directly with the popular NCR 53c710 SCSI controller
+used on the Warp Engine, and can be converted for similar Zorro interfaces
+such as PP&S Zeus, CSA Magnum, Commodore 3091 or DKB A4091 - all it needs
+to know is the base address of the controller (set up in PROC SCSI_VARS).
+
+It has been tested with an Amiga 4000 with Warp Engine and CBM/DKB A4091
+controllers (as fitted on the A4000T motherboard) a Toshiba 3401 and an NEC
+Multispin 2x CD-ROM drive (firmware revision 2111.0). Your CPU is immaterial;
+I've run this on a C=3640, Warp Engine and Cyberstorm 68060. Other CD drives
+should work as long as they have a SCSI interface, but not all drives support
+software eject and loading so this is disabled for non-NEC drives. If you try
+this on other makes of drive, start with the flag NEC=0 as the Toshiba comes
+closer to the published SCSI standard - although Track and Index numbers are
+decimal, not BCD as on the NEC drive - and please let me know how you get on.
+
+The program needs to know where to find your SCSI controller. This depends on
+the number of active Zorro 3 slots on your machine and the size of each. The
+first slot is at address $40000000, and the Warp Engine controller is found
+256K thereafter. The A4091 controller claims 16 Mb and puts the controller
+at the start of the second half. Version 1.1 assumes that this is the second
+16 Mb card (I have a Silicon Studio digital audio card in a lower slot) so it
+looks for the controller at $41800000. Adjust WARP_ROM to suit your machine;
+Workbench:Tools/ShowConfig will display the base and size of your own boards.
+
+
+Initialisation
+--------------
+
+The program looks for the CD drive at SCSI unit 1, and lets you specify an
+alternative unit (0..6) if it can't find a CD drive there. You can change
+the default by altering the assignment at the start of SCSI_VARS.
+
+Various SCSI operations require a delay before the next action. This is
+implemented with SuperBASIC delay loops that perform up to TIME iterations
+before giving up. You may need to adjust the value of TIME to suit your CD
+drive or Amiga set-up. If the value is too low you're likely to see 'Phase
+mismatch' error reports at the bottom of the screen.
+
+By default (DEBUGGING=0) the program displays a menu showing the CD tracks
+available. It reports 'track does not want to play' if you ask it to play a
+track that is not CD-Audio - usually this means data, at the start of most
+mixed-format disks. If you set the flag DEBUGGING=1 you get a messier but
+more informative scrolling display as each SCSI command is issued.
+
+
+Program Operation
+-----------------
+
+The program is entirely controlled from the keyboard, with the minimum of
+key-presses. Letter keys issue the following commands:
+
+  [S]  Start replay from the first track         ..OR..
+  [S]  Stop playing audio and stop the CD motor
+  [P]  Pause audio playback - leave the CD drive motor running
+  [C]  Continue playing from the position reached before a pause (roughly)
+  [E]  Eject the disc currently in the CD drive (NEC drives only)
+  [N]  Load the disc (if NEC and ejected) then read its table of contents
+  [Q]  Quit to SuperBASIC, leaving the CD drive playing or idle
+
+The commands available vary depending on the current state of the program
+and CD drive. If there is a disc in the drive you can select a particular
+track by typing its number.
+
+For disks with up to nine tracks, all you need to type is the track number,
+with no need for ENTER. You may need to type two digits if there are more
+tracks to choose from - e.g. to distinguish track 1 from track 10. Single
+digits that could be ambiguous are shown with a leading zero, e.g. 01. This
+can be selected by pressing Zero then One, or One then Enter or Space, or
+just Zero if there are no more than 19 tracks. A cursor appears if an extra
+digit is required, and the program will not continue till the user enters a
+digit (to make a two-digit value) or Enter, Space or Escape.
+
+
+SuperBASIC Overview
+-------------------
+
+The program is structured as a collection of SuperBASIC commands which can
+be used directly if required. It is important to enter NCR_RESET at the
+start of a session or the controller may generate unexpected interrupts
+which lock up the Qdos emulator when they are not cleared. Thereafter the
+drive can be controlled directly with commands such as:
+
+  CD_PAUSE, CD_CONTINUE, CD_EJECT, CD_PLAY <track>
+
+Other commands will work with any specified SCSI unit - not just CD drives.
+These take one parameter, the SCSI unit number to be addressed:
+
+  REQUEST_SENSE, TEST_READY, DRIVE_ABORT, DRIVE_RESET, DRIVE_IDENT
+
+These routines display informative messages if DEBUGGING=1. There are three
+more routines that summarise the current state of the SCSI bus:
+
+  BUS_FREE (FN), NOW (prints bus state), SHOW_STATE (shows control lines)
+
+If a phase error occurs, low-level procedures can be invoked to move from
+the curreent phase towards BUS_FREE, e.g. GET_STATUS and MESSAGE_IN after
+most commands. If you are not quick the device may detect a timeout and
+reset the bus before you can prod it in the right direction.
+
+
+Conclusion - so far
+-------------------
+
+This is only a small step in the direction of SCSI support for Amiga Qdos,
+but it's a start and shows how much can be done from interpreted SuperBASIC.
+I have used similar code to control an Archive Python SCSI DAT drive.
+
+If you're lucky enough to have the required hardware, please try this on
+your Amiga and let us know how you get on.
+
+Simon N Goodwin, 21st February 1995,
+updated for Amiga Qdos 3.23 release, A4091 and Toshiba drives, September 1995.
+

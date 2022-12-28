@@ -1,0 +1,1120 @@
+*/beginfile QDOS1_asm
+; --------------------------------------------------------------
+; QDOS1_asm - The QDOS kernel
+;	   - last modified 17/03/97
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...latest changes by Mark J Swift
+; --------------------------------------------------------------
+;*/beginoverlay
+ORG0:
+	DC.L	$28480
+;ORG0:
+	DC.L	SYS_STARt-ORGN
+	DC.L	BUSERR-ORGN
+	DC.L	ADR_ERR-ORGN
+	DC.L	MOVP_EMU-ORGN
+	DC.L	ZERO_DIV-ORGN
+	DC.L	CHK_INST-ORGN
+	DC.L	TRAPV_INst-ORGN
+	DC.L	MSR_EMU-ORGN	; priviledge error
+	DC.L	TRACET-ORGN
+; line %1010 emulator - not implemented in JS
+L00028:
+	DC.L	TAS_EMU-ORGN
+; line %1111 emulator - not implemented on JS
+	DC.L	TAS_EMU-ORGN
+; other vectors are reserved
+	DC.L	TRPOTHER-ORGN
+	DC.L	TRPOTHER-ORGN
+	DC.L	TRPOTHER-ORGN
+	DC.L	TRPOTHER-ORGN
+	DC.L	TRPOTHER-ORGN
+	DC.L	TRPOTHER-ORGN
+	DC.L	TRPOTHER-ORGN
+	DC.L	TRPOTHER-ORGN
+L00050:
+	DC.L	TRPOTHER-ORGN
+L00054:
+	DC.L	TRPOTHER-ORGN
+	DC.L	TRPOTHER-ORGN
+L0005C:
+	DC.L	TRPOTHER-ORGN
+; long vectors for interrupt levels 0 through 7
+L00060:
+	DC.L	ILLEG_INT-ORGN
+	DC.L	ILLEG_INT-ORGN
+	DC.L	QL_MAIN_INT-ORGN
+	DC.L	ILLEG_INT-ORGN
+	DC.L	ILLEG_INT-ORGN
+	DC.L	ILLEG_INT-ORGN
+	DC.L	ILLEG_INT-ORGN
+	DC.L	NMI_INT-ORGN
+; standard QDOS trap vectors
+	DC.L	TRAP0-ORGN	;*/note routine has moved
+	DC.L	TRAP1-ORGN
+	DC.L	TRAP2-ORGN
+	DC.L	TRAP3-ORGN
+	DC.L	TRAP4-ORGN
+; user defined trap vectors
+	DC.L	TRAP5-ORGN
+	DC.L	TRAP6-ORGN
+	DC.L	TRAP7-ORGN
+	DC.L	TRAP8-ORGN
+	DC.L	TRAP9-ORGN
+	DC.L	TRAP10-ORGN
+	DC.L	TRAP11-ORGN
+	DC.L	TRAP12-ORGN
+	DC.L	TRAP13-ORGN
+	DC.L	TRAP14-ORGN
+	DC.L	TRAP15-ORGN
+	DC.W	vMM_ALCHP-ORGN
+	DC.W	vMM_RECHP-ORGN
+	DC.W	vUT_WINDW-ORGN
+	DC.W	vUT_CON-ORGN
+	DC.W	vUT_SCR-ORGN
+	DC.W	vUT_ERR0-ORGN
+	DC.W	vUT_ERR-ORGN
+	DC.W	vUT_MINT-ORGN
+	DC.W	vUT_MTEXT-ORGN
+	DC.W	vUT_LINK-ORGN
+	DC.W	vMT_UNLNK-ORGN
+	DC.W	vNONE-ORGN
+	DC.W	vMM_ALLOC-ORGN
+	DC.W	vMM_LNKFR-ORGN
+	DC.W	vIO_QSET-ORGN
+	DC.W	vIO_QTEST-ORGN
+	DC.W	vIO_QIN-ORGN
+	DC.W	vIO_QOUT-ORGN
+	DC.W	vIO_QEOF-ORGN	;*/note routine has moved
+	DC.W	vUT_CSTR-ORGN
+	DC.W	vIO_SERQ-ORGN
+	DC.W	vIO_SERIO-ORGN
+	DC.W	vCN_DATE-ORGN
+	DC.W	vCN_DAY-ORGN
+	DC.W	vCN_FTOD-ORGN
+	DC.W	vCN_ITOD-ORGN
+	DC.W	vCN_ITOBB-ORGN
+	DC.W	vCN_ITOBW-ORGN
+	DC.W	vCN_ITOBL-ORGN
+	DC.W	vCN_ITOHB-ORGN
+	DC.W	vCN_ITOHW-ORGN
+	DC.W	vCN_ITOHL-ORGN
+	DC.W	vCN_DTOF-ORGN
+	DC.W	vCN_DTOI-ORGN
+	DC.W	vCN_BTOIB-ORGN
+	DC.W	vCN_BTOIW-ORGN
+	DC.W	vCN_BTOIL-ORGN
+	DC.W	vCN_HTOIB-ORGN
+	DC.W	vCN_HTOIW-ORGN
+	DC.W	vCN_HTOIL-ORGN
+	DC.W	vBP_INIT-ORGN
+	DC.W	vCA_GTINT-ORGN
+	DC.W	vCA_GTFP-ORGN
+	DC.W	vCA_GTSTR-ORGN
+	DC.W	vCA_GTLIN-ORGN
+	DC.W	vBV_CHRIX-ORGN
+	DC.W	vRI_EXEC-ORGN
+	DC.W	vRI_EXECB-ORGN
+	DC.W	vBP_LET-ORGN
+	DC.W	vIO_NAME-ORGN
+	DC.W	vMD_READ-$4000-ORGN
+	DC.W	vMD_WRITE-$4000-ORGN
+	DC.W	vMD_VERIN-$4000-ORGN
+	DC.W	vMD_SECTR-$4000-ORGN
+; These vectors not defined in the advanced user guide
+	DC.W	vANA_SYNX-$4000-ORGN ; basic syntax analyser
+	DC.W	vTB_LIST-$4000-ORGN  ; first syntax table
+				   ; (commands)
+	DC.W	vEXP_SYNX-$4000-ORGN ; second syntax table
+				   ; (expressions)
+	DC.W	vFMT_LINE-$4000-ORGN ; format precompiled line
+	DC.W	vCOMP_ERR-$4000-ORGN ; error when compiling
+	DC.W	vSTO_LINE-$4000-ORGN ; store precompiled line
+	DC.W	vTKN_LIST-$4000-ORGN ; convert precompiled line
+				  ; to ASCII
+	DC.W	vINI_STCK-$4000-ORGN ; initialize BASIC stacks
+
+;*/beginfilling
+NOP00400:
+	DCB.w	($400-(NOP00400-ORGN))/2,$0000
+;*/endfilling
+;*/endoverlay
+; --------------------------------------------------------------
+;*/beginoverlay
+vMM_ALCHP  JMP	MM_ALCHP-ORG0
+vMM_RECHP  JMP	MM_RECHP-ORG0
+vUT_WINDW  JMP	UT_WINDW-ORG0
+vUT_CON	  JMP	UT_CON-ORG0
+vUT_SCR	  JMP	UT_SCR-ORG0
+vUT_ERR0   JMP	UT_ERR0-ORG0
+vUT_ERR	  JMP	UT_ERR-ORG0
+vUT_MINT   JMP	UT_MINT-ORG0
+vUT_MTEXT  JMP	UT_MTEXT-ORG0
+vUT_LINK   JMP	UT_LINK-ORG0
+vMT_UNLNK  JMP	MT_UNLNK-ORG0
+vNONE	  RTS
+;	   NOP
+;	   NOP
+vMM_ALLOC  JMP	MM_ALLOC-ORG0
+vMM_LNKFR   JMP	 MM_LNKFR-ORG0
+vIO_QSET   JMP	IO_QSET-ORG0
+vIO_QTEST   JMP	 IO_QTEST-ORG0
+vIO_QIN	  JMP	IO_QIN-ORG0
+vIO_QOUT   JMP	IO_QOUT-ORG0
+vIO_QEOF   JMP	IO_QEOF-ORG0
+vUT_CSTR   JMP	UT_CSTR-ORG0
+vIO_SERQ   JMP	IO_SERQ-ORG0
+vIO_SERIO  JMP	IO_SERIO-ORG0
+vCN_DATE   JMP	CN_DATE-ORG0
+vCN_DAY	  JMP	CN_DAY-ORG0
+vCN_FTOD   JMP	CN_FTOD-ORG0
+vCN_ITOD   JMP	CN_ITOD-ORG0
+vCN_ITOBB  JMP	CN_ITOBB-ORG0
+vCN_ITOBW  JMP	CN_ITOBW-ORG0
+vCN_ITOBL  JMP	CN_ITOBL-ORG0
+vCN_ITOHB  JMP	CN_ITOHB-ORG0
+vCN_ITOHW  JMP	CN_ITOHW-ORG0
+vCN_ITOHL  JMP	CN_ITOHL-ORG0
+vCN_DTOF   JMP	CN_DTOF-ORG0
+vCN_DTOI   JMP	CN_DTOI-ORG0
+vCN_BTOIB  JMP	CN_BTOIB-ORG0
+vCN_BTOIW  JMP	CN_BTOIW-ORG0
+vCN_BTOIL  JMP	CN_BTOIL-ORG0
+vCN_HTOIB  JMP	CN_HTOIB-ORG0
+vCN_HTOIW  JMP	CN_HTOIW-ORG0
+vCN_HTOIL  JMP	CN_HTOIL-ORG0
+vBP_INIT   JMP	BP_INIT-ORG0
+vCA_GTINT  JMP	CA_GTINT-ORG0
+vCA_GTFP   JMP	CA_GTFP-ORG0
+vCA_GTSTR  JMP	CA_GTSTR-ORG0
+vCA_GTLIN  JMP	CA_GTLIN-ORG0
+
+; TKII jumps into the middle of the BV_CHRIX code
+; at +$1C and +$2C - some people never learn.
+
+vBV_CHRIX ;reserve space on arithmetic stack
+	MOVEQ	#$58,D2
+	BRA.S	vL04E90
+vL04E52	MOVEQ	#$0C,D1		;12 bytes on stack
+vL04E54	MOVEQ	#$48,D2
+	BRA.S	vL04E90
+vL04E58	MOVEQ	#4,D1		;reserve 4 bytes
+vL04E5A	MOVEQ	#$50,D2
+	BRA.S	vL04E90
+vL04E5E	MOVEQ	#8,D1
+vL04E60	MOVEQ	#$1C,D2		;name table
+	BRA.S	vL04E84
+vL04E64	MOVEQ	#$16,D1		;20 bytes for
+	MOVEQ	#$3C,D2		;return table
+	BRA.S	vL04E84
+vL04E6A	MOVEQ	#4,D2		;buffer
+	BRA.S	vL04E84
+vL04E6E	MOVEQ	#$0C,D2		;token list
+	BRA.S	vL04E84
+vL04E72	MOVEQ	#$24,D2		;Name list
+	BRA.S	vL04E84
+vL04E76	MOVEQ	#$2C,D2		;variable values
+	BRA.S	vL04E84
+vL04E7A	MOVEQ	#$34,D2
+	BRA.S	vL04E84
+vL04E7E	MOVEQ	#$44,D2
+	BRA.S	vL04E84
+vL04E82	MOVEQ	#$14,D2
+vL04E84	JMP	L04E84-ORG0
+vL04E90	JMP	L04E90-ORG0
+
+vRI_EXEC   JMP	RI_EXEC-ORG0
+vRI_EXECB  JMP	RI_EXECB-ORG0
+vBP_LET	  JMP	BP_LET-ORG0
+vIO_NAME   JMP	IO_NAME-ORG0
+vMD_READ   JMP	MD_READ-ORG0
+vMD_WRITE  JMP	MD_WRITE-ORG0
+vMD_VERIN  JMP	MD_VERIN-ORG0
+vMD_SECTR  JMP	MD_SECTR-ORG0
+vANA_SYNX  JMP	ANA_SYNX-ORG0
+vFMT_LINE  JMP	FMT_LINE-ORG0
+vCOMP_ERR  JMP	COMP_ERR-ORG0
+vSTO_LINE  JMP	STO_LINE-ORG0
+
+vTKN_LIST  MOVEA.L BV_PFBAS(A6),A4 ;TKII messing things up again
+	  JMP	TKN_LST2-ORG0    ;uses jsr $4004()
+
+vINI_STCK  JMP	INI_STCK-ORG0
+
+vTB_LIST:
+	DC.L	L08D2B-ORG0
+	DC.L	COM_SYNX-ORG0
+
+	DC.B	$00
+vEXP_SYNX ; Expression syntax table
+	DC.B	$0C,$01,$2A,$08,$10
+	DC.L	$0C040C02,$08009802
+	DC.L	$002C0400,$2A05800A,$EB00A202,$002CF600
+	DC.L	$0202002A,$02009802,$0028FC2C,$00000202
+	DC.L	$00802A02,$00A20200,$2CF80080,$0EFE2601
+	DC.L	$9802000E
+	DC.B	$F7,$80,$00
+
+;*/beginfilling
+	DC.B	$00
+NOP00600:
+	DCB.w	($600-(NOP00600-ORGN))/2,$4E71
+;*/endfilling
+;*/endoverlay
+; --------------------------------------------------------------
+L00420:	; was code for starting and stopping transmission through 8049
+
+L00460:
+DO_TRAP1:
+	CMPI.W	#$24,D0
+	BHI.S	L004BC
+	MOVE.W	D0,D7
+	ADD.W	D7,D7
+	MOVE.W	TRAP1_TAb(PC,D7.W),D7
+	JMP	DO_TRAP1(PC,D7.W)
+L00472:
+TRAP1_TAb:
+	DC.W	MT_INF-DO_TRAP1	; D0=0
+	DC.W	MT_CJOB-DO_TRAP1	; 1
+	DC.W	MT_JINF-DO_TRAP1	; 2
+	DC.W	L004BC-DO_TRAP1	; 3 = ERROR
+	DC.W	MT_RJOB-DO_TRAP1	; 4
+	DC.W	MT_FRJOB-DO_TRAP1 ; 5
+	DC.W	MT_FREE-DO_TRAP1	; 6
+	DC.W	MT_TRAPV-DO_TRAP1 ; 7
+	DC.W	MT_SUSJB-DO_TRAP1 ; 8
+	DC.W	MT_RELJB-DO_TRAP1 ; 9
+	DC.W	MT_ACTIV-DO_TRAP1 ; A
+	DC.W	MT_PRIOR-DO_TRAP1 ; B
+	DC.W	MT_ALLOC-DO_TRAP1 ; C
+	DC.W	MT_LNKFR-DO_TRAP1 ; D
+	DC.W	MT_ALRES-DO_TRAP1 ; E
+	DC.W	MT_RERES-DO_TRAP1 ; F
+	DC.W	MT_DMODE-DO_TRAP1 ; 10
+	DC.W	MT_IPCOM-DO_TRAP1 ; 11
+	DC.W	MT_BAUD-DO_TRAP1	; 12
+	DC.W	MT_RCLCK-DO_TRAP1 ; 13
+	DC.W	MT_SCLCK-DO_TRAP1 ; 14
+	DC.W	MT_ACLCK-DO_TRAP1 ; 15
+	DC.W	MT_ALBAS-DO_TRAP1 ; 16
+	DC.W	MT_REBAS-DO_TRAP1 ; 17
+	DC.W	MT_ALCHP-DO_TRAP1 ; 18
+	DC.W	MT_RECHP-DO_TRAP1 ; 19
+	DC.W	MT_LXINT-DO_TRAP1 ; 1A
+	DC.W	MT_RXINT-DO_TRAP1 ; 1B
+	DC.W	MT_LPOLL-DO_TRAP1 ; 1C
+	DC.W	MT_RPOLL-DO_TRAP1 ; 1D
+	DC.W	MT_LSCHD-DO_TRAP1 ; 1E
+	DC.W	MT_RSCHD-DO_TRAP1 ; 1F
+	DC.W	MT_LIOD-DO_TRAP1	; 20
+	DC.W	MT_RIOD-DO_TRAP1	; 21
+	DC.W	MT_LDD-DO_TRAP1	; 22
+	DC.W	MT_RDD-DO_TRAP1	; 23
+	DC.W	MT_TRA-DO_TRAP1	; 24 not documented
+L004BC:
+	MOVEQ	#ERR.BP,D0	; bad parameter return
+	BRA	RET_TRAP
+L004C2:
+MT_INF:
+	MOVEQ	#-1,D1
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+	MOVE.L	#'3.25',D2	;*/modify MOVE.L $BFF6,D2
+	MOVEA.L	A6,A0		; pointer to sys vars
+	BRA	RET_CLD0
+; *****************************************************
+; * TRAP #1 with D0=$24 (undocumented)		*
+; * D1=address  => install new key translation table	*
+; * D1=1        => install ROM key translation table	*
+; * D2=address  => install new system message table	*
+; * D2=0        => leave old system messages 	*
+; *****************************************************
+L004D4:
+MT_TRA:
+	TST.L	D2
+	BEQ.S	L004EA		; no new message table
+	BTST	#0,D2		; test for odd address
+	BNE.S	L0051E		; bad parameter return
+	MOVEA.L	D2,A0
+	CMPI.W	#$4AFB,(A0)	; test identifier
+	BNE.S	L0051E
+	MOVE.L	A0,SV_MGTAB(A6)	; pointer to system messages
+L004EA:
+	CLR.B	SV_TRAN(A6)	; signal bad key translation
+				; table
+	TST.L	D1
+	BEQ.S	L00518		; no new tra-table
+	CMPI.L	#1,D1		; TRA 1 : take old key
+				; translation table
+	BNE.S	L00500
+RLOC01	MOVE.L	#(KEY_TRA-ORG0),D1 ;*/modify MOVE.L $BFE2,D1
+L00500:
+	BTST	#0,D1
+	BNE.S	L0051E
+	MOVEA.L	D1,A0
+	CMPI.W	#$4AFB,(A0)	; check if any usefull table
+				; is present
+	BNE.S	L0051E
+	MOVE.B	#1,SV_TRAN(A6)	; signal that key
+				; translation is present
+	MOVE.L	A0,SV_TRTAB(A6)	; pointer to key translation
+				; table
+L00518:
+	MOVEQ	#0,D0
+	BRA	RET_TRAP
+L0051E:
+	MOVEQ	#ERR.BP,D0	; Bad parameter
+	BRA	RET_TRAP
+MT_JINF:
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+	MOVEQ	#0,D3
+	TST.W	JB_STAT(A0)	; job status
+	BEQ.S	L00532
+	MOVEQ	#-$01,D3
+L00532:
+	MOVE.B	JB_PRINC(A0),D3	; jobs priority increment
+	MOVE.L	D2,D0
+	MOVE.L	A0,-(A7)
+	JSR	L006C6(PC)	;*/undomodify BSR L006C6
+	MOVEA.L	(A7)+,A0
+	MOVE.L	8(A0),D2 	; owner of job
+	LEA	JB_END(A0),A0	; prog start of job
+	BRA	RET_CLD0
+MT_CJOB:
+	TST.L	D1
+	BEQ.S	L00554
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+L00554:
+	MOVEM.L	D1-D3/A1-A4,-(A7)
+	MOVEQ	#0,D7
+	MOVEA.L	SV_JBBAS(A6),A4	; Ptr to base of job table
+L0055E:
+	TST.B	(A4)		; job not active
+	BLT.S	L00570		; initialize
+	ADDQ.W	#1,D7
+	ADDQ.W	#4,A4		;*/undomend ADDQ.L #4,A4
+	CMPA.L	SV_JBTOP(A6),A4	; Ptr to top of job table
+	BLT.S	L0055E
+	MOVEQ	#ERR.NJ,D0	; invalid job
+	BRA.S	L005E0
+; activate job
+L00570:
+	MOVEQ	#JB_END,D1	; add size of jobs
+	ADD.L	D2,D1		; descriptor to length
+	ADD.L	D3,D1
+	JSR	RESERVD1(PC)	;*/undomodify BSR RESERVD1
+				; reserve d1 bytes
+	BNE.S	L005E0
+	MOVEM.L	(A7),D1-D3/A1
+	MOVE.L	A0,(A4)
+	CMP.W	SV_JBMAX(A6),D7	; Highest current job number
+	BLS.S	L0058C		; old job
+	MOVE.W	D7,SV_JBMAX(A6)	; Highest current job number
+L0058C:
+	ADDQ.W	#JB_START,A0	;*/undomend ADDQ.L #4,A0
+				; A0=base_of_job+4
+	MOVEQ	#((JB_END-JB_START)/4-1),D0 ; len of job descr
+L00590:
+	CLR.L	(A0)+		; set job descriptor to 0
+	DBF	D0,L00590
+; start of job
+	SUBA.W	#(JB_END-JB_OWNER),A0 ;*/undomend SUBA.L
+	MOVE.L	D1,(A0)
+	ADDQ.W	#(JB_TAG-JB_OWNER),A0 ;*/undomend ADDQ.L #8,A0
+	SWAP	D7
+	MOVE.W	SV_JBTAG(A6),D7	; Current value of job tag
+	MOVE.W	D7,(A0)
+	SWAP	D7
+	ADDQ.W	#1,SV_JBTAG(A6)	; Current value of job tag
+; Ptr to trap redirection table
+	MOVE.L	SV_TRAPV(A6),(JB_TRAPV-JB_TAG)(A0)
+	ADDA.W	#(JB_A4-JB_TAG),A0 ;*/undomend ADDA.L
+				 ;*/note sign exten long
+	MOVE.L	D2,(A0)+ 	; length of job in JB_A4
+	ADD.L	D2,D3		; add data area
+	MOVE.L	D3,(A0)+ 	; len of job + data in JB_A5
+	MOVEQ	#(JB_END-JB_A6),D0
+	ADD.L	A0,D0
+	MOVE.L	D0,(A0)+ 	; base of jobs prog in JB_A6
+	ADD.L	D0,D3		; d3=total length
+	EXG	D3,A0
+	CLR.L	-(A0)
+	EXG	D3,A0
+	MOVE.L	D3,(A0)		; address of stack in JB_A7
+	ADDQ.W	#(JB_PC-JB_A7),A0 ;*/undomend ADDQ.L #6,A0
+	MOVE.L	A1,D3
+	BEQ.S	L005D4
+	MOVE.L	D3,D0
+L005D4:
+	MOVE.L	D0,(A0)		; start of prog in JB_PC
+	MOVE.L	D0,(JB_START-JB_PC)(A0); and in JB_START
+	bsr	CJOBFIX		;*/modify LEA (JB_END-JB_PC)(A0),A0
+	MOVEQ	#0,D0
+L005E0:
+	MOVEM.L	(A7)+,D1-D3/A1-A4
+	MOVE.L	D7,D1
+	BRA	RET_TRAP
+L005EA:
+MT_RJOB:
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+	MOVE.L	D1,D0
+L005F0:
+	TST.B	JB_PRINC(A0)	; jobs priority increment
+	BNE	L006C0		; not complete
+	JSR	L006C6(PC)	;*/undomodify BSR L006C6
+				; look for next job
+	TST.L	D1		; same owner ?
+	BNE.S	L005F0		; continue
+	MOVE.L	D0,D1		; restore D1 (Job ID)
+MT_FRJOB:
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+	MOVE.L	D1,D0		; job ID
+	BEQ	L006C0		; BASIC ? 'not complete'
+	BSR	L006EE		;*/modify MOVEA.W  D1,A1
+				;*/modify ADDA.W A1,A1
+				;*/modify ADDA.W A1,A1
+				;*/modify ADDA.L	 SV_JBBAS(A6),A1
+L00616:
+	MOVE.W	#$FFFD,JB_STAT(A0) ;*/modify ADDQ.B   #1,(A1)
+				; mark JOB for later removal
+	JSR	L006C6(PC)	;*/undomodify BSR L006C6
+				;*/remove TST.L	 D1
+				;*/note flags already set for D1
+	BNE.S	L00616		; find next job in tree
+	SF	-(A7)
+				;*/remove MOVEQ	 #0,D1
+				;*/note D1 is 0 at this point
+	MOVEA.L	SV_JBBAS(A6),A1	; Ptr to base of job table
+L00628:
+	ADDQ.W	#4,A1		;*/undomend ADDQ.L #4,A1
+	ADDQ.W	#1,D1
+	CMP.W	SV_JBMAX(A6),D1	; Highest current job number
+	BHI	L006B6
+	MOVEA.L	(A1),A0		;*/insert
+	TST.B	(A1)
+	BLT.S	L00628		;*/modify BLE.S L00628
+				; loop if no valid entry
+	CMP.W	#$FFFD,JB_STAT(A0) ;*/insert
+	BNE.S	L00628		;*/insert
+				; loop if not a marked job
+				;*/remove CLR.B	 (A1)
+				; unmark job
+				;*/remove MOVEA.L  (A1),A0
+	SWAP	D1
+	MOVE.W	JB_TAG(A0),D1	; tag for job
+	SWAP	D1
+	CMPA.L	SV_JBPNT(A6),A1	; Ptr to current job table
+				; entry
+	BNE.S	L0064C
+	ST	(A7)
+L0064C	TST.B	JB_WFLAG(A0)	; is any job waiting for
+				; this to finish ?
+	BEQ.S	L00670
+	MOVE.L	JB_WJOB(A0),D0	; D0 = ID of waiting JOB
+	EXG	D0,D1
+	JSR	L003E4(PC)	;*/undomodify BSR L003E4
+				; job OK?
+	EXG	D1,D0
+	BNE.S	L00670
+	CMPI.W	#$FFFE,JB_STAT(A0) ; test JOB status
+	BNE.S	L00670
+	CLR.W	JB_STAT(A0)	; job status=0
+	MOVE.L	D3,JB_D0(A0)
+; now the channels owned by this job are suspended
+L00670:
+	MOVEA.L	SV_CHEAP(A6),A0	; Base of common heap area
+L00674:
+	CMP.L	CH_OWNER(A0),D1	; owner of channel
+	BNE.S	L0069A
+	MOVEM.L	D1/D3/A0-A1,-(A7)
+	MOVE.L	CH_RFLAG(A0),D1
+	BEQ.S	L00688
+	MOVEA.L	D1,A1
+	ST	(A1)
+L00688:
+	MOVEA.L	CH_DRIVR(A0),A1
+	LEA	-SV_LIO(A1),A3	; address of linkage block
+	MOVEA.L	(SV_ACLOS-SV_LIO)(A1),A1	; address of close routine
+	JSR	(A1)
+	MOVEM.L	(A7)+,D1/D3/A0-A1
+L0069A:
+	ADDA.L	(A0),A0
+	CMPA.L	SV_FREE(A6),A0	; Base of free area
+	BLT.S	L00674
+	MOVEM.L	D1/D3/A1,-(A7)
+	MOVEA.L	(A1),A0
+	JSR	RELE_MEM(PC)	;*/undomodify BSR RELE_MEM
+				; release memory
+	MOVEM.L	(A7)+,D1/D3/A1
+	ST	(A1)
+	BRA	L00628
+L006B6:
+	TST.B	(A7)+
+	BEQ	RET_CLD0
+	BRA	L0093A
+L006C0:
+	MOVEQ	#ERR.NC,D0	; not complete error
+	BRA	RET_TRAP
+L006C6:
+	MOVE.L	D1,D2		; D2= owner job
+	MOVEQ	#0,D1
+L006CA:
+	ADDQ.W	#1,D1
+	CMP.W	SV_JBMAX(A6),D1	; Highest current job number
+	BGT.S	L006E0
+	BSR.S	L006EE		; get job base
+	TST.B	(A1)		; is it active
+	BLT.S	L006CA
+	CMP.L	JB_OWNER(A0),D2	; same owner of job
+	BEQ.S	L00700
+	BRA.S	L006CA		; continue searching
+L006E0:
+	CMP.W	D2,D0
+	BEQ.S	L006FC
+	MOVE.W	D2,D1
+	BSR.S	L006EE
+	MOVE.L	JB_OWNER(A0),D2	; owner of job
+	BRA.S	L006CA		; continue searching
+L006EE:
+				;*/undoinsert SUBA.L A1,A1
+	MOVEA.W	D1,A1		;*/note D1 sign exten long
+	ADDA.L	A1,A1		;*/mend ADDA.W A1,A1
+	ADDA.L	A1,A1		;*/mend ADDA.W A1,A1
+	ADDA.L	SV_JBBAS(A6),A1	; Ptr to base of job table
+	MOVEA.L	(A1),A0
+	RTS
+L006FC:
+	MOVEQ	#0,D1
+	RTS
+L00700:
+	SWAP	D1
+	MOVE.W	JB_TAG(A0),D1	; TAG for job
+	SWAP	D1
+	RTS
+L0070A:
+MT_TRAPV:
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+; only for those fools, which do not use MT.TRAPV
+	SUBA.W	#$54,A1		;*/undomend SUBA.L
+				;*/note #$54 sign exten long
+	MOVE.L	A1,SV_TRAPV(A6)	; Ptr to trap redirection
+				; table
+	MOVE.L	A1,JB_TRAPV(A0)	; TRAPV
+	BRA	RET_CLD0
+L0071E:
+MT_ALLOC:
+	ADDA.L	8(A5),A0 	; A0 = ptr to ptr to free
+				; space
+	JSR	MM_ALLOC(PC)	;*/undomodify BSR MM_ALLOC
+	SUBA.L	8(A5),A0 	; base of allocated area
+	bra.s	L007A2
+L0072C:
+MT_LNKFR:
+	ADDA.L	8(A5),A0
+	ADDA.L	8(A5),A1
+	JSR	MM_LNKFR(PC)	;*/undomodify BSR MM_LNKFR
+	bra.s	L007A2
+L0073A:
+MT_ALCHP:
+	EXG	D2,D1
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+	MOVE.L	D1,-(A7)
+	MOVEQ	#$10,D1
+	ADD.L	D2,D1		; d2= number of bytes
+	JSR	MM_ALCHP(PC)	;*/undomodify BSR MM_ALCHP
+	bne.s	L007BC
+	ADDQ.W	#4,A0		;*/undomend ADDQ.L #4,A0
+L0074E:
+	MOVE.L	#(L0075A-ORG0-$0C),(A0)+ ; pointer to address
+				       ; of release..pardon?
+	MOVE.L	(A7)+,(A0)+
+	CLR.L	(A0)+
+	BRA.S	L00766
+L0075A:
+	DC.L	MM_RECHP-ORG0	;*/note I don't understand
+L0075E:
+MT_RECHP:
+	LEA	-$10(A0),A0
+	JSR	MM_RECHP(PC)	;*/undomodify BSR MM_RECHP
+L00766:
+	BRA	RET_CLD0
+L0076A:
+MT_ALRES:
+MT_RERES:
+	MOVEA.L	SV_RESPR(A6),A0	; base of resident proc area
+	CMPA.L	SV_TRNSP(A6),A0	; base of trans'nt prog area
+	BNE.S	L007A0
+	CMPI.B	#$0F,D0		; $F -> release
+	BEQ.S	L00786
+	TST.L	D1
+	BLE.S	L00766
+	JSR	RESERVD1(PC)	;*/undomodify BSR RESERVD1
+				; reserve d1 bytes
+	blt.s	L007BE		;*/undomodify BLT RET_TRAP
+				;*/note would be quicker
+	BRA.S	L00792
+L00786:
+	MOVE.L	SV_RAMT(A6),D1	; Top of RAM(+1)
+	SUB.L	SV_RESPR(A6),D1	; Base of resident procs
+	JSR	RELE_MEM(PC)	;*/undomodify BSR RELE_MEM
+				; release memory
+L00792:
+	MOVE.L	SV_TRNSP(A6),$1C(A6) ; Base of transient progs
+	CLR.L	SV_TRNFR(A6)	; First free space in TPA
+	BRA	RET_CLD0
+L007A0:
+	MOVEQ	#ERR.NC,D0	; not complete error
+L007A2:
+	bra.s	L007BE		;*/undomodify BRA RET_TRAP
+				;*/note would be quicker
+L007A4:
+MT_ALBAS:
+	JSR	L031B8(PC)	;*/undomodify BSR L031B8
+				; allocate memory
+	bra.s	L007BE		;*/undomodify BRA RET_TRAP
+				;*/note would be quicker
+MT_REBAS:
+	MOVE.L	SV_TRNSP(A6),-(A7) ; Base of transient progs
+	SUB.L	D1,SV_TRNSP(A6)	; Base of transient progs
+	JSR	L031C8(PC)	;*/undomodify BSR L031C8
+				; release memory
+	MOVE.L	(A7)+,SV_TRNSP(A6) ; Base of transient progs
+	BRA.S	L007BE
+L007BC:
+	ADDQ.W	#4,A7		;*/undomend ADDQ.L   #4,A7
+L007BE:
+	BRA	RET_TRAP
+L007C2:
+; --------------------------------------------------------------
+MT_LXINT:
+MT_LPOLL:
+MT_LSCHD:
+MT_LIOD:
+MT_LDD:
+	bsr	CLRALL		;*/mend
+	ADD.W	D0,D0
+	LEA	4(A6,D0.W),A1	; decide if external
+				; interrupt/ 50 Hz
+	JSR	UT_LINK(PC)	;*/undomodify BSR UT_LINK
+				; /scheduler task /IO device
+				; /Directory
+	BRA.S	L008FC
+MT_RXINT:
+MT_RPOLL:
+MT_RSCHD:
+MT_RIOD:
+MT_RDD:
+	ADD.W	D0,D0
+	LEA	2(A6,D0.W),A1
+	JSR	MT_UNLNK(PC)	;*/undomodify BSR MT_UNLNK
+L008FC	BRA	RET_CLD0
+; --------------------------------------------------------------
+;  50 Hz vertical Blank interrupt server
+; --------------------------------------------------------------
+L00900:
+	ADDQ.W	#1,SV_POLLM(A6)	; Count of poll ints missed
+	BVC.S	L0090A
+	SUBQ.W	#1,SV_POLLM(A6)	; Count of poll ints missed
+L0090A:
+	MOVEM.L	D0-D6/A0-A4,-(A7)
+	MOVEQ	#-$08,D0
+	MOVEQ	#$01,D3
+	MOVEA.L	SV_PLIST(A6),A0	; Ptr to list of polled
+				; tasks
+	JSR	EXEC_TSK(PC)	;*/undomodify BSR EXEC_TSK
+	MOVEM.L	(A7)+,D0-D6/A0-A4
+	MOVE.B	SV_PCINT(A6),D7	; Current value of PC
+				; interrupt register
+	ori.b	#$08,d7		;*/restorecode
+	move.b	d7,PC_INTR	;*/restorecode
+	BTST	#5,$C(A7)	; supervisor mode ?
+	BNE	L003B6
+L00936:
+	JSR	L009D4(PC)	;*/undomodify BSR L009D4
+				; save jobs area
+L0093A:
+	MOVE.W	SV_POLLM(A6),D3	; Count of poll ints missed
+	CLR.W	SV_POLLM(A6)	; Count of poll ints missed
+	ADDQ.W	#1,SV_RAND(A6)	; random number
+	MOVEQ	#-$10,D0
+	MOVEA.L	SV_SHLST(A6),A0	; ptr to list of scheduler
+				; tasks
+	JSR	EXEC_TSK(PC)	;*/undomodify BSR EXEC_TSK
+				; execute polled task
+	JSR	L00A0C(PC)	;*/undomodify BSR L00A0C
+				; get highest job priority
+	TST.L	D0
+	BLT.S	L0093A		; continue
+	MOVE.L	D0,SV_JBPNT(A6)	; ptr to current jobtable
+				; entry
+	JSR	EXEC_JOB(PC)	;*/undomodify BSR EXEC_JOB
+				; Execute job
+L00960:
+MT_SUSJB:
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+	MOVE.W	D3,JB_STAT(A0)	; job status
+	MOVE.L	A1,JB_HOLD(A0)
+	MOVEQ	#0,D0
+	BRA.L	L00936		;*/undomodify bra.s L00936
+				;*/undomodify nop
+L00972:
+MT_RELJB:
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+	TST.W	JB_STAT(A0)	; job status
+	BEQ.S	L0098A
+	CLR.W	JB_STAT(A0)	; job status
+	MOVE.L	JB_HOLD(A0),D0	; pointer to byte which will
+				; be cleared when release
+	BEQ.S	L0098A
+	MOVEA.L	D0,A0
+	SF	(A0)
+L0098A:
+	MOVEQ	#0,D0
+	BRA.L	L00936		;*/undomodify BRA.S L00936
+				;*/undomodify nop
+L00990:
+MT_PRIOR:
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+	MOVE.B	D2,JB_PRINC(A0)	; priority increment
+	BNE.S	L009CA
+	SF	JB_PRIOR(A0)	; current accumulated
+				; priority
+	BRA.S	L009CA
+L009A0:
+MT_ACTIV:
+	JSR	GETJOBID(PC)	;*/undomodify BSR GETJOBID
+	TST.B	JB_PRINC(A0)	; priority increment
+	BNE.S	L009D0
+	jsr	CLRALL(PC)	;*/mend
+	MOVE.B	D2,JB_PRINC(A0)	; priority increment
+	MOVE.L	JB_START(A0),JB_PC(A0) ; start address on
+				; activation -> saved PC
+	TST.W	D3
+	BEQ.S	L009CA
+	ST	JB_WFLAG(A0)	; there is a job waiting for
+				; this one
+	JSR	JOBID_ME(PC)	;*/undomodify BSR JOBID_ME
+	MOVE.L	D0,JB_WJOB(A0)	; ID of job waiting for this
+				; to finish
+	MOVE.W	#-2,JB_STAT(A3)	; JOB is waiting for another
+				; job to finish
+L009CA:
+	MOVEQ	#0,D0
+L009CC:
+	BRA	L00936
+L009D0:
+	MOVEQ	#ERR.NC,D0	; Not complete
+	BRA.S	L009CC
+L009D4:
+	MOVE.L	A6,-(A7)
+	MOVEA.L	$64(A6),A6	; pointer to current job
+				; table entry
+	MOVEA.L	(A6),A6		; get job table of actual
+				; job
+	TST.B	$12(A6)		; current accumulated
+				; priority
+	BEQ.S	L009E8
+	MOVE.B	#$01,$12(A6)	; reset accumulated priority
+L009E8:
+	MOVEM.L	D0-D7/A0-A4,$20(A6) ; save registers of job
+	MOVE.L	(A5)+,$3C(A6)	; save D7
+	MOVE.L	(A5)+,$54(A6)	; save A5
+	MOVE.L	(A5)+,$58(A6)	; save A6
+	MOVE.L	USP,A0
+	MOVE.L	A0,$5C(A6)	; save A7
+	MOVE.W	(A5)+,$60(A6)	; save SR
+	MOVE.L	(A5)+,$62(A6)	; save PC
+	MOVEA.L	(A7)+,A6
+	RTS
+L00A0C:
+	MOVEQ	#-2,D0
+	MOVEQ	#0,D1
+	MOVEA.L	$64(A6),A2	;SV.JBPNT   Pointer to
+				; current job table entry
+	MOVEA.L	A2,A4
+				;*/undoinsert CLR.L D2
+	MOVE.W	$62(A6),D2	;SV.JBMAX   Highest current
+				; job number
+	LSL.W	#2,D2		;*/undomend LSL.L
+				;*/note not neccessary
+	MOVEA.L	$68(A6),A3	;SV.JBBAS   Pointer to base
+				; of job table
+	ADDA.W	D2,A3		;*/undomend ADDA.L
+				;*/note D2 sign extended long
+L00A22:
+	ADDQ.W	#4,A2		;*/undomend ADDQ.L #4,A2
+	CMPA.L	A3,A2
+	BLE.S	L00A2C
+	MOVEA.L	$68(A6),A2	;SV.JBBAS   Pointer to base
+				; of job table
+L00A2C:
+	TST.B	(A2)
+	BLT.S	L00A72
+	MOVEA.L	(A2),A0
+	TST.B	$13(A0)		; jobs priority increment
+	BEQ.S	L00A72
+	TST.W	$14(A0)		; job status
+	BEQ.S	L00A54
+	BLT.S	L00A72
+	SUB.W	D3,$14(A0)	; job status
+	BGT.S	L00A72
+	CLR.W	$14(A0)		; job status=0
+	MOVE.L	$0C(A0),D2
+	BEQ.S	L00A54
+	MOVEA.L	D2,A1
+	SF	(A1)
+L00A54:
+	MOVE.B	$12(A0),D2	; jobs accumulated priority
+	BEQ.S	L00A64
+	ADD.B	$13(A0),D2	; jobs priority increment
+	BCC.S	L00A66
+	ST	D2
+	BRA.S	L00A66
+L00A64:
+	MOVEQ	#$01,D2
+L00A66:
+	MOVE.B	D2,$12(A0)	; jobs accumulated priority
+	CMP.B	D1,D2
+	BLS.S	L00A72
+	MOVE.L	A2,D0
+	MOVE.B	D2,D1
+L00A72:
+	CMPA.L	A4,A2
+	BNE.S	L00A22
+	RTS
+; --------------------------------------------------------------
+;*/beginoverlay
+
+L003BC:
+GETJOBID:
+	TST.W	D1
+	BGE.S	L003D8
+	MOVE.L	SV_JBPNT(A6),D1	; pointer to current job
+				; table entry
+	MOVEA.L	D1,A0
+	MOVEA.L	(A0),A0		; Get job table entry
+	SUB.L	SV_JBBAS(A6),D1	; subtract pointer to base
+				; of job table
+	LSR.L	#2,D1		; divide by 4
+	SWAP	D1		; job number is ready
+	MOVE.W	$10(A0),D1	; get job tag
+	SWAP	D1
+L003D6:
+	RTS
+L003D8:
+	BSR.S	L003E4		; valid job ?
+	BEQ.S	L003D6
+	MOVEQ	#ERR.NJ,D0	; invalid job !
+	ADDQ.W	#4,A7		;*/undomend ADDQ.L #4,A7
+	BRA.L	RET_TRAP 	;*/undomodify bra.s RET_TRAP
+				;*/undomodify nop
+L003E4:
+	CMP.W	SV_JBMAX(A6),D1	; highest current job number
+	BHI.S	L003D6		; RTS
+				;*/undoinsert SUB.L A0,A0
+	MOVEA.W	D1,A0		;*/note D1 sign exten long
+	ADDA.L	A0,A0		;*/mend ADDA.W A0,A0
+	ADDA.L	A0,A0		;*/mend ADDA.W A0,A0
+	ADDA.L	SV_JBBAS(A6),A0	; pointer to base of job
+				; table
+	TST.B	(A0)
+	BLT.S	L003D6
+	MOVEA.L	(A0),A0
+	SWAP	D1
+	CMP.W	JB_TAG(A0),D1	; job tag
+	BNE.S	L003D6
+	SWAP	D1
+	CMP.B	D1,D1
+	RTS
+
+;*/endoverlay
+;*/beginoverlay
+
+MT_DMODE:
+	bsr	MODEFIX		;*/modify MOVE.B SV_MCSTA(A6),D0
+
+	cmp.b	#-1,d1		;*/modify TST.B  D1  ; read ?
+	beq	L0085E		;*/modify BLT    L0085E
+
+MT_DMOD1:
+	move.l	d2,-(a7) 	;swap	 d2
+
+	addi.b	#%01000000,d1	; if bits 7/6 do not differ...
+
+	tst.b	d1
+	bmi.s	MT_DMOD2
+
+	andi.w	#%0000000000001000,d1	; only change mode
+	ori.w	#%0111011100000000,d1
+	bra.s	MT_DMOD4
+
+MT_DMOD2:
+	btst	#6,d1
+	bne.s	MT_DMOD4
+
+MT_DMOD3:
+	ext.w	d1		; if bit 6 was set, set msbyte
+
+MT_DMOD4:
+	move.b	d0,d2
+	rol.w	#8,d1
+	and.b	d1,d2
+	rol.w	#8,d1
+	eor.b	d1,d2
+	eor.b	d0,d2
+	lsl.b	#2,d2
+	bpl.s	MT_DMOD5
+
+	bsr	MODEFIX4 	; exchange lower bits if default scr changes
+
+MT_DMOD5:
+	rol.w	#8,d1
+	and.b	d1,d0
+	rol.w	#8,d1
+	eor.b	d1,d0
+
+	move.b	d0,d2
+	lsr.b	#5,d2
+
+	eor.b	d2,JB_RELA6(a4)	; set  BASICs' JB_RELA6
+	andi.b	#%11111110,JB_RELA6(a4)
+	eor.b	d2,JB_RELA6(a4)
+
+	lsl.w	#3,d0		; default/shown display into 7/6
+	asr.b	#2,d0
+	lsr.w	#1,d0
+
+	tst.b	d0
+	bpl.s	MT_DMOD6
+
+	roxl.l	#1,d1		; swap bits if default=scrn1
+	rol.w	#1,d1
+	roxr.l	#1,d1
+	roxr.w	#1,d1		; enable clr scrn0/scrn1 into 15/14
+
+MT_DMOD6:
+	addi.b	#%01000000,d0
+	bpl.s	MT_DMOD7
+
+	bsr	MODEFIX4 	; exchange lower bits if default<>shown
+
+MT_DMOD7:
+	lsl.b	#2,d0
+	asr.b	#2,d0		; position shown display
+
+	move.b	d0,SV_MCSTA(a6)
+	andi.b	#%10001010,d0
+	move.b	d0,MC_STAT
+
+	move.l	(a7)+,d2 	; swap	  d2
+
+	bsr	MDCLS		; can't fit so use sub
+
+;	 ori.w	 #$8000,sr
+
+; reinitialization of screen channels
+	MOVEA.L	SV_CHBAS(A6),A4	; Ptr to base of channel
+				; table
+L007F2:
+	MOVE.L	(A4)+,D0
+	MOVEM.L	D1-D6/A0-A6,-(A7)
+	BLT.S	L00852		; channel closed ?
+
+	MOVEA.L	D0,A0
+	lea	L00D36(pc),a1
+	cmp.l	4(a0),a1
+	bne.s	L00852		; not a screen channel
+
+	tst.l	SD_SCRB(a0)
+	beq.s	MT_DMOD9
+
+	bsr	SCRADR
+	cmp.l	SD_SCRB(a0),d0
+	beq.s	MT_DMOD8
+;
+;	 ori.w	 #$8000,d0
+;	 cmp.l	 SD_SCRB(a0),d0
+;	 bne.s	 L00852		 ; not a screen channel
+
+	lsl.w	#1,d1
+
+MT_DMOD8:
+	tst.w	d1
+	bmi.s	L00852
+
+MT_DMOD9:
+	MOVE.W	SD_BORWD(A0),-(A7)
+	LEA	SD_PMASK(A0),A1	; paper colour mask
+	LEA	SD_PCOLR(A0),A5	; paper colour byte
+	MOVEQ	#$02,D0
+L0081C:
+	MOVE.B	(A5)+,D1
+	JSR	L027D8(PC)	;*/undomodify BSR L027D8
+				; set paper mask
+	ADDQ.W	#4,A1		;*/undomend ADDQ.L #4,A1
+	DBF	D0,L0081C
+	JSR	SD_CLEAR(PC)	;*/undomodify BSR SD_CLEAR
+	MOVE.B	(A5),D1
+	MOVE.W	(A7)+,D2
+	JSR	SD_BORDR(PC)	;*/undomodify BSR SD_BORDR
+	SUBQ.W	#5,A5		;*/undomend SUBQ.L #5,A5
+	ANDI.B	#0,(A5)		; reset char-attributes to 0
+	MOVE.L	#$6000A,SD_XINC(A0) ; reset char size
+	bsr.s	MDTSTFIX
+	BEQ.S	L0084E		; mode 4
+	BSET	#6,(A5)+ 	; mode 8
+	LSL.W	SD_XINC(A0)
+L0084E:
+	TST.B	(A5)		; cursor status
+	SNE	(A5)
+L00852:
+	MOVEM.L	(A7)+,D1-D6/A0-A6
+	CMPA.L	SV_CHTOP(A6),A4	; Ptr to top of channel
+				; table
+	BLT.S	L007F2		; continue for all channels
+				;*/removecode BRA.S L00862
+L0085E:
+	exg	d0,d1		;*/removecode MOVEQ #8,D1
+				;*/removecode AND.B D0,D1
+
+L00862:
+	TST.B	D2
+	BGE.S	L0086A
+	MOVE.B	SV_TVMOD(A6),D2	; 0 if not TV display
+L0086A:
+	MOVE.B	D2,SV_TVMOD(A6)	; 0 if not TV display
+
+; disable command-to-8049 and change-baud-rate
+L00872:
+MT_IPCOM:
+
+L00882:
+MT_BAUD:
+	BRA	RET_CLD0
+
+NOP008E6:
+;	 DCB.w	 ($8E6-(NOP008E6-ORGN))/2,$4E71
+L008E6:
+
+MDTSTFIX:
+	tst.b	SD_SCRB+2(a0)
+	bpl.s	MDTSTFIX1	; branch if first screen
+
+	btst	#7,$34(a6)	; is screen being shown?
+	beq.s	MDTSTFIX2	; no, check other mode
+	bra.s	MDTSTFIX3	; yup, check shown mode
+
+MDTSTFIX1:
+	btst	#7,$34(a6)	; is screen being shown?
+	beq.s	MDTSTFIX3	; yup, check shown mode
+
+MDTSTFIX2:
+	btst	#2,$34(a6)	; 512 or 256 pixel mode ?
+	rts
+
+MDTSTFIX3:
+	btst	#3,$34(a6)	; 512 or 256 pixel mode ?
+	rts
+
+;*/endoverlay
+; --------------------------------------------------------------
+;*/endfile

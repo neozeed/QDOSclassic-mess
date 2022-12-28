@@ -1,0 +1,24 @@
+Short:    My personal BOOT program
+Author:   Mark J Swift
+Version:  2.01
+Uploader: msw@blackpool.ac.uk
+Type:     util/boot
+
+
+This is my personal BOOT program. It loads a number of toolkits
+plus a small RAM disk.
+
+
+ARCHIVE CONTENTS
+
+ MSW_boot   - My personal BOOT program
+ MSW_readme - This file.
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

@@ -1,0 +1,49 @@
+.key opt1
+.def opt1 "QDOS4amiga3.lha"
+.bra {
+.ket }
+
+FailAt 21
+
+Echo "This script copies the contents of an"
+Echo "LHA archive onto a QDOS (QL) disk."
+
+Assign >NIL: FD0: EXISTS
+
+If WARN
+ Echo "Please:"
+ Echo "   1) Mount the QLfilesystem"
+ Echo "   2) Copy the file QDOS4amiga3.lha to RAM:"
+ Echo "      (or SHIFT-SELECT a different lha archive)"
+ Echo "   3) Try again."
+ Wait 5
+Else
+
+ If EXISTS ram:{opt1}
+  QLFormat -u0 -mBUSY -a
+  DiskChange FD0:
+  Lha -m -a  x ram:{opt1} FD0:
+  Skip NAMEIT
+ Else
+  If EXISTS {opt1}
+   QLFormat -u0 -mBUSY -a
+   DiskChange FD0:
+   Lha -m -a  x {opt1} FD0:
+   Skip NAMEIT
+  Else
+   Echo "Please:"
+   Echo "   1) Copy the file {opt1} to RAM:"
+   Echo "      (or SHIFT-SELECT a different lha archive)"
+   Echo "   2) Try again."
+   Wait 5
+   Skip DONE
+  EndIf
+ EndIf
+
+Lab NAMEIT
+
+ Relabel FD0: QLdisk
+
+EndIf
+
+Lab DONE

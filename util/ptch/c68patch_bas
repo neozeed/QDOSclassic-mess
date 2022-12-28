@@ -1,0 +1,92 @@
+10  TURBO_objfil "ram1_C68PATCH_task"
+11  TURBO_taskn "C68PATCH"
+12  TURBO_repfil "scr"
+13  TURBO_windo 0
+14  TURBO_diags 'omit'
+15  TURBO_struct "S"
+16  TURBO_model "<"
+17  TURBO_objdat 10
+18  TURBO_optim "R"
+19 :
+1000 REMark ------------------------------
+1010 REMark  C68PATCH_bas - Mark J Swift
+1020 REMark ------------------------------
+1030 :
+1040 DIM InFile$(100),verstag$(4),d$(8)
+1050 verstag$="1.01"
+1060 OPEN#3;"Con_456x134a28x62"
+1070 REPeat outer_loop
+1080  WINDOW#3;456,144,28,57:PAPER#3;0:INK#3;7:CLS#3:BORDER#3;3,2:BORDER#3;2,0:BORDER#3;1,2:WINDOW#3;438,130,36,64
+1090  CSIZE#3;2,1:PRINT#3;"C68PATCH v";verstag$:CSIZE#3;0,0
+1100  PRINT#3;"C68 compiled code patcher by MARK J SWIFT"
+1110  PRINT#3;\"Fixes CACHE problems on 68040 and 68060 processors."
+1120  PRINT#3;\"Tasks compiled with old versions of the C68 compiler fail when"
+1130  PRINT#3;"COPYBACK is enabled. This program is a quick cure."
+1150  INPUT#3;\"INPUT NAME OF C68 TASK TO FIX ? ";InFile$
+1160  IF InFile$="" THEN EXIT outer_loop
+1170  OPEN_IN#6;InFile$
+1180  fd=0:fl=FLEN(#6):ft=FTYP(#6):IF ft THEN fd=FDAT(#6)
+1190  CLOSE#6
+1200  IF fl=0 THEN 
+1210   PRINT#3;\"File empty!"&CHR$(10)
+1220   IF InFlg%=0 THEN EXIT main_loop
+1230  ELSE 
+1240   IF fd=0 THEN 
+1250    PRINT#3;\"Not an executable task!"
+1260   ELSE 
+1265    plen=108
+1270    ad=ALCHP(fl+plen)
+1275    a=ad
+1280    LBYTES InFile$,a+plen
+1281    REMark Check for early patch
+1282    IF (PEEK_L(a+plen+120+472)=HEX("6000FDE2")) AND (PEEK_L(a+plen+120+498)=HEX("6000FDEE")) THEN 
+1283     PRINT#3;\"Removing outdated patch"
+1284     POKE_L a+plen+120+472,HEX("70000C2E")
+1285     POKE_L a+plen+120+498,HEX("4A80670E")
+1286     a=a+120
+1287     fl=fl-120
+1288    END IF 
+1289    REMark check for C68 cache routines
+1290    Flg%=0
+1295    FOR ppos = 128 TO 768 STEP 2
+1300     IF PEEK_L(a+plen+ppos)=HEX("70000C2E") THEN 
+1310      IF PEEK_L(a+plen+ppos+4)=HEX("002000A1") THEN 
+1320       IF PEEK_L(a+plen+ppos+26)=HEX("4A80670E") THEN 
+1330        IF PEEK_L(a+plen+ppos+30)=HEX("0C2E0040") THEN 
+1340         IF PEEK_W(a+plen+ppos+34)=HEX("00A1") THEN 
+1350          Flg%=NOT(0):EXIT ppos
+1360         END IF 
+1370        END IF 
+1380       END IF 
+1390      END IF 
+1400     END IF 
+1405    END FOR ppos
+1410    IF Flg% THEN 
+1420     RESTORE 1630
+1430     FOR i=0 TO plen-4 STEP 4
+1440      READ d$
+1450      POKE_L a+i,HEX(d$)
+1460     END FOR i
+1470     POKE_W a+plen+ppos,HEX("6000"):POKE_W a+plen+ppos+2,-(ppos+60)
+1480     POKE_W a+plen+ppos+26,HEX("6000"):POKE_W a+plen+ppos+28,-(ppos+84)
+1490     DELETE InFile$
+1500     SEXEC InFile$,a,fl+plen,fd
+1510     PRINT#3;\"TASK successfully patched"
+1520    ELSE 
+1530     PRINT#3;\"Sorry, I don't recognise this task"
+1540    END IF 
+1550    RECHP ad
+1560   END IF 
+1570  END IF 
+1580  PAUSE 150
+1590 END REPeat outer_loop
+1600 CLOSE#3
+1610 STOP
+1620 REMark m/c patches
+1630 DATA "60260000","00004AFB","0006435F","50524F47"
+1640 DATA "00000000","00000000","00000000","00000000"
+1650 DATA "00000000","00000000","706CDDC0","99C09BC0"
+1660 DATA "603A7000","2F010C2E","001000A1","632A4E7A"
+1670 DATA "1002C340","00410808","0C2E0030","00A16314"
+1680 DATA "4A406A02","F4B84A80","6A06F478","4A816B02"
+1690 DATA "F458F498","4E7B1002","221F4E75"

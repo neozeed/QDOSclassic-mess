@@ -1,0 +1,940 @@
+  ___   ___    ___    ___         ___  _      ___    ___   ___  _   ___
+ / _ \ |   \  / _ \  / __|       / __|| |    / _ \  / __| / __|| | / __|
+| | | || |\ \| | | | \ \   ___  | /   | |   | |_| | \ \   \ \  | || /
+| |/  \| |/ /| |_| | _\ \ |___| | \__ | |__ |  _  | _\ \  _\ \ | || \__
+ \__/\/|___/  \___/ |___/        \___||____||_| |_||___/ |___/ |_| \___|
+
+     N A T I V E   Q D O S   O N   N O N - Q L   P L A T F O R M S
+
+--------------------------------------------------------------------------
+
+Vers. 3.25, - MAR 99
+
+BUG FIXES:
+
+   Fixed 32 bit error in UT.ERR routine that caused problems with
+   user defined errors. -MJS
+
+   Zeroed long words at $1BF9C, $1BFBC & $1BFBE for compatibility with
+   PTR_GEN. PTR_GEN expects some kind of h/w at these addresses! -MJS
+
+   KEYROW implementation improved. KEYROW now emulates QL keyboard
+   completely. I.e. if you press a combination of keys for a particular
+   character, KEYROW will return with values that represent which keys
+   would have to be pressed on a real QL keyboard to get that ASCII
+   character. -MJS
+
+ADDITIONS/ALTERATIONS:
+
+   Renamed Amiga-QDOS as QDOS-Classic since is no-longer an
+   Amiga-only project. -MJS
+
+   Added Q40 support. Altered external ROM (KBD, SER, FLP etc...) sources
+   to make porting to other platforms easier... Separated hardware
+   specific sources into sub-directories /AMG and /Q40 respectively. -MJS
+
+
+--------------------------------------------------------------------------
+
+Vers. 3.24, revision 2 - FEB 98
+
+BUG FIXES:
+
+   The version of L_QDOS in the C directory of the last release was the
+   an old one and did not work with v3.24. I've put the correct version
+   in the archive this time round! -MJS
+
+   Tidied up the cache routines a little in the ROMs MAIN_cde, KBD_cde and
+   SYS_cde and in the BASIC utilities SYS_REF, C68PATCH and XCHPATCH.
+   Mostly to do with COPYBACK compatibility. -MJS
+
+   Fixed a bug in FLP_cde would corrupt the word at offset 32 in the QDOS
+   ROM that handles priviledge violation. This had the effect that a
+   MOVE sr,??? executed in user mode on big processors would cause an
+   exception instead of emulating the MOVE sr instruction. -MJS
+
+
+ADDITIONS/ALTERATIONS:
+
+   Added the switch "-r" to the QDOS_START icons so the QDOS ROM is now
+   relocated by default. -MJS
+
+   Removed the QLFileSystem from the distribution. The QLFileSystem is
+   superceded by XFS - a file system that allows access to a multitude of
+   disk formats including QL (QDOS) disks. XFS should be downloaded
+   seperately and can be found on the aminet in disk/misc. -FNS
+
+--------------------------------------------------------------------------
+
+Vers. 3.24, - FEB 98
+
+BUG FIXES:
+
+   Fixed bug in CLK_cde. Originally the counter was reset whenever the
+   time was checked. If it was checked too regularly the counter never
+   got a chance to tick over. The bug was noticable in the CLOCK task of
+   TK2 where the system time would seemingly 'freeze'. The counter is now
+   only reset when the counter gets close to its limit (every 3.88 days).
+   -MJS
+
+   Fixed bug in KBD_cde that caused a crash on 040 and greater processors
+   if a QDOS reset was actuated while the copyback cache was enabled. -MJS
+
+   Changed Main_cde to enable copyback cache during reset
+   (i.e. by default it is now enabled) -MJS
+
+   Caches now cleared BEFORE FS.HEADS and FS.SAVE, AFTER FS.HEADR and
+   FS.LOAD, BEFORE MT.ACTIV, BEFORE MT.LXINT & MT.LPOLL & MT.LSCHD &
+   MT.LIOD and MT.LDD. -MJS
+
+   The CLR_CACHE routine is now call-able from either supervisor or user
+   mode and preserves the CCR -MJS
+
+   Changed SYS_REF patches to be more cache-friendly. -MJS
+
+   The FPU is cleared during a QL-RESET to fix a bug whereby if the
+   FPU was left in an error state, it could cause an exception when first
+   accessed. Bug was noticable if a CTL-ALT-SHIFT-TAB reset was invoked
+   after installing George Gwilts' FPSP floating point routines -MJS
+
+   MOVEP emulation (which is required on the '060 processor) is now
+   checked BEFORE following the user exception vector as MOVEP emulation
+   would be disabled if a program (like QMON) added its own user exception
+   routine. -MJS
+
+   Removed an absolute call to the QDOS ROM from the CTRL-C routines
+   of KBD_cde. Would cause a crash if CTRL-C was pressed whilst running
+   a relocated QDOS ROM. -MJS
+
+   Added LoadView(NULL) to L_QDOS to switch to motherboard graphics
+   before entering QDOS. -MJS
+
+   A few tweaks to do with the keyboard repeat bug that still occurs
+   ocassionally. -MJS
+
+   Fixed bug in user-mode MOVE sr,??? emulation. Didn't realise that
+   MOVEM.W (a7)+,dn sign extends dn. Bug trashed high word of dn when
+   a MOVE sr,dn instruction was executed. Caused problems with QPAC2.
+   -MJS
+
+   FLP_cde no-longer uses the "drive-ready" signal. Instead it simply
+   waits-a-while and assumes that the drive must be ready. Also, if the
+   drive is already spinning then it is assumed that it is ready. This
+   is to fix a bug on AT A1200s that do not have a "drive-ready" signal.
+   -MJS
+
+   BOOT sequence is now more like a real QL. If a disk in the drive
+   during ROM initialisation then will boot from FLP, otherwise it
+   will try to boot from MDV. This is accomodate the qubIDE ROM which
+   temporarily renames itself from WIN to MDV to allow booting from
+   hard disk. -MJS
+
+ADDITIONS/ALTERATIONS:
+
+   Changed the QDOS ROM and L_QDOS loader to allow QDOS to be relocated
+   into FAST RAM. The new switch "-r" tells L_QDOS to relocate the QDOS
+   system ROM to FAST RAM if it's available. Otherwise the switch is
+   ignored. QDOS vectors are redirected through a jump table enabling
+   essential QDOS routines to lie some distance from the vectors. The jump
+   table is located between $400 and $600 so the memory between $600 and
+   $C000 is unused if the ROM is relocated. Relocations are stored in
+   a table at the end of the ROM (see RELOC_asm). -MJS
+
+   Improved the palette colours on mode 8 of VDU code. Only apparent
+   when ACE emulation is disabled -MJS
+
+   Added a dummy MDV device that does nothing. For programs that
+   assume MDV exists in the device list. -MJS
+
+   Supplied information for QubIDE hard disk driver. -PB
+
+   Ported Phil Bormans QubIDE ROM (IDE hard disk driver). Amiga QDOS
+   now supports Amiga IDE hard disks containing QubIDE partitions &
+   volumes. Note, it does not support Amiga partitions & volumes.
+   A hard disk formatted on Amiga-QDOS will not be readable in AmigaDOS
+   -MJS
+--------------------------------------------------------------------------
+
+Vers. 3.23, revision 2 - AUG 96
+
+BUG FIXES:
+
+   Fixed bug in the BASIC BOOT program on the QLutils disk. The program
+   did not allocate enough RAM before loading the PDTK SuperBASIC toolkit.
+   The statement on line 1040: "RESPR(3008)" should have read
+   "RESPR(3148)". -MJS
+
+   Fixed error in SuperBASIC utility SYS_REF that 'introduced' a bug into
+   patched TURBO tasks. All SYS_REF'ed tasks should be run through the new
+   version of SYS_REF to replace the old patches with new. -MJS
+
+ADDITIONS/ALTERATIONS:
+
+   Repatched the tasks on the utilities disk with the newer version of
+   SYS_REF. -MJS
+
+   Earlier releases were as DMS disk archives. This allowed the emulator
+   to be distributed in a format free from the hassle of installation.
+   Since Aminet administrators frown upon the use of DMS, future releases
+   will be archived using LHA and will contain no Workbench related
+   material. -MJS
+
+--------------------------------------------------------------------------
+
+Vers. 3.23 - OCT 95
+
+BUG FIXES:
+
+   Fixed bug in MOVE SR,<ea> emulation routine that prevented TURBO
+   compiler (and possibly others) from working on the A4000/A1200 -MJS
+
+   Fixed bug in JS ROM IO_QIN routine that assumed 24 bit addressing.
+   $383A BNE.S $385A becomes BLT.S $385A -MJS
+
+   Fixed bug in JS ROM RI_EXEC routine that assumed that the byte stored
+   at address $0 was $0. The long word stored at address $0 contains the
+   initial stack when re-booting QDOS. If QDOS is moved to a high address
+   (eg $7e00000-$8000000), then the byte at zero is non-zero. -MJS
+
+   Fixed bug(s) in keyboard routines that caused auto-repeat to sometimes
+   go into overdrive if interrupts were disabled for a long period
+   (i.e. during disk accesses). -MJS
+
+   Fixed L_QDOS to disable the MMU (on the '040+) before taking over the
+   amiga. -MJS
+
+   CTRL-ALT-SHIFT-TAB (hard reset) and CTRL-ALT-7 (soft reset) now wait
+   for blitter to finish before disabling anything (so no more rolling-
+   screen-garbage) and correctly set all variables for VDU routines
+   (so no more screen lock-ups) -MJS
+
+   Fixed bug in JS ROM ATAN routine at $4350 (ARITH_asm).
+   move.l #...,(a6,a1.w) becomes move.l #...,(a6,a1.l) -SNG
+
+ADDITIONS/ALTERATIONS:
+
+   Changed TAS emulation code from F-Line to A-Line. F-Line instructions
+   were taking too long on the A4000, possibly due to the hardware
+   searching for non-existent co-processors. Emulation now uses
+   instruction: %1010111XXXXXXXXX. Altered NO_TAS and RESTORE_TAS to suit.
+   -MJS
+
+   Added ICACHE_ON, ICACHE_OFF, DCACHE_ON and DCACHE_OFF. These keywords
+   allow the instruction and data caches to be turned on and off.
+   Intruction and data caches default to ON. -MJS
+
+   Added RESET_EXTENTS command to compliment RESET_TOP and RESET_SV.
+   RESET_EXTENTS allows the simultaneous setting of RAMTOP and the system
+   variable area. -MJS
+
+   Altered SYS_REF_task to make TURBO, TURBO compiled and some QLIB tasks
+   32-bit clean. -MJS
+
+   Added support for 'other' (i.e. not the default) screen and independent
+   screen redraw (switch modes without clearing screen) to BASICs MODE and
+   the m/c routine MT.DMODE. (now 100%+ minerva compatible?). Task/screen
+   switching supports differing screen modes (i.e. one screen can be mode
+   8 and the other mode 4). The unused bits in SV_MCSTAT are used to
+   indicate the state of the 'unseen' screen. Lots of changes in the ROM
+   to accomodate for the fact that the screen you are drawing/printing to,
+   may be other than or in a different mode to the one that is being
+   shown. -MJS
+
+   Added COPYBACK_ON and COPYBACK_OFF which allows copyback mode to be
+   turned on and off. -SNG
+
+   Added 'ACE' screen accelerator. This ROM takes over from the blitter
+   providing QL screen emulation via the processor. Both MODE 4 and MODE 8
+   are supported. On 68030 processors and above, screen emulation is both
+   smoother and faster. 'ACE' screen emulation can be turned on or off via
+   the commands ACE_ON and ACE_OFF. -SNG
+
+   Altered L_QDOS to 'auto-configure' allowing QDOS to be launched from a
+   single icon on ALL amigas. Custom icons are provided for those who wish
+   to force a particular configuration (i.e. running QDOS from CHIP RAM
+   only). -MJS
+
+   Added KEZUK keyword. Acts just like KEYUK, by re-enabling the UK
+   keymap. -MJS
+
+   Added MOVEP emulation for 68060 compatibility. MOVEP is not implemented
+   on the 68060! -MJS
+
+   On 68010+... exception vectors now copied into RAM, and VBR set to
+   point to vector copies. This allows all 256 exceptions to be catered
+   for. Vectors 48-255 are normally unusable (overwritten) in QDOS. -MJS
+
+   Vector 4 (illegal instruction) copied into vector 61. Allows 68060
+   MOVEP emulation to actually work. Bug fix suggested by Simon Goodwin.
+   -MJS
+
+--------------------------------------------------------------------------
+
+Vers. 3.22beta - (beta only, never released)... 93-94
+
+BUG FIXES:
+
+   Re-wrote the exception handler to accomodate for 680X0 processors. -MJS
+
+   Fixed expansion RAM check routine - caused a bus error prior to F1/F2
+   screen on the A4000. -MJS
+
+   Fixed L_QDOS so that it enters supervisor mode in a legal manner. -MJS
+
+   Fixed a bug in RJOB/FRJOB routine (Trap#1 d0=4/5). The old JS routine
+   uses the upper bytes of addresses in the job table to "mark" jobs
+   awaiting deletion, while it traverses the job tree looking for related
+   jobs. It then assumes 24 bit addressing in hardware, and uses the
+   address without consideration as to the validity of the upper byte.
+   This caused a bus error on the A4000 whenever a job was removed. The
+   new routine uses a new status word (-3) that is stored in JB_STAT of
+   the job header and performs the same function in a 32-bit clean way.
+   -MJS
+
+   A change in KBD_cde allows up to 8 characters to be typed while
+   interrupts are switched off (i.e. long disk accesses) before characters
+   are lost. The keyboard processor can store up to 20 key-strokes
+   (key-down / key-up = 2 key-strokes) in its' internal buffer before
+   losing characters. If the buffer is not empty the keyboard processor
+   causes an interrupt by setting a bit in INTREQ. During disk access
+   interrupts are disabled, but when interrupts are switched on again if
+   there are any characters in the buffer a CIAA interrupt should occur
+   immediately - allowing one to read the stored key-strokes. A logic
+   error in KBD_cde meant that if keystroke interrupts were 'stacked-up'
+   only the last one was serviced correctly. -MJS
+
+   Added 'history' facility to KBD_cde. The last typed line can be
+   recovered by typing <ALT><ENTER> -MJS
+
+   CTRL-TAB no-longer leaves a TAB character in the input stream, and
+   CTRL-I no-longer acts like a CTRL-TAB. -MJS
+
+   Altered VDU code to clear BEAMCON0, BPLCON3 & FMODE for AGA downward
+   compatibility. -MJS
+
+   Altered CLK code to update value for date every hour. This fixes a bug
+   whereby the date would wrap every 3.88 days if QDOS was left running
+   without ever doing a QL-reset. -MJS
+
+   Altered CLK routine to use a value passed from Amiga-QDOS for the
+   date/time if no hardware clock is found - a  work-around fix for the
+   A4000 which seems to have the battery-backed-up clock at a different
+   hardware address. -MJS
+
+   Fixed bug in 'NO_TAS_CoPro_bas' that produced bad code for TAS $.l
+   instruction. Fortunately TAS on absolute address is a rarely used
+   instruction. -MJS
+
+   The FLP driver now checks the sector header to see if the track read
+   was the track that was requested. If it finds that it is reading the
+   wrong track, it attempts to step the head and re-read the track. It
+   tries this FOUR times before giving up with a BAD/CHANGED MEDIUM error.
+   Previously it was assumed that if the drive was asked to step IT WOULD
+   and that consequently any track read would be the correct one. -MJS
+
+   The FLP driver now invalidates the MFM buffer after a read or write.
+   Previously it was possible that if for some reason the disk READ
+   routine returned before getting any data from disk, it might not be
+   noticed - since the buffer would almost certainly contain valid MFM
+   data. -MJS
+
+
+ADDITIONS/ALTERATIONS:
+
+   Improved the documentation. The documentation was becoming unwieldly
+   (a new read.me file for every release) so I rationalised it down to 3
+   main files. "Amiga-QDOS.ver" contains information relating to specific
+   version releases, "Amiga-QDOS.doc" is a general overview of the
+   emulator and its peculiarities and "QDOS.doc" is an in-depth
+   description of the QDOS operating system. -MJS
+
+   Added documentation for PDTK, the freeware BASIC toolkit to the QLutils
+   disk. Moved source to the QLutils disk also. -MJS
+
+   Added FACCS, FXTRA, SET_FTYP, SET_FDAT, SET_FACCS, SET_FXTRA, CURSEN,
+   CURDIS to PDTK freeware BASIC toolkit. -MJS
+
+   Added F_TRACE() and P_TRACE to the freeware toolkit PDTK. These
+   routines allow one to trace BASIC functions and procedures. -MJS
+
+   Added D68K disassembly toolkit and documentation to the QLutils disk.
+   -FNS
+
+   Added documentation for the TAS utility programs to the QLutils disk.
+   - MJS
+
+   Altered 'NO_TAS_bas' and 'NO_TAS_CoPro_bas' to make use of the D68K
+   disassembly toolkit. -MJS
+
+   Altered 'NO_TAS_bas', 'NO_TAS_CoPro_bas' and 'RESTORE_TAS_bas' to
+   enable the cursor during (y/n/a/q) queries - thus making it possible to
+   task-swap with CTRL-C into another job and back again. -MJS
+
+   Altered 'RESTORE_TAS_bas' to handle code produced by both
+   'NO_TAS_CoPro_bas' and 'NO_TAS_bas'. -MJS
+
+   Added 'TURBOFIX_bas' to allow non-F-line fix for TURBO tasks. -MJS
+
+   Added screen blanking to MC_STAT hardware register emulation. -MJS
+
+   Added support for QDOS sound. The BEEP syntax is supported in full.
+   Moved SPRITE and COPPER lists so as to provide room for a sound sample
+   buffer (280 bytes at $18168). -MJS
+
+   Added PLAY_MUSIC_bas and PLAY_SCALE_bas to QLutils disk. These programs
+   demonstrate the possibilities of the BEEP command. -MJS
+
+   Added RANDOM_code to QLutils disk, courtesy of SNG.
+
+   Speeded up 'QLTRA_bas' by using the INPUT$ command from RANDOM_code.
+   Renamed program as 'SER_TRANSFER_bas'. -MJS
+
+   Added the BASIC keywords PROG_USE, DATA_USE, DEST_USE, SPL_USE, PROGD$,
+   DATAD$ and DESTD$ to the FLP device driver. This is to accomodate for
+   programs like XCHANGE that make use of default directories. The
+   standard BASIC file commands (LOAD, SAVE, LBYTES etc.) do not as yet
+   make use of default directories (unless TK2 is loaded!). -MJS
+
+   Added PD XCHANGE to QLutils support disk. Removed a number of programs
+   that were less useful. -MJS
+
+   Added a routine to identify processor type. The results of the test
+   (executed at start-up) is stored in the second word of the system
+   variable SV_IDENT (i.e. at $28002). Execute a PEEK_W(163842) to find
+   out what QDOS thinks you have. The routine sets the following bits:
+     bit 0 - at least 68010     bit 4 - at least 68881
+     bit 1 - at least 68020     bit 5 - 68882 present
+     bit 2 - at least 68030     bit 6 - 68040/060 FPU
+     bit 3 - at least 68040     bit 7 - at least 68060
+   The routine also stores the following processor identity byte in
+   SysVars + 161, which follows recent QDOS conventions.
+   $00 (68000/68010), $20 (68020), $30 (68030), $40 (68040)
+   $60 (68060) -MJS ...68040/68060 changes -SNG
+
+   Added emulation of the move sr,dn instruction in user mode for 680X0
+   processors. This addition should help A1200/A4000 users who were having
+   trouble running the QPTR pointer environment or TURBO (However there
+   was a bug in some beta versions of this emulation) -MJS
+
+   Moved F-LINE emulation in with the general exception handlin routines
+   ('DBUGCODE_asm' & 'DBUGTBLS_asm'). -MJS
+
+   The system now clears the instruction and data caches before executing
+   the F-LINE or MOVE sr,?? emulation routines (self modifying code!).
+   -MJS
+
+   Added a TRACE routine to the system ROM. If the D68K toolkit is loaded,
+   a disassembly of the next instruction is given along with register
+   contents. -MJS
+
+   If BASICs' #0 is found to be closed - CTRL-ALT-7, exception handling
+   (address error, illegal instruction etc.) and the TRACE routines now
+   re-open #0 to a standard CON window. -MJS
+
+   MAIN_cde now links any unseen memory into the common heap as 'free'
+   memory. Dead areas (memory ranges that do not contain RAM) are linked
+   in as 'allocated' memory. It is no longer necessary to search for CHIP
+   RAM unknown to QDOS (as in the INSTALL routine of the 'QL World'
+   Amiga-QDOS article) since ALL RAM is available for use. The BOOT
+   program on the 'QLutils' disk is altered to accomodate these changes.
+   -MJS
+
+   In this version AmigaQDOS ROMs (VDU, KBD etc) are ALWAYS loaded between
+   RAMTOP and the end of physical memory. This means that SV_RAMT does not
+   point to one past the last physical byte (as on a real QL), but to one
+   past the last usable byte. -MJS
+
+   Altered the way MAIN_cde (and other ROMs) links itself into the RESET,
+   NMI, TRAP0, TRAP1 vectors etc... Now uses a linked list. -MJS
+
+   Added 'MEMORY_MAP_bas' to the QLutils disk. This program prints the
+   current set-up of the various QDOS memory allocations (i.e common heap,
+   transient program area etc.) -MJS
+
+   Added 'RESET_TOP' keyword (MAIN_cde) to allow users to re-boot with a
+   new RAMTOP, and 'RESET_SV' that allows users to move the system
+   variables and re-boot. See Amiga-QDOS.doc for details. -MJS
+
+   The QDOS ROM (SYS_cde) is altered to allow the use of the second screen
+   and to take heed of repositioned system variables. MODE is altered to
+   act more like the Minerva ROM (see Amiga-QDOS.doc). -MJS
+
+   KBD_cde is altered slightly to allow CTRL-C to switch screens if a task
+   makes use of the alternate screen. -MJS
+
+OMISSIONS:
+
+   Removed UNIMPLEMENTED TRAP error routine from exception handler (the
+   use of trap #5 to trap #15 without first defining user trap routines).
+   The GST assembler - re-jigged by QUANTA - now contains two spurious
+   TRAP #5 instructions. -MJS
+
+--------------------------------------------------------------------------
+
+Vers. 3.21 - 21 APR 93
+
+BUG FIXES:
+
+   Altered MAIN_cde so as to prevent external interrupt routines being
+   interrupted part-way-through. -MJS
+
+   Fixed bug whereby the SER device made use of H/W handshaking
+   irrespective of whether the connection was via SER1I or SER1H.
+   Handshaking is now implemented correctly. -MJS
+
+   Closing a serial port connected via SER1Z now correctly sends a CTRL-Z
+   character before doing the actual close. -MJS
+
+   Fixed bug that evolved in version 1.03 of the SER device driver. The
+   TBE interrupt (transmit buffer empty) was ignored, (the wrong bit was
+   tested) and data was only sent during the polled interrupt routine
+   meant for 'tidying up' the output buffer. This produced an through-put
+   rate of only 400-500 BAUD! -MJS
+
+   The pending disk operation tidy-up routine is now a polled task as in
+   original CST sources. Previously the polled task caused floppy routines
+   to crash, so a scheduler task was used instead. -MJS
+
+   The 'sethead' routine called during the 'flush' routine was the wrong
+   one. The routine used did not carry out a slave block update on files
+   of a particular length, and caused such files to lose their date. -MJS
+
+   Fixed bug in the AmigaDOS QL-handler, that did not update the used
+   sectors count when copying to a QL disk. This sometimes resulted in a
+   disk appearing to have more sectors free than was physically possible.
+   -FNS
+
+   Previous versions of the AmigaDOS QL-handler did not respond correctly
+   to the ACTION_INFO packets. This resulted in the QL device not
+   appearing for the Info command, and not appearing on the workbench,
+   when a non-QL disk was in the drive. -FNS
+
+ADDITIONS/ALTERATIONS:
+
+   The parallel device is now buffered and interrupt driven - so within
+   the constraints of printer speed, output via the parallel port is much
+   faster. -MJS
+
+   Added 'RNCL' (RAW, CR/LF, CR or LF) end of line protocol and 'F'
+   (FORMFEED) end of file protocol (CLOSE) to the PAR device driver. -MJS
+
+   Altered the QDOS diskcopy command to recognise and report an error
+   when the destination disk is write protected, and when either source
+   or destination is not in the drive. -MJS
+
+   Wrote a disk archiver program called PPvolume that utilises the
+   powerPacker library and can crunch ANY disk format (PC AMIGA QL) that
+   has a corresponding device/handler. -MJS
+
+   Changed the preferred distribution method from three disks to two
+   AMIGADOS disks. 'QLboot' contains the emulator and documentation,
+   'QLstuffed' contains the original AMIGADOS 'QLsource' disk and QDOS
+   'QLutils' disk as two stuffed archives. The archive program used is
+   PPvolume. -MJS
+
+   Optimised the AmigaDOS QL-handler slightly, resulting in considerably
+   faster disk writes. -FNS
+
+--------------------------------------------------------------------------
+
+Vers. 3.20 - 28 FEB 93
+
+BUG FIXES:
+
+   Fixed bugs in the JS QDOS code at addresses $3EC, $60E, $6F0 and $3230
+   that contain ADDA.W instructions, where ADDA.L should be used. This
+   caused problems on large memory systems. -MJS
+
+   Fixed a bug in the FLOPPY code that caused RENAME, SETHEAD and the
+   save/overwrite feature of TKII to function incorrectly. The original
+   CST sources used a polled task to tidy up pending disk operations after
+   disk access. For some reason this was removed from the emulator sources
+   and meant that after some disk operations, slave blocks and disk
+   contents no longer tallied. Subsequent disk writes could cause data
+   corruption. -MJS
+
+   TAS emulation is now extended to two instructions a TST and a BSET, as
+   the original TAS emulation did not set the N flag and caused
+   difficulties in some programs.  -MJS
+
+ADDITIONS/ALTERATIONS:
+
+   Changed most of the icons to be more WB2-like in appearance. -MJS
+
+   Added some new start-up icons reflecting even more machine
+   configurations. Renamed some of the older ones to be more user
+   friendly. -MJS
+
+   Extended the number of tooltypes available to L_QDOS to 16. -MJS
+
+   I put the source back together in the same order as the JS original and
+   implemented Amiga-specific code as separate extension ROMS. There are
+   now separate ROMs for the keyboard, for the display, for the system
+   time, etc...The result is that emulator is now a JS equivalent with a
+   few minor quirks. -MJS
+
+   Rejigged the JS Floating point output routine (based on some pokes by
+   S N Goodwin) to allow accurate editing and printing of 8 digit numbers
+   without going into E notation. -MJS
+
+   Initialised the QDOS system time in the external ROM 'CLK_cde', making
+   it possible to keep the time intact during a QL RESET
+   (CTRL-ALT-SHIFT-TAB) -MJS
+
+   Added access to the second screen via CTRL-TAB, or by poking the
+   relevant hardware register (see below). -MJS
+
+   Added emulation of the hardware register MC_STAT ($18063). You can
+   switch screens by toggling bit 7. You can switch screen modes by
+   toggling bit 3 (a change of screen colours signals that mode 8 is in
+   operation). -MJS
+
+   This version of the emulator can display, and return the screen
+   coordinates of a simple mouse pointer (SPRITE) via the BASIC commands:
+   PTR_ON, PTR_OFF, PTR_X% and PTR_Y%. -MJS
+
+   Added SCR_PRIORITY command allowing you to set the speed at which the
+   screen will be refreshed. -MJS
+
+   Added BLIT_OFF and BLIT_ON commands. -MJS
+
+   Added QL cold-reset function (CTRL-SHIFT-ALT-TAB). -MJS
+
+   Made Keys F6-F10 produce the same codes as SHIFT F1-F5 -MJS
+
+   Added KEYUK and KEYDT commands to allow you to switch between a UK or
+   German keymap. -MJS
+
+   The serial and parallel devices are now implemented as separate ROMs.
+   -MJS
+
+   Every drive attached to the Amiga now has its own ASCII buffer. This
+   means that copying between drives is considerably faster than with
+   previous releases. -MJS
+
+   CRC checking has been re-implemented. Previously the floppy routines
+   had to disable CRC checking to allow the reading of disks, written to
+   by early versions of the emulator. -MJS
+
+   Head stepping is quicker, now being handled by the TIMER. -MJS
+
+   The floppy driver now word aligns sector data automatically during a
+   read by enabling the sync word ($4489) recognition signal. This means
+   that bit-shifting software no longer has to align raw MFM data. -MJS
+
+   Added MOUNT command for drives that do not respond with a correct
+   drive ID. -MJS
+
+   Added FLP_USE command. -MJS
+
+   Wrote and included the programs 'NO_TAS_bas' and 'NO_TAS_task' which
+   are a rewrite of the program TAS_REPLACER_bas of previous releases.
+   These replace TAS instructions by a Line-F instruction with a
+   co-processor ID of 7 (bits 9-11 set). This is unused at present, so the
+   code  should be compatible with 68020, 68030 or 68040 machines that
+   include co-processors. -MJS
+
+   Wrote 'RESTORE_TAS_bas' which puts-back TAS instructions where
+   'NO_TAS_bas' removed them. -MJS
+
+   Wrote and included 'NO_TAS_CoPro_bas' and 'NO_TAS_CoPro_task'. These
+   are a rewrite of the program 'NO_TAS_30_bas' that appeared in earlier
+   releases. -MJS
+
+   Wrote and included 'QLIBFIX_bas' that modifies QLIB'ed programs to run
+   on the emulator. -MJS
+
+   Wrote and included 'POKE_DIGITS_bas' that modifies the emulator to run
+   with 5,6,7 or 8 digit floating point precision. -SNG
+
+   Wrote and included the QL-disk handler and removed the utilities QLtoAM
+   and QLdir that are now redundant. It is now possible to insert a QL
+   disk into the Amiga and have AmigaDOS treat it like any other disk.
+   -FNS
+
+   Wrote and included 'PDTK_rext' a public domain toolkit that includes
+   many commands found in TKII. Please distribute. -MJS
+
+OMISSIONS:
+
+The effort to make the source practically byte for byte compatible with a
+standard JS ROM, made it necessary to drop some of the features of
+previous emulator releases.
+
+   Dropped the OVERFLOW DISABLE feature of earlier sources.
+
+   Dropped search path on IO.OPEN. Earlier sources had a modified IO.OPEN
+   (OLD) routine that would search devices RAM1_ RAM2_ FLP1_ FLP2_ in
+   order if it did not recognise a given filename. This is no longer
+   implemented. Toolkits such as TKII are more effective.
+
+--------------------------------------------------------------------------
+
+Vers. 3.10B - 25 JUN 90
+
+BUG FIXES:
+
+   Fixed bug in Messydisk device driver (nothing to do with QDOS, but used
+   by commands that access QL floppies on the Amiga). Although the QL
+   format only uses 9 sectors, my QL Trumpcard invariably creates a 10th,
+   incomplete sector. Messydisk had problems reading data from such disks.
+   -MJS
+
+ADDITIONS/ALTERATIONS:
+
+   Added access to QL floppies from AmigaDOS via 3 new commands: QLdir to
+   display a QL directory, QLtoAM to copy files from a QL disk to an Amiga
+   disk and QLdiskcopy to make duplicates of QL floppies. -MJS & FNS
+
+   Have written and included a program called 'StripCode' which literally
+   strips the code segment out of an Amiga assembled file so that you can
+   run it in the QDOS environment. -FNS
+
+   Moved source files over to the AmigaDOS environment, and altered it to
+   assemble with the A68K public domain assembler. Used stripcode to make
+   it run-able in the QDOS environment. -MJS
+
+--------------------------------------------------------------------------
+
+Vers. 3.10 - 27 MAY 90
+
+BUG FIXES:
+
+   Fixed bug in Slave Block initialisation. Every block of 512 bytes above
+   the start of the system variables is a potential slave block and has an
+   entry of eight bytes in a table which starts at SV.BTBAS and finishes
+   at SV.BTTOP. Great care is taken to make sure that the length of this
+   table is divisible by eight. The system variable SV.BTPNT points to the
+   most recent slave block entry and is initially set to point half way
+   through the table. No checks were made to make sure that SV.BTPNT was
+   itself divisible by eight. SV.BTPNT is now initialised correctly - half
+   way between the first usable entry, and the last usable entry. -MJS
+
+   Fixed problem with common heap initialisation. In previous releases it
+   was very difficult to choose a value for ramtop, (besides the defaults)
+   that did not cause the machine to crash. The start of the common heap
+   has to fall on a 512 byte boundary which for certain values of ramtop,
+   was not always the case. SV.RAMT can now be set to any value that is
+   divisible by 512. -MJS
+
+   Fixed a  bug in the floppy code which prevented access to a floppy
+   disk, should it be in the drive when you invoke QDOS. Any attempt to
+   access such a disk would show 'not found' or a corrupt directory unless
+   you physically removed and then re-inserted the disk in the drive.
+   Signalling a disk change in the initialisation routine of FLOPPY2_asm
+   cured the problem. -MJS
+
+   Fixed CRC bug that prevented a real QL from accessing disks that had
+   been written by the Amiga-QDOS floppy routines. -MJS
+
+   Fixed the IO.FLINE bug (caused crash on BASIC LOAD) in the Janus device
+   driver. -RK
+
+   Altered the Load_QDOS routine so as to avoid loading QDOS at absolute
+   addresses. This should be of great use to all of you, who had trouble
+   with the second floppy drive. -RK
+
+   Fixed some minor inconsistencies - the PAL bit is set, the Modulo is
+   set correct. -RK
+
+ADDITIONS/ALTERATIONS:
+
+   Added English keyboard support. -RC
+
+   Added new Manager Trap: TRAP #1 with D0 set to $27 and D1 containing
+   the address of a new Keyboard table. Allows use of foreign Language
+   keyboard tables. -RK
+
+   Added DSKCNG command to accommodate for drives that do not handle disk
+   change signals correctly, and cause problems for the disk routines. -RK
+
+   Extended the diskchange command (DSKCNG) to handle more than one drive
+   correctly. -MJS
+
+   Moved the marking of unusable blocks between system variables and lomem
+   to the slave block initialisation routine. This was formerly
+   accomplished by allocating the memory in the initialisation routine for
+   BASIC. As a result the MM_ALCHP "no clear" feature of previous releases
+   is now redundant. -MJS
+
+   Added first version of the AmigaDOS L_QDOS command. This command is
+   similar to the old Load_QDOS command, except that it does not require
+   IconX since it takes its parameters from an icons' TOOLTYPES field.
+   -MJS
+
+   Added a startup option for people with extended memory at $C00000. -MJS
+
+   Added some nice icons that make this update is more "Amigaized", and so
+   perhaps, more easy to understand. -JR
+
+   Altered the QDOS code to be 68010/20/30/40 proof. I have tested it
+   briefly, and it seemed to work. -RK
+
+   Added a new feature to the TRAP #0 (enter supervisor mode). It now
+   saves the old Status Register as a word in the new defined System
+   Variable SV.SR = $28024. -RK
+
+   Added SuperBasic program NO_TAS_30_bas which unlike the previous TAS
+   emulation utilities, doesn't generate line $F instructions. TAS
+   replaced programs show (at least) a very strange behaviour on 68030
+   machines with a coprocessor. This is because the line $F instructions
+   are used for coprocessor implementation. NO_TAS_30 replaces the TAS
+   instruction with a branch to equivalent code. This utility cannot be
+   used on code greater than 32K. -RK
+
+--------------------------------------------------------------------------
+
+Vers. 3.03 - 21 MAY 90
+
+BUG FIXES:
+
+   Fixed bug that caused the keyboard emulation to fail on certain
+   keyboards. -RK
+
+   Fixed the Ctrl-C , Ctrl-spc , Ctrl-F5 'bug'. -RK
+
+   Fixed obscure memory management bug. -RK
+
+ADDITIONS/ALTERATIONS:
+
+   Added device driver for QDOS floppies. -RK
+
+   Added DISKCOPY command. -RK
+
+--------------------------------------------------------------------------
+
+Vers. 3.01 - ?? ??? ??
+
+ADDITIONS/ALTERATIONS:
+
+   Added JANus device driver to give access to the IBM hard-disk on the
+   Bridgeboard. -RK
+
+--------------------------------------------------------------------------
+
+Vers. 2.00 - 22 JUN 89
+
+BUG FIXES:
+
+   Fixed the ERR_DF bug. -RK
+
+   Fixed bug in translate routines. The TRA table should now work in both
+   directions (I have not tested the routine). -RK
+
+   Fixed bug that caused EPROM initialisation to hang up during the Boot
+   process. -RK
+
+ADDITIONS/ALTERATIONS:
+
+   Added NMI (<ctrl.> <Alt> <7>) warm reset. -RK
+
+   Added ability to BREAK out of EXEC_W programs. -RK
+
+   Added SYS_RESET command. -RK
+
+   Extended EPROM recognition. EPROMs now tested at $10000, and from
+   $40000 on in steps of 256 bytes. -RK
+
+   Added search list (RAM1_, RAM2_, FLP1_, FLP2_, MDV1_, MDV2_) to OPEN on
+   old files, and the CLR_SEALST command that disables this feature. -RK
+
+   Added the commands OV_OFF and OV_ON to switch the Overflow error
+   checking on Floating-point arithmetics on and off. -RK
+
+   Reserved a scratch area of 1K in the respr area, just below RAMTOP. -RK
+
+--------------------------------------------------------------------------
+
+KEY TO PROGRAMMERS
+
+Thanks to:
+
+RK    Rainer Kowallik for the emulator.
+      Wolfgang Schroeder and Joern Ryba for discussion,
+      Boris Jakubith and Mathias Leidig for the CRC generator,
+      Andreas Ihlenfeld for his Keyrow MT.IPCOM,
+MJS   Mark J Swift for all of his Bug fixes (and recent modifications)
+FNS   Francis N Swift for the QL0: device driver and various utilities.
+SNG   Simon N Goodwin for POKE_DIGITS_bas, PALETTE_bas, for the QL World
+      and AmigaFormat articles about the emulator and for the many hours
+      of beta-testing.
+RC    Rod Crookes for the English keymap.
+JR    Joern Ryba for some nice icons.
+PB    Phil Borman for QubIDE IDE hard disk support.
+
+--------------------------------------------------------------------------
+
+COPYRIGHT STATEMENT:
+
+Since I have spent much time developing this emulator, I do not think that
+it is immoral to claim it as my own program. Nevertheless QDOS and related
+names are protected by those who still have the rights (is it Sinclair
+again, or Amstrad, or T.Tebby or who or what ?). However this should not
+stop you from spreading this disk, as long as you are sure that no
+commercial use is made from all that stuff. I am sure that these programs
+are only of interest to those people who own or have owned a QL or THOR,
+and so have already paid for the software. Those who are working with
+these programs and don't posses a QL, are invited to buy one second hand.
+
+Rainer Kowallik, May 1990
+
+You can reach me by post mail:
+  Rainer Kowallik, Eisackstr. 14, 1000 Berlin(W) 62 (Germany)
+
+By Phone:
+  (Germany) 030 855 866 5
+
+By EAN mail:
+  Kowallik@vax@hmi@dbp.de
+
+or in the new form:
+  S=KOWALLIK;OU=VAX;P=HMI;A=DBP;C=DE
+
+--------------------------------------------------------------------------
+
+ADDENDUM - M Swift
+
+CONTINUING DEVELOPMENT
+
+I am under the impression that due to recent commitments, Rainer has very
+little time to make any further improvements to the emulator. Therefore,
+in Rainers absence, I have taken on the responsibility for the emulator's
+continuing development.
+
+Rainer states that he based his emulator on a JS ROM disassembly. He also
+re-ordered the source to be more logical, and re-wrote areas that were
+hardware specific.
+
+This however, led to a mingling of old and new code that was very
+difficult to debug (for anyone but the original author). With this in mind
+I put the source back together in the same order as the JS original, and
+did a binary comparison with a genuine Sinclair JS ROM. This allowed me to
+pin-point NEW sections of code, which I implemented instead as separate
+Amiga-specific extension ROMS. For example there are now separate ROMs for
+the keyboard, display, system time, etc...
+
+In a sense the current emulator is a reverse-engineered copy of Rainers'
+original which leaves the main bulk of system source code unchanged from a
+JS disassembly.
+
+If you have any comments or bug-fixes you can contact me at the addresses
+given below. Any mail sent to Rainer will most likely be forwarded on to
+me.
+
+Mail me direct at the        ...and contact me
+following address:              most weekends at:
+
+                                  325 Charlestown Road
+  175 Church Street               Blackley
+  Blackpool                       Manchester
+  FY1 3NX                         M9 7BS
+
+  e-mail:                         Tel. 0161-682 7587
+  msw@blackpool.ac.uk
+
+If a bug is a one-off occurrence - it MAY be a glitch. If the bug recurs,
+please contact me describing IN DETAIL the condition of re-ocurrence. Be
+as specific as possible - and be patient.
+
+MARK J SWIFT
+--------------------------------------------------------------------------

@@ -1,0 +1,96 @@
+*/beginfile QDOSTBLS_asm
+; --------------------------------------------------------------
+; QDOSTBLS_asm - QDOS key translation and error messages
+;	      - last modified 25/08/99
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...latest changes by Mark J Swift
+; --------------------------------------------------------------
+L0B614:
+KEY_TRA:
+	DC.W	$4AFB
+	DC.W	$0006,$0106
+	DC.B	0,$01,$02,$03,$04,$05,$06,$07,$08,$09,$0A
+	DC.B	$0B,$0C,$0D,$0E,$0F,$10,$11,$12,$13,$14,$15,$16,$17
+	DC.B	$18,$19,$1A,$1B,$1C,$1D,$1E,$1F
+	DC.B	' !"#$%&',$27,'()*+,-./0'
+	DC.B	'123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+	DC.B	$5B,$5C,$5D,$5E
+	DC.B	'_`abcdefghijklmnopqrstuvwxyz{|}~'
+	DC.B	$80,$81,$82,$83,$84
+	DC.B	$85,$86,$87,$88,$89,$8A,$8B,$8C,$8D,$8E,$8F,$90,$91
+	DC.B	$92,$93,$94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E
+	DC.B	$9F,$A0,$A1,$A2,$A3,$A4,$A5,$A6,$A7,$A8,$A9,$AA,$AB
+	DC.B	$AC,$AD,$AE,$AF,$B0,$B1,$B2,$B3,$B4,$B5,$B6,$B7,$B8
+	DC.B	$B9,$BA,$BB,$BC,$BD,$BE,$BF,$C0,$C1,$C2,$C3,$C4,$C5
+	DC.B	$C6,$C7,$C8,$C9,$CA,$CB,$CC,$CD,$CE,$CF,$D0,$D1,$D2
+	DC.B	$D3,$D4,$D5,$D6,$D7,$D8,$D9,$DA,$DB,$DC,$DD,$DE,$DF
+	DC.B	$E0,$E1,$E2,$E3,$E4,$E5,$E6,$E7,$E8,$E9,$EA,$EB,$EC
+	DC.B	$ED,$EE,$EF,$F0,$F1,$F2,$F3,$F4,$F5,$F6,$F7,$F8,$F9
+	DC.B	$FA,$FB,$FC,$FD,$FE,$FF,$00,$00
+L0B71C:
+MSG_LIST DC.W	$4AFB
+	DC.W	MSG_ER1-MSG_LIST
+	DC.W	MSG_ER2-MSG_LIST
+	DC.W	MSG_ER3-MSG_LIST
+	DC.W	MSG_ER4-MSG_LIST
+	DC.W	MSG_ER5-MSG_LIST
+	DC.W	MSG_ER6-MSG_LIST
+	DC.W	MSG_ER7-MSG_LIST
+	DC.W	MSG_ER8-MSG_LIST
+	DC.W	MSG_ER9-MSG_LIST
+	DC.W	MSG_ER10-MSG_LIST
+	DC.W	MSG_ER11-MSG_LIST
+	DC.W	MSG_ER12-MSG_LIST
+	DC.W	MSG_ER13-MSG_LIST
+	DC.W	MSG_ER14-MSG_LIST
+	DC.W	MSG_ER15-MSG_LIST
+	DC.W	MSG_ER16-MSG_LIST
+	DC.W	MSG_ER17-MSG_LIST
+	DC.W	MSG_ER18-MSG_LIST
+	DC.W	MSG_ER19-MSG_LIST
+	DC.W	MSG_ER20-MSG_LIST
+	DC.W	MSG_ER21-MSG_LIST
+	DC.W	MSG_TX1-MSG_LIST
+	DC.W	MSG_TX2-MSG_LIST
+	DC.W	MSG_TX3-MSG_LIST
+	DC.W	MSG_TX4-MSG_LIST
+	DC.W	MSG_TX5-MSG_LIST
+	DC.W	MSG_TX6-MSG_LIST
+	DC.W	MSG_TX7-MSG_LIST
+	DC.W	MSG_TX8-MSG_LIST
+MSG_ER1	DC.B	0,$0D,'not complete',$0A,0
+MSG_ER2	DC.B	0,$0C,'invalid Job',$0A
+MSG_ER3	DC.B	0,$0E,'out of memory',$0A
+MSG_ER4	DC.B	0,$0D,'out of range',$0A,0
+MSG_ER5	DC.B	0,$0C,'buffer full',$0A
+MSG_ER6	DC.B	0,$11,'channel not open',$0A,0
+MSG_ER7	DC.B	0,$0A,'not found',$0A
+MSG_ER8	DC.B	0,$0F,'already exists',$0A,0
+MSG_ER9	DC.B	0,$07,'in use',$0A,0
+MSG_ER10 DC.B	0,$0C,'end of file',$0A
+MSG_ER11 DC.B	0,$0B,'drive full',$0A,0
+MSG_ER12 DC.B	0,$09,'bad name',$0A,0
+MSG_ER13 DC.B	0,$0B,'Xmit error',$0A,0
+MSG_ER14 DC.B	0,$0E,'format failed',$0A
+MSG_ER15 DC.B	0,$0E,'bad parameter',$0A
+MSG_ER16 DC.B	0,$16,'bad or changed medium',$0A
+MSG_ER17 DC.B	0,$14,'error in expression',$0A
+MSG_ER18 DC.B	0,$09,'overflow',$0A,0
+MSG_ER19 DC.B	0,$10,'not implemented',$0A
+MSG_ER20 DC.B	0,$0A,'read only',$0A
+MSG_ER21 DC.B	0,$09,'bad line',$0A,0
+MSG_TX1	DC.B	0,$08,'At line '
+MSG_TX2	DC.B	0,$09,' sectors',$0A,0
+MSG_TX3	dc.b	0,$15,'F1...monitor',$0A,'F2...TV',$0A,0
+; --------------------------------------------------------------
+;*/beginoverlay
+MSG_TX4	dc.b	0,$1E,'     QDOS -Classic- v3.25 œp  ' ;*/modify
+;*/endoverlay
+; --------------------------------------------------------------
+MSG_TX5	DC.B	0,$17,'during WHEN processing',$0A,0
+MSG_TX6	DC.B	0,$10,'PROC/FN cleared',$0A
+MSG_TX7	DC.B	'SunMonTueWedThuFriSat',0
+MSG_TX8	DC.B	'JanFebMarAprMayJunJulAugSepOctNovDec'
+L0B94E:
+; --------------------------------------------------------------
+;*/endfile

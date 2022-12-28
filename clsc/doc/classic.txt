@@ -1,0 +1,796 @@
+  ___   ___    ___    ___         ___  _      ___    ___   ___  _   ___
+ / _ \ |   \  / _ \  / __|       / __|| |    / _ \  / __| / __|| | / __|
+| | | || |\ \| | | | \ \   ___  | /   | |   | |_| | \ \   \ \  | || /
+| |/  \| |/ /| |_| | _\ \ |___| | \__ | |__ |  _  | _\ \  _\ \ | || \__
+ \__/\/|___/  \___/ |___/        \___||____||_| |_||___/ |___/ |_| \___|
+
+     N A T I V E   Q D O S   O N   N O N - Q L   P L A T F O R M S
+
+--------------------------------------------------------------------------
+
+QUICK OVERVIEW
+
+This is a major reworking of Rainer Kowallik's QL emulator.
+Although originally Amiga-Only, QDOS CLASSIC now aims to provide a
+JS-like QL O/S that will run on any 680X0 hardware.
+
+Most of the new features (including support for the Q40 computer)
+have been added by Mark J Swift (e-mail: msw@blackpool.ac.uk)
+Rainer is no-longer involved in the project.
+This release includes full assembler source and a QDOS support disk.
+
+--------------------------------------------------------------------------
+
+QDOSCLASSIC v3.25 FEATURES
+
+*  FASTER than the original QL
+*  LOADS/SAVES to QL floppy disks
+*  Hard disk support via QubIDE ROM
+*  SYSTEM VARIABLES movable.
+*  SCREEN modes 4 and 8 BOTH supported
+*  SER driver up to 57600 baud
+*  KEYBOARD history from standard <ALT><ENTER> combination
+*  BEEP command supported in full (all possible convolutions)
+*  FOR COMPATIBILITY, data and instruction caches can be enabled/disabled
+*  QDOS utilties disk included with release
+*  BASED ON a JS ROM with many JS ROM bug fixes.
+*  SOURCE included
+
+--------------------------------------------------------------------------
+
+AMIGA ONLY FEATURES
+
+*  2ND-SCREEN fully usable (like MINERVA ROM)
+*  ALL known amigas supported A500, A500+, A600, A1200, A4000 etc
+*  QDOS ROM relocatable into FAST RAM
+*  PAR driver
+
+--------------------------------------------------------------------------
+
+WHAT'S MISSING FROM THE Q40 IMPLEMENTATION ?
+
+*  2ND-SCREEN
+*  PAR driver
+
+--------------------------------------------------------------------------
+
+WHAT'S NEW IN VERSION 3.25 ?
+
+*  sources & binaries for Q40 computer
+*  some bug fixes
+
+--------------------------------------------------------------------------
+
+QDOS SYSTEM ROM
+
+The QDOS-Classic system ROM is a JS equivalent, with all machine dependant
+routines patched out, a number of bug fixes, in-built exception handling
+and improved floating-point output routines.
+
+It is possible to edit and print floating point numbers in up to 8 digits
+before going into E notation. QDOS normally enters E notation after 7
+digits, which can make it difficult if you're working with long integers
+or 32 bit addresses.
+
+The exception handling routines allow programs to terminate gracefully
+should an instruction error, bus error or general exception occur.
+
+External ROMs handle all machine dependant activities; such as display,
+keyboard and system time.
+
+The JS system ROM is altered to allow the system variables to be moved.
+So for example, where the hardware is present the second screen can be
+used.
+
+--------------------------------------------------------------------------
+
+BOOT ROM
+
+The BOOT_ROM is responsible for checking installed memory and for
+getting the O/S operating correctly by hooking itself into the
+relevant system vactors.
+
+After the BOOT_ROM has finished, it takes over the task of searching
+for external ROMs. This is so ROMs can be placed in areas of memory
+peculiar to specific hardware.
+
+
+HARDWARE REGISTERS
+
+QDOS classic emulates the hardware register MC_STAT ($18063) to an extent.
+You can blank the screen by setting bit 1. You can switch screens (where
+the hardware is present) by toggling bit 7. You can switch screen modes
+by toggling bit 3.
+
+Q40 NOTE:
+
+  The current SCR and CON drivers do NOT support the Q40s high-res
+  screen modes - but you can create your own hi-res screen by
+  POKEing the hardware directly. First blank the screen to disable
+  MC_STAT emulation, then poke the Q40 hardware.
+
+
+ADDITIONAL BASIC EXTENSIONS
+
+There are currently eight keywords associated with the BOOT_ROM
+
+  ICACHE_ON and ICACHE_OFF
+
+These two commands allow the instruction cache to be turned on and off
+respectively. QDOS classic boots with the instruction cache enabled.
+The instruction cache on can speed up QDOS tasks considerably but
+relies on tasks to be well behaved (and not self modifying).
+
+  DCACHE_ON and DCACHE_OFF
+
+These two commands allow the data cache to be turned on and off
+respectively. QDOS classic boots with the data cache enabled.
+
+  COPYBACK
+
+This command turns on the copyback cache mode of 68040 & 68060
+processors. Enabling the COPYBACK cache can give substantial speed
+increases. Writing to a memory address will write to the cache, but
+not to memory until absolutely necessary. Thus cache and memory
+are rarely in sync. Many programs need to be patched before they will
+work with copyback enabled.
+
+  WRITETHROUGH
+
+This command turns on the writethrough cache mode of 68040 & 68060
+processors. Writing to a memory address writes both to the cache and
+to memory, so cache and memory are always in sync.
+QDOS classic boots with WRITETHROUGH enabled.
+
+  SERIALIZED
+
+In effect, this command disables the caches.
+
+  SOFTROM
+
+will load a new ROM over serial port 1 at 9600 baud.
+Once complete, the machine will reboot.
+
+The serial data should be a <long word> for the length of
+the ROM followed by the actual <bytes> of ROM data.
+The following BASIC program, run on a remote QL,
+would achieve this.
+
+150 REMark -- SEND LENGTH --
+160 OPEN#4;"SER1H"
+170 PRINT#4;CHR$(0);CHR$(1);CHR$(128);CHR$(0);
+180 CLOSE#4
+190 :
+200 REMark -- UPLOAD ROM TO Q40 --
+210 COPY "flp1_CLASSICn_ROM" TO "SER1H"
+
+The second variant of the keyword is as follows:
+
+   SOFTROM <filename>
+
+This will load the specified ROM file from disk into the
+ROM area. The machine will then reboot.
+
+for example the command:
+
+SOFTROM "win1_CLASSICn_ROM"
+
+will load a QDOS Classic ROM (version beta n) into
+the ROM area and then reboot the machine.
+
+--------------------------------------------------------------------------
+
+CLOCK ROM
+
+INITIALISATION
+
+The system fully supports the battery backed-up clock, and will
+provide you with the correct date and time by way of the SuperBASIC
+commands DATE and DATE$ or the equivalent machine code TRAP instruction.
+
+--------------------------------------------------------------------------
+
+KEYBOARD ROM
+
+KEYROW
+
+As far as possible, KEYROW emulates QL keyboard completely.
+I.e. if you press a combination of keys for a particular character,
+KEYROW will return values that represent which keys would have to be
+pressed on a real QL keyboard to get that ASCII character.
+
+
+QL RESET
+
+You can perform a warm-reset by holding down CTRL-SHIFT-ALT-TAB.
+
+
+SECOND SCREEN
+
+It is possible to flick between the second screen and the standard screen
+(where the hardware is present) by pressing CTRL-TAB.
+
+
+SPECIAL KEYS
+
+Keys F6-F10 produce the same codes as SHIFT F1-F5
+
+
+ADDITIONAL BASIC EXTENSIONS
+
+There are four keywords associated with the keyboard.
+
+KEYDT & KEZDT
+
+This command sets a German keymap (the default)
+
+KEYUK & KEZUK
+
+This command sets a UK keymap
+(only available if the KEYUK_ROM is loaded).
+
+--------------------------------------------------------------------------
+
+SAMPLED SOUND SYSTEM ROM
+
+The QDOS Classic sampled sound system ROM emulates the SMSQ/E sampled
+sound system for the Q40.
+
+The SMSQ/E sampled sound system uses a 2-byte wide queue (left, right)
+and a sample rate of 20khz. The sample queue is 200 kilobytes long
+which acounts for approximately 5 seconds of sound.
+
+As the samples are sounded and removed from the queue, the sound
+generator (i.e a sound device driver) is expected to stuff more pairs
+of bytes into the queue until the sound data is exhausted.
+
+Sound samples are byte values between 0 and 255. The "zero" level is 128.
+The last two samples (left, right) written to the sound queues should
+be at "zero" level.
+
+Four functions are provided to help manage the sound queue.
+
+IMPORTANT NOTE: there is a basic, yet critical difference between
+the implementation of these functions as recommended by the SMSQ/E
+documentation and the implementation as recommended here.
+
+The functions should be accessed in supervisor mode via the level 4
+auto vector - this is common to both SMSQ/E and QDOS Classic.
+However, the SMSQ/E documention recommends that you aquire the level 4
+vector via the command:
+
+        move.l  $70,a3          interrupt level 4 auto vector
+
+This will not work on QDOS Classic. You should access the level 4
+vector via the vector base register (VBR) as follows:
+
+        movec   vbr,a3          68010 and above only
+        move.l  $70(a3),a3      interrupt level 4 auto vector
+
+(...this code will work on both SMSQ/E and QDOS Classic )
+
+Access to the four SMSQ/E sampled sound system functions is
+then as follows:
+
+        movec   vbr,a3          68010 and above only
+        move.l  $70(a3),a3      interrupt level 4 auto vector
+        move.l  -(a3),a2        address of sample sound system functions
+        cmp.l   #'SSSS',-(a3)   SMSQ/E Sampled Sound System
+        bne.s   oops
+
+        jsr     $04(a2)         add a sample
+        jsr     $08(a2)         set up to add multiple samples
+        jsr     $0c(a2)         notify that multiple samples have been added
+        jsr     $10(a2)         kill the sound
+
+
+**************************************************************
+*
+* SSS_ADD1 ($04)
+*
+* This call is used to add one sample to the sound queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*        D1 (byte) left hand sound level
+*        D2 (byte) right hand sound level
+*
+* Exit:  A1 smashed
+*        status Z if operation not complete due to queue full
+
+(This call does not return a standard error)
+
+
+**************************************************************
+*
+* SSS_SETM ($08)
+*
+* This call sets up to add multiple samples to the sound queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*
+* Exit:  A1 (long) pointer to the next free byte pair in the queue
+*        A2 (long) pointer past the last free byte pair in the queue
+
+The calling routine can fill the area from A1 to A2 with pairs
+of bytes. It does not need to fill the whole of the area.
+
+After it has put samples into the queue, it should call SSS_ADDM
+to notify the sampled sound system.
+
+
+**************************************************************
+*
+* SSS_ADDM ($0C)
+*
+* This call notifies that samples have been added to the
+* sound queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*        A1 (long) the updated pointer to the next free byte pair
+*                  in the queue
+
+Example:
+
+        movec   vbr,a3          68010 and above only
+        move.l  $70(a3),a3      interrupt level 4 auto vector
+        move.l  -(a3),a2        address of sample sound system functions
+        cmp.l   #'SSSS',-(a3)   SMSQ/E Sampled Sound System
+        bne.s   oops
+
+        jsr     sss_setm(a2)    set up
+        bra.s   end_loop
+
+loop
+
+* calculate next sample in d1.b, d2.b
+
+        move.b  d1,(a1)+        add left sample
+        move.b  d2,(a1)+        add right sample
+
+end_loop
+        cmp.l   a2,a1           more samples to do?
+        blt.s   loop
+
+        move.l  4(a3),a2        restore a2
+        jsr     sss_addm(a2)    notify sampled sound system
+
+
+**************************************************************
+*
+* SSS_KILL ($10)
+*
+* This call stops the sound system and throws the queue away.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+
+
+**************************************************************
+*
+* SSS_SAMPLE ($14)
+*
+* This call estimates the number of samples remaining in the queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*
+* Exit:  D0 (long) number of samples remaining in queue
+
+Divided the result by 400 to give the length of the sound in
+ticks or divide by 20000 to give the length of sound in seconds.
+
+
+--------------------------------------------------------------------------
+
+SER ROM
+
+The serial device can be used with speeds up to 57600 baud.
+
+
+SER DESCRIPTION
+
+Following is a complete description of the SER device syntax, which
+includes a number of useful additions.
+
+OEMS - ODD, EVEN, MARK or SPACE parity (default = none)
+
+IH   - IGNORE or use HANDSHAKE (default = ignore)
+
+RNCL - RAW, CR/LF, CR or LF end of line protocol (default = raw)
+
+ZF   - CTRL-Z or FORMFEED end of file (CLOSE) protocol
+       (default= none)
+
+For example the command OPEN#4;"SER1INF" opens the serial channel to
+ignore H/W handshakes, translate end of line characters into CR/LF and
+send a form-feed at the next CLOSE#4.
+
+On input, CR, LF and the CR/LF couple are translated into a single LF
+character - unless RAW is selected as the end of line protocol.
+
+--------------------------------------------------------------------------
+
+FLP ROM
+
+The Format of a QDOS filename on the floppydisk is FLPn_name_ext, where
+FLPn_ is the device name. FLP1_ represents the internal drive, FLP2_ the
+first external drive and so on. Filenames consist of up to 32 characters.
+The *D2D random access convention is emulated in full, so CP/M and MS-DOS
+emulators should work without problems.
+
+
+ADDITIONAL BASIC EXTENSIONS
+
+FLP_USE <name>
+
+Sets the name of the floppy disk system. By default the name of the floppy
+disk system is 'FLP', but this can be changed for example to 'MDV' or any
+other three-character string.
+
+PROG_USE <name>
+
+Sets the default device/directory for programs and executables.
+
+DATA_USE <name>
+
+Sets the default directory data files.
+
+SPL_USE <name>
+
+Sets the name of the default copy/spool device/directory.
+
+DEST_USE <name>
+
+As SPL_USE except that this command appends an underline the the <name> if
+none is present.
+
+PROGD$
+
+Returns the name of the default program device/directory.
+
+DATAD$
+
+Returns the name of the default device/directory for data files.
+
+DESTD$
+
+Returns the name of the default copy/spool device/directory.
+
+--------------------------------------------------------------------------
+
+QUBIDE ROM
+
+At present, the emulator can only access hard disks as dedicated QubIDE
+partitions on IDE drives.
+
+To use a hard disk you should find yourself a spare IDE drive, connect it
+up and format it as a QDOS volume with the command:
+
+ FORMAT WIN1_diskname
+
+DANGER DANGER, REMEMBER THIS COMMAND WILL ERASE ALL DATA FROM THE HARDDISK
+
+...there is currently no partitioning software for creating QUBIDE
+   partitions within QDOS classic.
+
+--------------------------------------------------------------------------
+
+UTILITIES ON THE QL SUPPORT DISK
+
+BOOT
+
+The boot program on the 'QLutils' disk loads a number of toolkits into
+memory, and sets up a small RAM disk.
+
+PD RAM-disk
+
+The QL support disk contains a Public domain RAM disk. It is relatively
+slow but functions reasonably well. If anyone knows who wrote it,
+please let me know so that I can credit the author in these docs.
+
+PDTK_rext
+
+This Freeware BASIC toolkit includes a small number of SuperBASIC
+commands. Some of these are required by the programs SYS_REF, NO_TAS
+etc., others are included because I find them incredibly useful. See the
+documentation on the QLutils disk.
+
+D68K_rext
+
+This disassembly toolkit includes a small number of SuperBASIC commands to
+help you to disassemble files and memory. The toolkit is required by
+NO_TAS. See the documentation on the QLutils disk.
+
+SYS_REF_task
+
+SYS_REF is a utility that patches tasks & M/C which rely on the system
+variables being at $28000, to work when the sys vars are elsewhere (i.e.
+with the second screen enabled).
+
+It has been tested on several programs (even TURBO) under Minerva and
+Amiga-QDOS (with 2nd screen enabled), and WORKS!
+
+SYS_REF also makes TURBO & TURBO-compiled programs 32-bit clean.
+
+C68PATCH
+
+Patch C68 programs to be COPYBACK friendly
+
+DOC2RTF
+
+Translate QUILL DOC files into .RTF form
+
+MEMORY_MAP
+
+Simple program to display the QL memory map
+
+--------------------------------------------------------------------------
+
+TECHNICAL STUFF
+
+The move sr,<address> instruction in user mode is emulated in software for
+machines with 680X0 processors. This instruction is not priviledged on the
+68000/68008, and can be executed while in user mode. On later processors
+the instruction can only be executed in supervisor mode, and causes a
+PRIVILEDGE VIOLATION if executed in user mode.
+
+MOVEP emulation is included for 68060 compatibility since MOVEP is not
+implemented on the 68060. The MOVEP emulation exception is checked BEFORE
+following the user exception vector as MOVEP emulation would be disabled
+if a program (like QMON) added its own user exception routine.
+
+Programs (user or supervisor) can be single-stepped by setting bit 15 of
+the status register. The current register contents are dumped to BASICs'
+#0 with each depression of the <SPACE> bar.
+Pressing <ENTER> exits trace mode.
+
+
+THE ROMS
+
+The main QDOS ROM is a modified JS ROM that is free of all
+hardware dependent code and which has cache handling
+features for compatibility with 'big' processors.
+
+Hardware specific code, i.e. keyboard, clock, serial, parallel
+etc... are handled by external ROMs loaded at $10000 - $20000.
+
+
+THIS HAS IMPLICATIONS:
+
+Interrupts MUST remain disabled until AFTER the first (BOOT_ROM)
+ROM is loaded.
+
+This is because the system does not know how to handle FRAME
+interrupts until custom hardware-dependent code is patched into
+the LEVEL2 interrupt vector. If the system got an interrupt
+BEFORE the code is patched in - the interrupt would never be
+cleared - and the sytem would hang since another interrupt would
+be signalled immediately after the RTE at the end of the LEVEL2
+routine.
+
+Also we can only assume a minimum of memory (128K). It is again
+up to the BOOT_ROM to figure out how much memory we really
+have and do a reset (to re-calculate the system tables) if
+appropriate.
+
+In effect to get a working QDOS system on ANY hardware we only
+require the main ROM (which is common to all hardware) and the
+BOOT_ROM (which handles the memory map and FRAME interrupts).
+
+Once we have these working, we can think about implementing
+the keyboard code (to enable us to press F1/F2), the clock
+routines, ser, par, floppy, hard-disk etc... one-at-a-time
+
+
+SYSTEM ROM (SYS_ROM)
+
+The memory map is NOT checked by the main ROM - since the memory
+map is different from machine to machine. The memory is instead
+checked by the BOOTSTRAP ROM (BOOT_ROM).
+
+Upon entry, the startup code disables the caches.
+
+A7 is then loaded from address $0 and A6 is calculated from A7
+(A6 = A7 logically ANDed with $FFFF8000)
+
+Then the screen memory is cleared ($20000 - $28000).
+
+Next a minimum RAMTOP is calculated to be:
+$20000 + (A7 logically ANDed with $FFFE000)
+(=128K on a standard QL).
+
+Then SV.IDENT (the first word in the system variables) is checked.
+
+IF SV.IDENT is present and the value already stored in SV.RAMTOP
+is greater than our minimum RAMTOP, then we use SV.RAMTOP.
+Otherwise we store our minimum RAMTOP into SV.RAMTOP.
+
+Next, the system variables are cleared and then initialised.
+
+Now we check the processor type, disable the caches and set
+all memory to be NONCACHABLE-SERIALIZED where appropriate.
+
+Next we change from supervisor mode to user mode by ANDing
+the status register with (binary) %1101111111111111.
+note that if trace mode is on it is left on, and that interrupts
+are not (yet) enabled.
+
+Finally we enter the BASIC initialisation code (which opens a
+screen, installs external ROMs and awaits the F1/F2 keys)
+
+
+BOOTSTRAP ROM (BOOT_ROM)
+
+Firstly, the caches are disabled and the memory is checked.
+
+If the calculated RAMTOP is greater than the value stored in
+SV.RAMTOP then we store the new value into SV.RAMTOP and
+immediately do a soft reset by following the vector at $4.
+
+Otherwise we continue...
+
+Now we set aside to memory for some local variables.
+
+We patch out the reset and level2 vectors to point to our own
+custom code and remember the old vectors.
+
+The custom LEVEL2 code is responsible for setting the value of
+PC_INTR which is a QL register that we use to distinguish between
+frame interrupts and external interrupts - for setting the screen
+mode in accordance with MC_STAT - and for following the old level 2
+vector address when it is done.
+
+The custom RESET code is used to put back the old values of
+the RESET and LEVEL2 vectors.
+
+Before we exit the BOOTSTRAP ROM, we take over the task of searching
+for other external ROMs. This is so ROMs can be placed in areas of
+memory peculiar to our specific hardware.
+
+There are also some BASIC routines associated with this ROM to
+enable/disable the caches.
+
+--------------------------------------------------------------------------
+
+SOURCE FILES
+
+The complete assembly source for the emulator is included with this
+release.
+
+EDITING THE SOURCE
+
+If you need to alter a source file in any way, use an editor that
+preserves TABS. If you use an editor that expands tabs to spaces during a
+SAVE, you will find that file will increase in size dramatically - to a
+point where it may exceed available disk space.
+
+In most cases, in order to view the source files correctly, tabs should
+be set to NINE characters.
+
+RE-ASSEMBLING THE SOURCE
+
+Original sources were assembled in QDOS with GST's Macro assembler.
+Current sources are assembled on the Amiga with A68k. There are plans
+to move the source over to the GST Macro assembler - when time permits.
+
+If you wish to assemble with the GST assembler - you may need to alter
+a fair wodge of source - especially where conditional assembly is
+involved.
+
+--------------------------------------------------------------------------
+
+HISTORY
+
+The following is a brief extract from the Amiga documentation,
+written by RAINER KOWALLIK - the original author of Amiga-QDOS.
+
+
+INTRODUCTION AND MOTIVATION - RAINER KOWALLIK
+
+I bought my first QL in 1984 in Berlin, and since this time the QL has
+proved to be a very handy tool for all kinds of computer work.
+Unfortunately the QL was not very popular. It has an active user group,
+but little software or hardware. With the arrival of the ATARI 520 ST and
+the increasing popularity of the IBM clone the QL became less and less
+interesting to new users, until eventually even Sinclair himself lost
+interest.
+
+So far so bad, but after checking the possible alternatives, there was no
+computer that was any better than the QL. Then came the idea of building a
+new computer with QDOS, a 68000 CPU and a reasonable keyboard -- but why
+build a new computer, when you can buy one?
+
+For this purpose the AMIGA seemed best suited. It is highly expandable and
+has excellent hardware. Furthermore, it seemed easier to emulate a QL
+screen on the AMIGA, than on the ATARI.
+
+The emulator is based around a JS-ROM disassembly, expanded in some
+features, and initially tested on a real QL. The BLITTER performs QL
+screen emulation, which makes it a very fast process costing nearly no CPU
+time. Keyboard emulation includes Ctrl-Alt-7 , KEYROW and IPC calls.
+Additionally upon a system error, a default trap handler will tell you
+what happened at what address, and return you to SuperBASIC.
+
+Apart from the MicroDriVes and NETwork, the emulator implements all the
+standard QL devices (CON_, SCR_, PIPE_, SER1, PAR, FLPn_).
+
+
+CONTINUING DEVELOPMENT - MARK SWIFT
+
+Due to other committments, Rainer made it plain (1990) that he had
+little time to make any further improvements to the emulator.
+Therefore, in Rainers absence, I took on the responsibility for the
+emulators continuing development.
+
+--------------------------------------------------------------------------
+
+BIBLIOGRAPHY
+
+A list of books/publications that proved useful:
+
+QL BOOKS
+
+QL Assembly Language Programming by Colin Opie
+ McGraw-Hill Book Company ISBN 0-07-084777-0
+
+The Sinclair QDOS Companion by Andrew Pennell
+ Sunshine Books ISBN 0-946408-69-9
+
+Assembly Language Programming on the Sinclair QL by Andrew Pennell
+ Sunshine Books ISBN 0-946408-42-4
+
+QL SuperBASIC The Definitive Handbook by Jan Jones
+ First published by McGraw-Hill ISBN 0-07-084784-3
+ Limited reprint by QUANTA: The Independent QL User Group.
+
+AMIGA BOOKS
+
+Amiga System Programmer's Guide by Dittrich, Gelfand & Schemmel
+ Abacus/Data Becker ISBN 1-55755-034-4
+
+Amiga Hardware Reference Manual,
+Amiga Intuition Reference Manual,
+Amiga ROM Kernel Reference Manual: Exec,
+Amiga ROM Kernel Reference Manual: Libraries and Devices
+ Addison-Wesley Publishing Company Inc.
+
+The 'Kickstart' Guide to the Amiga
+ Ariadne Software Ltd. ISBN 0 9512921 0 2
+
+680X0 BOOKS
+
+680X0 Programming by example by Stan Kelly-Bootle
+ Howard W Sams & Company ISBN 0-672-22544-1
+
+MicroComputer Architecture and programming by John F Wakerly
+ John Wiley & Sons Inc. ISBN 0-471-50021-6
+
+PUBLICATIONS
+
+QL World Magazine
+ (Alas, no longer in print).
+
+QREVIEW - news, reviews and articles for QL compatibles
+ (incorporated into IQLR, but...)
+
+IQLR - International QL Report
+ (...no longer around)
+
+QUANTA - newsletter (by membership).
+ QUANTA: The independant QL users group.
+ Membership: Bill Newell, QUANTA (UK),
+ 213 Manor Rd, Benfleet, Essex, SS7 4JD
+
+QLtoday - magazine for QL, QDOS, Sinclair Computers, SMSQ etc...
+ (bi-monthly, by subscription)
+ English Office:                German Office:
+ Q Branch                       Jochen Merz Software
+ P.O Box 7                      Im stillen Winkel 12
+ East Sussex                    47169 Duisburg
+ United Kingdom BN41 2ND        Germany
+ Tel: +44 1273 386030           Tel: +49 203 502011
+
+A list of books/publications that were of no use what-so-ever:
+
+A brief history of Time by Stephen W. Hawking
+ ISBN 0-593-01518-5
+
+--------------------------------------------------------------------------

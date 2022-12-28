@@ -1,0 +1,174 @@
+QDOS on Q40
+
+Mark Swift
+
+For the past few weeks I have been busily porting Amiga-QDOS onto the Q40 computer.
+The Q40 is a hardware replacement for the QL with a FAST 68040 processor, QL screen modes (plus others at hi-colour/hi-res), IDE, floppy, serial, parallel, sound, etc...
+Here is a diary of events, hastily put together, but more-or-less as things happened during the projects continuing development.
+
+The beginning
+
+In April of this year Simon Goodwin phoned me and asked if I was interested in porting Amiga-QDOS to the Q40.
+He said that Peter Graf (the man behind the Q40) was looking for developers and that there was a possibility of a loan of a prototype Q40 board. I replied that I would be willing to look into porting Amiga-QDOS, but couldn't promise any results. I added t
+
+
+hat I certainly wouldn't say no to a loan of a prototype Q40.
+Simon passed on my comments to Peter.
+
+The offer I could not refuse
+
+Later, Peter Graf e-mailed me with some hardware details, and at the beginning of May stated that he had a prototype for me 'if I was interested'
+I replied 'DEFINITELY yes, I'd be VERY interested'.
+The offer was that he would send me a 40 MHz Q40 Mainboard with 16 MB RAM for free, 'if you port (Amiga) QDOS including Keyboard, Floppy, Serial and Clock until 01-11-98'.
+Two weeks later I e-mailed Peter - concerned that I still hadn't received the board.
+
+The missing parcel
+
+Thus began a very frustrating couple of weeks...
+Peter replied to my e-mail stating that not receiving the board 'was serious' since he had sent it a week before by airmail for a quick delivery. He said that he hoped that I would receive it soon since he was he was to leave for vacation, and it would be
+
+
+ two weeks before he could investigate the lost parcel.
+I checked at the Post Office, no knowledge of any parcel. Time passed... still no board. I re-checked at the Post Office, they still claimed no record what-so-ever. They said that if the postman had called while I was out he would have left a calling card
+
+
+ - no card - no parcel.
+On 23 June Peter wrote that the parcel had finally been returned to him, 5 weeks after he had sent it. It had been returned by the British post - the reason for the returned parcel being: "Gone away / House empty" - my faith in the Post Office was severel
+
+
+y dented.
+Peter said that the prototype was to begin its next journey, and should arrive within a few days 'if we are lucky'. He stated that I could now keep the board for evaluation until 01.01.99 instead of the 01.11.98 and that his offers for a free Q40 still st
+
+
+ood.
+On Fri. 26 June, with much relief, I finally received the board.
+
+What is it?
+
+The board is very small. There is the 68040 processor, two SIMM slots that can take up to 32Mb of memory and two EPROMs that contain the utility software. There are also two expansion slots, one of which is occupied by a joint floppy disk/IDE harddisk car
+
+
+d.
+The following ports are available on the main Q40 board:
+
+LINE OUT, SPEAKER OUT VIDEO OUT, KEYBOARD
+
+The expansion board is a standard ISA IDE/floppy controller for a PC and has the following ports:
+
+IDE HDD, FLOPPY, 2 SERIAL, 1 PARALLEL, 1 JOYSTICK PORT.
+
+The Q40 board also has an in-built clock and 2040 bytes of non-volatile RAM.
+Since I have not gone the PC-route I had to borrow a PC keyboard. I already had a spare PC power supply that my brother used to use before he put his Amiga in a tower, and I was able to make use of a standard 15 inch multiscan monitor (which I again borro
+
+
+wed). I was hoping to use my Apple Mac 14 inch monitor - but this is not multisync and was too puny to cope with the Q40 display modes.
+At this time the board is not housed in a case. If I am lucky enough to keep the board I will have to buy the following:
+
+MINI-TOWER(£25),  KEYBOARD(£10), MULTISYNC MONITOR(£120).
+
+What does it do?
+
+The board I received contained a utility ROM that allows you to test the various bits of hardware. It also allows you to upload (via the serial port) some demo pictures, or your own pseudo ROM.
+The first thing I did was to build a serial cable to connect to my QL - so that I could view the demo pictures. These are 512x256 and 1024x256 at 64K colours and are very impressive.
+Eventually, having grown tired of having a super-QL with no operating system, I set about porting QDOS.
+
+QDOS -Classic-
+
+The initial idea behind this QDOS port was simply to provide a means of running OLD software on the Q40 in a more-or-less compatible way. I was hopeful that someone else would be supplying an o/s more appropriate to the Q40s modern-hardware-status.
+However, having an o/s where the sources are freely available can be very useful. This gives everybody the opportunity to improve and extend it.
+Since it was no-longer a specific Amiga implementation of QDOS, I had to rename the project. I have since  named it QDOS CLASSIC - in this case QDOS CLASSIC v3.25 (beta) for the Q40. When I update the Amiga sources, that implementation will be called QDOS
+
+
+ CLASSIC v3.25 for the Amiga.
+QDOS CLASSIC is NOT an emulation. It is written in 680X0 machine code to run directly on Motorola 680X0 processors - so it is FAST. Much faster than a current pentium system pretending to be a 68000 can hope to be.
+QDOS CLASSIC is a like a JS ROM, but with all the hardware bits removed. The idea is to have a QDOS ROM that runs on any 680X0 system, and to have all the hardware specific parts implemented as external add-on ROMs. Thus there are ROMs for the CLOCK, the
+KEYBOARD, etc...
+With nothing hardware-specific in the main ROM to crash-out the system, development time was cut considerably. I was able to implement specific hardware support in logical steps that could be tested and implemented on an individual basis:
+
+STEP 1 - try it and see if it works
+
+The first thing I tried was to upload the current Amiga-QDOS ROM just to see if it did anything, it didn't - it didn't even get to the F1/F2 screen. No surprise there.
+
+STEP 2 - persistance
+
+Having re-examined the code and made a few adjustments I tried again with more confidence. Still nothing.
+Perhaps this was to be expected, in the initial stages of a project there can be many unexpected bugs. For this reason it pays to streamline the testing process.
+To make life easier, I built myself a split serial cable. Input to the Q40 comes from my QL and output from the Q40 goes to my Apple Mac.
+At the moment I am developing and assembling the sources on my Amiga, transferring the code onto QL floppies, uploading this from my QL to the Q40 (at 9600 baud) and sending debug messages to my Mac (at 115200 baud).
+In fact, in the initial stages of the project (when nothing worked) I single stepped the whole of the ROM and captured the output to a file on my Mac. This worked out at around 9Mb and took all night to transfer, but since it was automatic I was able to g
+
+
+et some sleep.
+After many hours examining code, I finally got the F1/F2 screen to show. Clearly, to get this far a lot of the code had worked.
+
+STEP 3 - frame/polled interrupts
+
+At this stage there were no keyboard routines, so it wasn't possible to press the F1 or F2 keys - instead I commented out the F1/F2 code just to see how much further it got.
+It went all the way to the split screen, but with no flashing cursor.
+I then realised that I had to write the routine to recognise frame (polled) interrupts. When I had done this I finally got a cursor that blinked healthily - which was a good sign since it proved that the system was actually running.
+
+STEP 4 -  keyboard
+
+The Q40 uses a standard PC AT-keyboard which connects to the Q40 via a 5 pin din.
+At low-level the AT keyboard gives you a keycode when you press a key, and the same keycode preceded by a 'release' code (240) when you release the key. Also there are 'special' keys that return multiple keystrokes. For example, the BREAK key returns 8 ke
+
+
+ycodes:
+
+225,20,119,225,240,20,240,119
+
+I had managed to find quite a bit of information about PC keyboards while I was waiting for the prototype to arrive - so it didn't take too long before I had written the first draft of the keyboard routines.
+This meant that I now had a working, albeit minimal system and on Wednesday 22 July I Typed in my first program:
+
+ 10 PRINT "Hello World!"
+ 20 GOTO 10
+
+The BASIC interpreter worked! - though I soon found that there was a bug in my CTRL-SPACE routine so that I couldn't BREAK out of loop...
+However since it was 3:30am and since I had to go to work in the morning, I decided to call it a day and get some sleep. I fixed most of the major keyboard bugs the next evening.
+
+STEP 5 - clock
+
+Now I set my mind to the in-built clock.
+In the end the clock routines turned out to be pretty straight-forward, especially since I was now able to PEEK and POKE the hardware directly from BASIC. After getting the in-built clock working, DATE$ told me that it was 1:00am and time for a rest.
+
+STEP 6 - name it and send out a beta copy
+
+I needed to have something to print on the banner of the F1/F2 screen - so it was at this stage that I renamed the project from Amiga-QDOS to QDOS 'CLASSIC'.
+QDOS CLASSIC seemed an appropriate name since it is based around the now classic JS ROM - a fairly stable and compatible ROM set.
+I have since realised, that I probably read the term 'classic' in Adrian Ives' article in the July/August edition of QL today when he described his black-box as his 'QL-Classic'.
+Anyway, on Friday 24 July I e-mailed Peter Graf the first working beta.
+
+How fast is the Q40?
+
+Having got a working BASIC interpreter, I could now test how fast the Q40 really was - which all depends on the processor cache settings.
+QDOS CLASSIC includes three BASIC keywords that determine how the caches are utilised.
+
+SERIALIZED sets the memory to be non-cachable.
+
+WRITETHROUGH sets the memory to be cachable. Also, during a write, memory is immediately updated from the caches.
+
+COPYBACK sets the memory to be cachable, but memory is only updated from the caches when absolutely necessary (i.e when the caches are full). Enabling COPYBACK on 68040 & 68060 machines gives substantial speed increases.
+
+The benchmarks I used were QSBB_bas from the QLAY distribution.
+
+
+CPU           print   function  string  configuration
+Q40 68040/40  16700   14840     20980   QDOSclassic (serialized)
+Q40 68040/40  24760   24820     37420   QDOSclassic (writethrough)
+Q40 68040/40  30420   34220     46860   QDOSclassic (copyback)
+
+The same tests on an original QL give the following timings:
+
+CPU            print  function  string  configuration
+QL original    980    840       1100    128k JS-ROM
+
+As you can see, on these tests with copyback enabled, the Q40 is around 40 times faster than a standard QL.
+You should note that the version I was sent is a 40Mhz 68040. There is a slower 33Mhz version and a much quicker 68060 version running at 50Mhz. There are also plans for 68060 versions running at 66Mhz (full) and 75MHz (EC & LC only).
+
+What's next?
+
+SER support - then PAR - then FLP and - then sound, probably in that order.
+
+B.T.W. QDOS CLASSIC sources are freely available to anyone who's interested.
+
+

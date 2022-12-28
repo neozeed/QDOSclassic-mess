@@ -1,0 +1,57 @@
+BAS_MODE:
+	bsr	CA_GTINT
+	bne.s	BAS_MDX
+
+	movem.w	0(a6,a1.l),d1-d2
+	subq.w	#2,d3
+	beq.s	BAS_MD1
+
+	moveq	#-1,d2
+
+	addq.w	#1,d3
+	bne.s	BAS_BP
+
+	andi.w	#$0108,d1
+
+BAS_MD1:
+	cmpi.w	#$0100,d1
+	bne.s	BAS_MD2
+
+	moveq	#8,d1
+
+BAS_MD2:
+	moveq	#$10,d0
+	trap	#1
+
+BAS_MDX:
+	rts
+
+BAS_BP:
+	moveq	#ERR.BP,d0
+	rts
+
+BAS_NET:
+	jsr	GET_INT2(pc)
+	bne.s	L075C4
+
+	addq.l	#2,BV_RIP(a6)
+	move.b	1(a6,a1.l),d1
+	ble.s	BAS_BP
+
+	moveq	#MT.INF,d0
+	trap	#1
+	move.b	d3,SV_NETNR(a0)
+
+L075C4:
+	rts
+
+BEEPING:
+	cmpa.l	a3,a5
+	bne.s	BAS_BP
+
+	bsr	L08162
+	moveq	#MT.INF,d0
+	trap	#1
+	moveq	#1,d1
+	and.b	SV_SOUND(a0),d1
+	bra	L08186

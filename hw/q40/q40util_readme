@@ -1,0 +1,61 @@
+Short:    The system ROM that shipped with early Q40s
+Author:   Peter Graf & Claus Graf
+Version:  0.31
+Type:     hw/q40
+
+
+This is the system ROM that was originally shipped
+to developers on early Q40 boards.
+
+It allows you to test various bits of hardware
+via the following on-screen menu:
+
+  1 ROM Download
+  2 Serial Ports
+  3 Screen
+  4 Keyboard
+  5 Clock
+  6 Sound
+  7 Cache/Memory/Interrupt
+  8 Harddisk
+  9 Parallel Port
+
+
+HOW TO LOAD THE ROM on SMSQ/E systems
+
+  Firstly, load the SOFTROM toolkit with the following command:
+
+  LRESPR SOFTROM_rext
+
+This toolkit adds a single keyword - SOFTROM - to BASIC.
+The SOFTROM keyword allows ROM images to be loaded into the ROM
+area on the Q40 computer.
+
+  Now, type:
+
+  SOFTROM Q40util_ROM
+
+This will load the utility ROM into the system ROM area.
+The machine will then reboot.
+
+
+HOW TO LOAD THE ROM on QDOS Classic systems
+
+  Type:
+
+  SOFTROM Q40util_ROM
+
+This will load the utility ROM into the system ROM area.
+The machine will then reboot.
+
+
+ARCHIVE CONTENTS
+
+ Q40util_ROM     - The system ROM that shipped with early Q40s
+ Q40util_readme  - This file.
+
+
+CONTACT
+
+  PETER GRAF            e-mail: pgrafq@t-online.de
+  CLAUS GRAF            e-mail: chrafq@aol.com

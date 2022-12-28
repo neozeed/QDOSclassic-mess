@@ -1,0 +1,58 @@
+100 PRINT DATE$
+110 d=DATE
+120 DELETE "ram1_FLPTEST_temp"
+130 OPEN_NEW#4;"ram1_FLPTEST_temp"
+140 DIR#4;"flp1_"
+150 CLOSE#4
+160 OPEN_IN#4;"ram1_FLPTEST_temp"
+170 INPUT#4;t$
+180 INPUT#4;t$
+190 i=0
+200 REPeat loop
+210  IF EOF(#4) THEN EXIT loop
+220  INPUT#4;t$
+230  i=i+1
+240 END REPeat loop
+250 REPeat forever
+260  r=RND(i-1)+1
+270  OPEN_IN#4;"ram1_FLPTEST_temp"
+280  INPUT#4;t$
+290  INPUT#4;t$
+300  FOR j=1 TO r
+310   INPUT#4;t$
+320  END FOR j
+330  CLOSE#4
+340  IF FTEST("flp1_"&t$)=0 THEN 
+350   PRINT#2;"deleting ";t$
+360   COPY "flp1_"&t$ TO "ram1_"&t$
+370   DELETE "flp1_"&t$
+380  ELSE 
+390   PRINT#2;"restoring  ";t$
+400   COPY "ram1_"&t$ TO "flp1_"&t$
+410   DELETE "ram1_"&t$
+420  END IF 
+430  k$=INKEY$(#0)
+440  IF k$<>"" THEN EXIT forever
+450  IF (DATE-d)>=7200 THEN EXIT forever
+460 END REPeat forever
+470 PRINT#2;"Restoring disk contents"
+480 DELETE "ram1_FLPTEST_temp"
+490 OPEN_NEW#4;"ram1_FLPTEST_temp"
+500 DIR#4;"ram1_"
+510 CLOSE#4
+520 OPEN_IN#4;"ram1_FLPTEST_temp"
+530 INPUT#4;t$
+540 INPUT#4;t$
+550 INPUT#4;t$
+560 REPeat loop
+570  IF EOF(#4) THEN EXIT loop
+580  INPUT#4;t$
+590  IF FTEST("flp1_"&t$)<>0 THEN 
+600   PRINT#2;"restoring  ";t$
+610   COPY "ram1_"&t$ TO "flp1_"&t$
+620   DELETE "ram1_"&t$
+630  END IF 
+640 END REPeat loop
+650 CLOSE#4
+660 DELETE "ram1_FLPTEST_temp"
+670 PRINT DATE$

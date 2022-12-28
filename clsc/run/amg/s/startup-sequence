@@ -1,0 +1,25 @@
+c:SetPatch >NIL: ;patch system functions
+cd c:
+echo "Workbench 1.3 disk*N"
+Sys:System/FastMemFirst ; move C00000 memory to last in list
+BindDrivers
+SetClock load ;load system time from real time clock (A1000 owners should
+              ;replace the SetClock load with Date
+FF >NIL: -0 ;speed up Text
+resident CLI L:Shell-Seg SYSTEM pure add; activate Shell
+resident c:Execute pure
+mount newcon:
+;
+failat 11
+run execute s:StartupII ;This lets resident be used for rest of script
+wait >NIL: 5 mins ;wait for StartupII to complete (will signal when done)
+path ram: c: sys:system s: add ;set path for Workbench
+cd :
+Run Execute MakeAssigns
+WAIT >NIL: 5 mins
+Run Execute MountQLdrives
+WAIT >NIL: 5 mins
+;
+SYS:System/SetMap gb ;Activate the ()/* on keypad
+LoadWB delay  ;wait for inhibit to end before continuing
+endcli >NIL:

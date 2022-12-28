@@ -1,0 +1,170 @@
+*******************************************************************
+*  CLSC_inc - AMIGA specific QDOS classic includes file
+*	   - last modified 23/02/99
+*
+*  hardware addresses specific to the Amiga version of QDOS classic
+*******************************************************************
+
+
+* $00000-$0BFFF is reserved for the QDOS ROM
+*
+* $0C000-$0FFFF can be used for whatever you wish
+*
+* $10000-$13FFF is reserved for the first bitplane
+* $14000-$17FFF is reserved for the second bitplane
+*
+* $18000-$180FF is reserved for QL I/O
+*
+* $18100-$1815F is reserved for special amiga variables
+*
+* $18160-$183EF is reserved for the sound sample buffer
+*
+* $183F0-$185FF is reserved for the main sprite list
+*
+* $18600-$187FF is reserved for main copper list
+*
+* $18800-$1F3FF is reserved for the floppy disk buffer
+*
+* $1F400-$1FFE7 is reserved for Amiga specific ROMs that patch
+*	       the QDOS ROM to work on the Amiga
+*
+* $1FFE8-$1FFFF is reserved for TAS emu self-modifying code
+*
+* $20000-$27FFF is reserved for the QL screen
+*
+* $28000 --->   is reserved for system variables, a possible
+*	       second screen, and the QL tables and work area.
+
+
+* address of various bits of hardware
+
+BPLANE1	   EQU	$10000
+BPLANE2	   EQU	$14000
+BPLANE3	   EQU	$12000
+
+SMPL_VARS   EQU	$18160
+
+SMPL.BUF1   EQU	$00	; $18160
+SMPL.BUF2   EQU	$04	; $18164
+SMPL.END    EQU	$08	; $18168
+
+BUF_SIZ	   EQU	$140	; size of sample buffer (l+r)
+
+BUF.LEN	   EQU	$00
+BUF.SMPLL   EQU	$04
+BUF.SMPLR   EQU	BUF.SMPLL+(BUF_SIZ>>1)
+BUF.END	   EQU	BUF.SMPLR+(BUF_SIZ>>1)
+
+SAMPLE1	   EQU	SMPL_VARS+SMPL.END	; $18168
+SAMPLE2	   EQU	SAMPLE1+BUF.END		; $182AC
+					; $183F0
+
+SPRNULL	   EQU	$183F0
+SPRLST	   EQU	$18400
+
+COPLST	   EQU	$18600
+
+MFMBUFFER   EQU	$18800	; disk MFM buffer
+MFMBUFEND   EQU	$1F400
+
+* address for copy of CIA interrupt control registers
+
+AV.CIAA_ICR EQU	$1813A	; (byte)
+AV.CIAB_ICR EQU	$1813B	; (byte)
+AV.CIAA_MSK EQU	$1813C	; (byte)
+AV.CIAB_MSK EQU	$1813D	; (byte)
+
+* a general flag so we can share/disable the blitter
+
+AV.FLGS1    EQU	$1813E	; (byte)
+			; bit 7 = 1 disable blitr activity
+			;	 0 enable blitr activity
+			;     6 = 1 blitter active
+			;	 0 blitter inactive
+
+AV.DSKV	   EQU	$18158	; (long) Ptr to disk vars
+
+*******************************************************************
+*
+* Amiga floppy driver on this version coming soon...
+
+* define track sizes for read and write
+
+TLEN	   EQU	12500	; theoretical size
+WLEN	   EQU	TLEN+20	; 20 bytes extra
+RLEN	   EQU	TLEN+1324 ; 1 sector extra
+POLLT	   EQU	200	; time after which motor shuts-off
+
+* local variables for floppy code
+
+FV.POLLLink EQU	$00	; (long) address
+			; (long)
+FV.POLLActiv EQU	$08	; (byte)
+
+FV.XINTLink EQU	$0A	; (long) address
+			; (long)
+
+FV.FLAGS    EQU	$12	; (byte)
+
+	   ; bit 6 1=write 0=read
+	   ; bit 5 1=retry on error 0=no retry on error
+	   ; bit 3 1=index on write 0=no index on write
+	   ; bit 1 1=index on read  0=no index on read
+	   ; bit 0 1=use SYNC word  0=no SYNC on read
+
+FV.PROFLag  EQU	$13	; (byte) write protect status
+FV.CNGFLag  EQU	$14	; (byte) disk change status
+FV.RDYFLag  EQU	$15	; (byte) disk ready status
+
+FV.LASTBit  EQU	$16	; (word) last bit in MFM
+
+FV.REQDRive EQU	$18	; (word) required drive
+
+FV.MAXDRive EQU	$1A	; (word) max drive possible
+
+FV.DRVVArs  EQU	$1C	; drive variables here
+
+
+* Define drive variables (there's one of these for every drive)
+
+DV.TYPE	   EQU	$00	; (long)
+
+DV.TIMEOut  EQU	$04	; (word)
+
+DV.SIDE	   EQU	$06	; (word)
+DV.TRACK    EQU	$08	; (word)
+DV.TRK40    EQU	$0A	; (byte)
+
+DV.SIDE0buff EQU	$0C	; buffer vars for side 0
+DV.SIDE1buff EQU	$10	; buffer vars for side 1
+
+DV_LEN	   EQU	$14
+
+* end of variables
+
+FV_LEN	   EQU	FV.DRVVArs+4*DV_LEN
+
+
+*	Define ASCII buffer variables
+
+AB.DRIVE    EQU	$00	; (word)
+AB.TRACK    EQU	$02	; (word)
+AB.SIDE	   EQU	$04	; (word)
+
+AB.FSECTR   EQU	$06	; (word) first sector number
+AB.LSECTR   EQU	$08	; (word) last sector number
+AB.BSECTR   EQU	$0A	; (word) bytes per sector
+
+AB.LASTBit  EQU	$0C	; (word) last bit in MFM
+
+AB.PENDWflag EQU	$0E	; (long)
+AB.BADFLag  EQU	$12	; (long)
+
+AB.BUFhead  EQU	$16
+
+AB.BUFdata  EQU	$22
+
+AB.BUFENd   EQU	AB.BUFdata+$2800
+
+*******************************************************************
+

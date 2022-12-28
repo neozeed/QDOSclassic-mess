@@ -1,0 +1,38 @@
+.key opt1
+.def opt1 "FD0:"
+.bra {
+.ket }
+
+FailAt 21
+
+Echo "This script copies the contents of a"
+Echo "QDOS (QL) disk into an LHA archive."
+
+Assign >NIL: FD0: EXISTS
+
+If WARN
+ Echo "Please:"
+ Echo "   1) Mount the QLfilesystem"
+ Echo "   2) Put a QL disk in DF0:"
+ Echo "   3) Try again."
+ Wait 5
+Else
+
+ If EXISTS ram:QDOS4amiga3.lha
+  delete ram:QDOS4amiga3.lha
+ EndIf
+
+ Version >NIL: CLI 37 internal
+ If NOT WARN
+  List >t:qdos{$$} ALL LFORMAT "lha -x -a -r -d a ram:QDOS4amiga3.lha *"{opt1}%n*"" {opt1}
+ Else
+  List >t:qdos{$$} LFORMAT "lha -x -a -r -d a ram:QDOS4amiga3.lha *"{opt1}%t*"" {opt1}
+ EndIf
+
+ Copy QLdisk.mkLHA.info ram:QDOS4amiga3.lha.info
+ execute t:qdos{$$}
+ delete t:qdos{$$}
+
+EndIf
+
+FailAt 10

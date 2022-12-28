@@ -1,0 +1,22 @@
+Short:    Small PD RAM disk
+Uploader: msw@blackpool.ac.uk
+Type:     util/rext
+
+
+This small PD RAM disk is relatively slow but functions
+reasonably well.
+
+If anyone knows who wrote it, please let me know so that
+I can credit the author in these docs.
+
+
+ARCHIVE CONTENTS
+
+ RAMDISC_cde    - The RAM disk.
+ RAMDISC_readme - This file.
+
+
+FEATURES
+
+* SMALL
+* FREE

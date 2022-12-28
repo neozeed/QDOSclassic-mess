@@ -1,0 +1,210 @@
+	INCLUDE	'DEV/ASM/QDOS/DEFINES_inc'
+	INCLUDE	'CLSC/SRC/CORE/CLK_inc'
+	INCLUDE	'DEV/ASM/AMG/HW_inc'
+	INCLUDE	'CLSC/SRC/AMG/CLSC_inc'
+
+	SECTION	CLK
+
+	XDEF	HW_RESET,HW_ENABLE
+	XDEF	RD_CLK,WR_CLK
+	XDEF	XINT_SERver
+
+	XDEF	HW_VCTR_BEG
+	XDEF	HW_VCTR.LEN
+
+	XDEF	HARDTAG
+
+	XREF	L040F6,MULT
+
+*******************************************************************
+*
+* CLK_asm - AMIGA specific clock routines
+*	 - originated July 98 - Mark Swift
+*	 - last modified 13/08/99 (MSW)
+
+BASE:
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+HW_VCTR_BEG:
+
+*******************************************************************
+*
+*  subroutine to read the hardware clock
+
+RD_CLK:
+	MOVEQ.L	#0,D1
+	MOVE.B	CIAA_EMSB,D1	; read bits 16-23
+	LSL.L	#8,D1
+	MOVE.B	CIAA_EMID,D1	; bits 8-15
+	LSL.L	#8,D1
+	MOVE.B	CIAA_ELSB,D1	; bits 0-7
+	DIVU	#5000,D1 	; 100 seconds
+	MOVEQ	#0,D0
+	MOVE.W	D1,D0		; get quotient
+	MULU	#100,D0		; get seconds so far
+	SWAP	D1
+	AND.L	#$FFFF,D1	; get remainder
+	DIVU	#50,D1		; get seconds
+
+	AND.L	#$FFFF,D1	; get quotient
+	ADD.L	D0,D1		; seconds complete
+	add.l	PC_CLOCK,d1	; add offset for actual day
+				; and time
+	rts
+
+*******************************************************************
+*
+*  subroutine to write the hardware clock
+
+WR_CLK:
+	move.l	d1,PC_CLOCK	; use this as new offset
+
+	bclr	#7,CIAA_CRB	; next write is to counter
+	move.b	#0,CIAA_EMSB	; reset event counter
+	move.b	#0,CIAA_EMID
+	move.b	#0,CIAA_ELSB
+
+	rts
+
+*******************************************************************
+*
+*  HARDWARE RESET : reset clock hardware
+
+HW_RESET:
+
+*******************************************************************
+*
+*  HARDWARE DISABLE : disable clock related interrupts/DMA
+
+HW_DISABLE:
+	move.l	d7,-(a7)
+
+	move.b	#%00000100,CIAA_ICR ; disable ALARM interrupt
+
+	bclr	#7,CIAA_CRB	; next write is to counter
+	move.b	#0,CIAA_EMSB	; reset event counter
+	move.b	#0,CIAA_EMID
+	move.b	#0,CIAA_ELSB
+
+	move.b	CIAA_ICR,d7	; read & clear CIA-A ICR
+	or.b	AV.CIAA_ICR,d7
+	bclr	#2,d7		; clear ALARM bit
+	move.b	d7,AV.CIAA_ICR	; store for another program
+
+	move.w	#%0000000000001000,INTREQ ; clear CIA-A ints
+
+	andi.b	#%11111011,AV.CIAA_MSK ; ignore alarm ints
+
+	move.l	(a7)+,d7
+	rts
+
+*******************************************************************
+*
+* End custom vector routines
+
+NOPpad3:
+	DCB.w ((0-(NOPpad3-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+HW_VCTR_END:
+
+HW_VCTR.LEN	EQU	(HW_VCTR_END-HW_VCTR_BEG)
+
+*******************************************************************
+*
+*  HARDWARE ENABLE : initialise clock hardware to for use,
+*		   enable relevant interrupts/DMA
+
+HW_ENABLE:
+	move.l	d7,-(a7)
+
+	move.b	#%00000100,CIAA_ICR ; disable ALARM interrupt
+
+	bclr	#7,CIAA_CRB	; next write is to counter
+	move.b	#0,CIAA_EMSB	; reset event counter
+	move.b	#0,CIAA_EMID
+	move.b	#0,CIAA_ELSB
+
+	bset	#7,CIAA_CRB	; next write is to ALARM
+	move.b	#2,CIAA_EMSB	; alarm every hour - so
+	move.b	#191,CIAA_EMID	; as to update clock from
+	move.b	#32,CIAA_ELSB	; event counter.
+
+	move.b	CIAA_ICR,d7	; read & clear CIA-A ICR
+	or.b	AV.CIAA_ICR,d7
+	bclr	#2,d7		; clear ALARM bit
+	move.b	d7,AV.CIAA_ICR	; store for another program
+
+	move.w	#%0000000000001000,INTREQ ; clear and enable
+	move.w	#%1000000000001000,INTENA ; CIA-A interrupts
+
+	move.b	#%10000100,CIAA_ICR ; enable ALARM interrupt
+
+	ori.b	#%00000100,AV.CIAA_MSK ; take note of alarm
+
+	move.l	(a7)+,d7
+	rts
+
+*******************************************************************
+*
+*  external interrupt server to handle clock/timer interrupts
+
+XINT_SERver:
+	movem.l	d7/a0,-(a7)
+
+	move.w	INTENAR,d7	; read interrupt enable reg
+	btst	#3,d7		; branch if ints not on
+	beq.s	XINT_OTHer
+
+	move.w	INTREQR,d7	; read interrupt request reg
+	btst	#3,d7		; branch if from CIA-A or
+	bne.s	CIAA_SERv	; expansion ports
+
+;  otherwise let another external interrupt server handle it
+
+XINT_OTHer:
+	movem.l	(a7)+,d7/a0
+	rts
+
+; --------------------------------------------------------------
+;  Interrupt from CIA-A or expansion port
+
+CIAA_SERv:
+	move.b	CIAA_ICR,d7	; read CIA-A ICR
+	or.b	AV.CIAA_ICR,d7
+	move.b	d7,AV.CIAA_ICR	; store for another program
+
+	bclr	#2,d7		; (ALARM bit=1)
+	beq	XINT_OTHer	; no
+
+; --------------------------------------------------------------
+;  External interrupt server for acting on event counter alarm
+;  (CIAA ALARM bit=1).
+
+ALRM_SERv:
+	move.b	d7,AV.CIAA_ICR
+
+	and.b	AV.CIAA_MSK,d7	; don't clear INTREQ if
+	bne.s	ALRM_0		; other CIAA ints occured
+
+	move.w	#%0000000000001000,INTREQ ; clear interrupts
+
+ALRM_0:
+	bsr	RD_CLK		; read clock
+	move.l	d1,PC_CLOCK	; update QL h/w
+
+XINT_EXIt:
+	bra	XINT_OTHer
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad5:
+	DCB.w ((0-(NOPpad5-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+*******************************************************************
+
+	END

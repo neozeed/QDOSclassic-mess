@@ -1,0 +1,48 @@
+*******************************************************************
+*
+*  SERIAL variables
+
+;SV_LXINT	EQU	$00	; (long) ptr to next link
+				; (long) address of EXT INT routine
+
+;SV_LPOLL	EQU	$08	; (long) ptr to next link
+				; (long) address of POLLed int routine
+
+; (necessary for IO.SERIO)
+
+VAR.PEND     EQU	$28	; (long) pending test
+VAR.FBYTE    EQU	$2C	; (long) fetch byte
+VAR.SBYTE    EQU	$30	; (long) send byte
+VAR.RTS	    EQU	$34	; (word) RTS (4E75)
+
+VAR.LEN	    EQU	$44	; length of vars
+
+; --------------------------------------------------------------
+;  SYS.SER.SA - Serial I/O definitions
+; --------------------------------------------------------------
+;SER_RXQL EQU	 81		 ; Length of receive buffer
+*				  (odd!)
+;SER_TXQL EQU	 81		 ; Length of transmit buffer
+*				  (odd!)
+
+; --------------------------------------------------------------
+;  Channel definition block
+; --------------------------------------------------------------
+;SER_CHNO EQU	 24		 ; Channel number (1 or 2)
+;SER_PAR EQU	 26		 ; Parity requirement
+;SER_TXHS EQU	 28		 ; Transmit handshake flag
+;SER_PROT EQU	 30		 ; Protocol, +ve CR/LF, 0
+*				  CTRLZ, -ve RAW
+;SER_RXQ EQU	 32		 ; Receive queue header
+;SER_TXQ EQU	 32+SER_RXQL+Q_QUEUE+1 ; Transmit queue header
+;SER_END EQU	 SER_TXQ+SER_TXQL+Q_QUEUE+1 ; Total memory
+*					  required
+; --------------------------------------------------------------
+;  Channel definition block - extra stuff
+; --------------------------------------------------------------
+SER_EOF	EQU	SER_END		; EOF (CLOSE) protocol
+SER_TXD	EQU	SER_EOF+2	; last transmitted character
+SER_RXD	EQU	SER_TXD+2	; last received character
+SER_MORE EQU	SER_RXD+2-SER_EOF ; length of extra ser vars
+
+*******************************************************************

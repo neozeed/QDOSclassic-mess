@@ -1,0 +1,84 @@
+*/beginfile PROCS8_asm
+; --------------------------------------------------------------
+; PROCS8_asm - BASIC bits
+;	    - last modified 27/08/95
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...some changes by Mark J Swift
+; --------------------------------------------------------------
+; Get channel ID from BASIC channel #
+L065E6:
+CHNRTOID:
+	MOVEQ	#1,D1
+L065E8	MOVE.L	A5,-(A7)
+	CMPA.L	A3,A5
+	BLS.S	L0661C
+	BCLR	#7,1(A6,A3.L)
+	BEQ.S	L0661C
+	MOVE.L	A3,-(A7)
+	LEA	8(A3),A5
+	ANDI.B	#$0F,$01(A6,A3.L)
+	JSR	L05EC8(PC)	;*/undomodify BSR L05EC8
+	BNE.S	L06642
+	MOVEQ	#3,D0
+	JSR	L05996(PC)	;*/undomodify BSR L05996
+	BNE.S	L06642
+	MOVEA.L	(A7)+,A3
+	ADDQ.W	#8,A3
+	MOVE.W	0(A6,A1.L),D1
+	ADDQ.L	#2,BV_RIP(A6)	;arith stack
+L0661C	MOVEA.L	(A7)+,A5
+L0661E	MOVE.L	D1,D0
+	MOVEA.L	BV_CHBAS(A6),A0	;channel name
+	MULU	#$28,D0
+	ADDA.L	D0,A0
+	CMPA.L	BV_CHP(A6),A0	;channel name running ptr
+	BGE.S	L0663E
+	MOVE.L	0(A6,A0.L),D0
+	BLT.S	L0663E
+	MOVEA.L	A0,A2
+	MOVEA.L	D0,A0
+	MOVEQ	#0,D0
+	RTS
+L0663E	MOVEQ	#-6,D0		; Channel not found
+	RTS
+L06642:
+	ADDQ.W	#8,A7
+	RTS
+; store Channel ID for identification by # as #(D1)
+L06646:
+STO_CHID:
+	MOVE.L	A0,-(A7)
+	BSR.S	L0661E
+	BEQ.S	L0669E
+	CMPA.L	BV_CHP(A6),A0	; channel name running ptr
+	BLT.S	L06680
+	MOVE.L	D1,-(A7)
+	MOVE.L	A0,D1
+	ADDI.L	#$28,D1
+	SUB.L	BV_CHP(A6),D1	; channel name running ptr
+				;*/undoinsert MOVEQ #$34,D2
+	JSR	L04E7A(PC)	;*/undomodify BSR L04E84
+	MOVE.L	(A7)+,D1
+	BSR.S	L0661E
+L06668:
+	MOVEA.L	BV_CHP(A6),A2	; channel name running ptr
+	ADDI.L	#$28,BV_CHP(A6)	; channel name running ptr
+	MOVE.L	#$FFFFFFFF,0(A6,A2.L)
+	CMPA.L	A0,A2
+	BLT.S	L06668
+L06680:
+	MOVEA.L	A0,A2
+	MOVEQ	#$0A,D0
+L06684	CLR.L	0(A6,A0.L)
+	ADDQ.W	#4,A0
+	SUBQ.W	#1,D0
+	BGT.S	L06684
+	MOVEA.L	(A7)+,A0
+	MOVE.L	A0,0(A6,A2.L)
+	MOVE.W	#$50,$22(A6,A2.L)
+	MOVEQ	#0,D0
+	RTS
+L0669E	MOVEQ	#-8,D0		; already exists error
+	RTS
+; --------------------------------------------------------------
+;*/endfile

@@ -1,0 +1,151 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_SSS_inc'
+	INCLUDE	'DEV_ASM_Q40_HW_inc'
+
+	SECTION	SSS
+
+	XDEF	HW_RESET,HW_DISABLE,HW_ENABLE
+
+	XDEF	HW_VCTR_BEG
+	XDEF	HW_VCTR.SSSS_HED
+	XDEF	HW_VCTR.LVL4_NEW,HW_VCTR.LVL4_OLD
+	XDEF	HW_VCTR.LVL6_NEW,HW_VCTR.LVL6_OLD
+	XDEF	HW_VCTR.LEN
+
+	XDEF	HARDTAG
+
+*******************************************************************
+*
+* SSS_asm - Sampled Sound System routines
+*	 - originated July 99 - Mark Swift
+*	 - last modified 11/08/99 (MSW)
+
+BASE:
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+HW_VCTR_BEG:
+
+*******************************************************************
+*
+*  Identification tag / pointer to sampled sound functions
+
+HW_SSSS_HED:
+
+HW_VCTR.SSSS_HED	EQU	(HW_SSSS_HED-HW_VCTR_BEG)
+
+	DC.L	'SSSS'
+	DC.L	$00000000	; SSSfuncs (filled in later)
+
+*******************************************************************
+*
+*  LEVEL 4 and 6 INTERRUPT handler
+
+LVL4:
+
+HW_VCTR.LVL4_NEW	EQU	(LVL4-HW_VCTR_BEG)
+
+LVL6:
+
+HW_VCTR.LVL6_NEW	EQU	(LVL6-HW_VCTR_BEG)
+
+	ori.w	#$0700,sr	; disable interrupts
+
+	movem.l	a0/a3/d0,-(a7)
+
+	lea	HW_SSSS_HED(pc),a3
+
+	move.b	#1,MASTER_CHIP+SAMPLE_INT_CLEAR
+
+	move.l	HW_VCTR.LEN+VAR.SMPOUT(a3),a0
+	cmpa.l	HW_VCTR.LEN+VAR.SMPIN(a3),a0
+	bne.s	HW_LVL4A
+
+	bsr.s	HW_DISABLE	; no samples, so disable sound
+	bra.s	HW_LVL4X 	; and exit
+
+HW_LVL4A:
+	move.b	(a0)+,d0
+	move.b	d0,DAC_A
+
+	move.b	(a0)+,d0
+	move.b	d0,DAC_B
+
+	cmpa.l	HW_VCTR.LEN+VAR.SMPEND(a3),a0
+	blt.s	HW_LVL4B
+
+	lea	HW_VCTR.LEN+VAR.SMPQ(a3),a0
+
+HW_LVL4B:
+	move.l	a0,HW_VCTR.LEN+VAR.SMPOUT(a3)
+
+HW_LVL4X:
+	movem.l	(a7)+,a0/a3/d0
+	rte
+
+*******************************************************************
+
+LVL4JMP:
+
+HW_VCTR.LVL4_OLD	EQU	(LVL4JMP-HW_VCTR_BEG)+2
+
+	DC.W	$4EF9,$0000,$0000  ; filled in later
+
+*******************************************************************
+
+LVL6JMP:
+
+HW_VCTR.LVL6_OLD	EQU	(LVL6JMP-HW_VCTR_BEG)+2
+
+	DC.W	$4EF9,$0000,$0000  ; filled in later
+
+*******************************************************************
+*
+*  HARDWARE RESET : initialise hardware for use.
+
+HW_RESET:
+
+*******************************************************************
+*
+*  HARDWARE DISABLE : disable hardware
+
+HW_DISABLE:
+	move.b	#0,MASTER_CHIP+SAMPLE_INT_ENABLE
+	move.b	#1,MASTER_CHIP+SAMPLE_INT_CLEAR
+	move.b	#$80,DAC_A
+	move.b	#$80,DAC_B
+	rts
+
+*******************************************************************
+*
+* End custom vector routines
+
+NOPpad3:
+	DCB.w ((0-(NOPpad3-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+HW_VCTR_END:
+
+HW_VCTR.LEN	EQU	(HW_VCTR_END-HW_VCTR_BEG)
+
+*******************************************************************
+*
+*  HARDWARE ENABLE : enable hardware
+
+HW_ENABLE:
+	move.b	#1,MASTER_CHIP+SAMPLE_RATE    ; sample every 50 microsecs (20kHz)
+	move.b	#1,MASTER_CHIP+SAMPLE_INT_CLEAR
+	move.b	#1,MASTER_CHIP+SAMPLE_INT_ENABLE
+	rts
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad5:
+	DCB.w ((0-(NOPpad5-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+*******************************************************************
+
+	END

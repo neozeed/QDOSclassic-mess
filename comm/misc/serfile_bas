@@ -1,0 +1,29 @@
+1 REMark Copy all data from SER to a file
+2 :
+100 n$="flp1_SERFILE"
+110 OPEN#3;"SER1HN"
+120 :
+130 REMark Throw away junk SER data
+140 :
+150 REPeat loop
+160  k$=INKEY$(#3,0)
+170  IF k$="" THEN EXIT loop
+180 END REPeat loop
+190 :
+200 REMark Copy SER data to file...
+210 REMark exit if no data within 30s
+220 :
+230 DELETE n$
+240 OPEN_NEW#4;n$
+250 REPeat loop
+260  k$=INKEY$(#3,1500)
+270  IF k$="" THEN EXIT loop
+280  PRINT#4;k$;
+290 END REPeat loop
+300 CLOSE#4
+310 STOP
+320 :
+330 DEFine PROCedure sav
+340  DELETE "flp1_SERFILE_bas"
+350  SAVE "flp1_SERFILE_bas"
+360 END DEFine 

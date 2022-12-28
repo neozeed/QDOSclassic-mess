@@ -1,0 +1,556 @@
+	SECTION	JAN
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; JAN_asm - directory device driver for JANUS IBM interface
+;	 - last modified 07/01/92
+
+; Directory device driver for the JANUS IBM interface for use
+; with the TURBO-PASCAL program QLDISK
+
+; This device driver is very simple!
+
+; More sofisticated software would make use of the slave
+; blocks. But this Program was written within three weeks
+; evenings (together with the TURBO PASCAL part on the IBM).
+
+; It works, that's all !
+
+
+; QDOS-Amiga sources by Rainer Kowallik
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+BASE:
+	DC.L	$4AFB0001	; ROM recognition code
+	DC.W	FNTAB-BASE
+	DC.W	INIT-BASE
+	DC.B	0,20,'JANus device driver',$A
+
+FNTAB	DC.W	5		; 5 procedures
+	DC.W	CHDIR-*
+	DC.B	5,'CHDIR'
+	DC.W	SHODIR-*
+	DC.B	6,'SHODIR',0
+	DC.W	MKDIR-*
+	DC.B	5,'MKDIR'
+	DC.W	RMDIR-*
+	DC.B	5,'RMDIR'
+	DC.W	JAN_USE-*
+	DC.B	7,'JAN_USE'
+	DC.W	0
+	DC.W	0
+	DC.W	0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+INIT:
+	movem.l	 a0/a3,-(a7)	;*/mend
+
+; first we try to find the Buffer address of the Dual ported RAM
+
+	MOVE.L	#$910000,A2	; highest possible address
+	MOVE.L	#$100000,D0	; decrement for searching
+	MOVE.L	#$210000,D1	; lowest possible address
+SEA_JAN:
+	SUB.L	D0,A2
+	CMP.W	#$4AFB,(A2)	; test for QDOS identifier
+	BEQ.S	JANFOUND
+	CMP.L	A2,D1		; give up ?
+	BNE.S	SEA_JAN
+	BRA	NOTFOUND
+JANFOUND:
+	LEA	DPRAM(PC),A3	; (changed to LEA(PC) - MJS)
+	MOVE.L	A2,(A3)		; save this address
+	MOVE.B	#$AA,(A2)	; signal QDOS request to IBM
+;
+	MOVEQ	#$18,D0		; MT.ALCHP
+	MOVEQ	#$42,D1		; We need some memory
+	MOVEQ	#0,D2		; owned by job 0
+	TRAP	#1
+	TST.L	D0
+	BNE.S	ERR_EXIT
+	LEA	$1C(A0),A3	; start filling linkage
+				; block
+	LEA	FS_JAN(PC),A2	; I/O routine (changed to
+				; LEA(PC) - MJS)
+	MOVE.L	A2,(A3)+ 	; at $1C
+	LEA	JAN_OPEN(PC),A2	; Open
+	MOVE.L	A2,(A3)+ 	; at $20
+	LEA	JAN_CLOSe(PC),A2	; close
+	MOVE.L	A2,(A3)+ 	; at $24
+	LEA	JAN_SERV(PC),A2	; forced slaving
+	MOVE.L	A2,(A3)+ 	; at $28
+	ADDQ.L	#8,A3		; next two long words are
+				; reserved
+	LEA	JAN_FORMat(PC),A2 ; Format routine
+	MOVE.L	A2,(A3)+ 	; at $34
+	MOVE.L	#$428,(A3)+	; length of physical def.
+				; block at $38
+	MOVE.W	#3,(A3)+ 	; length of drive name at
+				; $3C
+	MOVE.L	#$4A414E00,(A3)+	; drive name 'JAN' at $3E
+	LEA	$18(A0),A0	; link address
+	MOVEQ	#$22,D0		; MT.LDD link in Directory
+				; device driver
+	TRAP	#1
+
+ERR_EXIT:
+	movem.l	(a7)+,a0/a3	;*/mend
+	RTS
+
+DPRAM	DS.L	2
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; if the IBM server  was not found, tell this to the USER
+
+NOTFOUND:
+	LEA	NF_MESS(PC),A1	; (changed to LEA(PC) - MJS)
+	MOVE.W	(A1)+,D2 	; number of bytes to send
+	BSR	IOSSTRG
+	MOVEQ	#8,D0		; MT.SUSJB
+	MOVEQ	#-1,D1		; me
+	SUBA.L	A1,A1		; no flag
+	MOVEQ	#100,D3		; 2 seconds to read the
+				; message
+	TRAP	#1
+	BRA.S	ERR_EXIT
+
+NF_MESS	DC.B	0,36,'!!!! QLDISK not running on IBM !!!!',$A
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; here we handle those routines, which are not actually used
+
+JAN_SERV:
+	RTS
+JAN_FORMat:
+	MOVEQ	#-19,D0		; not implemented yet
+	RTS
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+INIDPRAM:
+	MOVE.L	DPRAM,A2 	; get start of dualported
+				; RAM
+	CMP.B	#$55,(A2)	; IBM ready ?
+	BNE.S	ERR_NC
+	MOVE.B	D0,2(A2) 	; tell IBM the function
+				; number
+	RTS
+ERR_NC:
+	ADDQ.L	#4,A7
+	MOVEQ	#-1,D0
+	RTS
+IBM_EXIT:
+	MOVE.B	#$AA,(A2)
+IBM_WAIT:
+	NOP	; Wait a bit
+	NOP
+	NOP
+	NOP
+	CMP.B	#$55,(A2)	; IBM ready ?
+	BNE.S	IBM_WAIT
+	MOVEQ	#0,D0
+	MOVE.B	1(A2),D0 	; get error flag
+	TST.B	D0
+	BEQ.S	IBMEXITX
+	OR.L	#$FFFFFF00,D0	; extend error to negative
+				; long
+IBMEXITX:
+	RTS
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;	       I/O routines
+; A0 points to the channel definition block
+
+FS_JAN	; I/O for JANus driver
+	BSR	INIDPRAM 	; get address of dual ported
+				; RAM ...
+	MOVE.B	$1F(A0),4(A2)	; set File number for
+				; operation
+	CMP.B	#1,D0		; IO.FBYTE ?
+	BEQ	IO_FBYTE
+	CMP.B	#2,D0		; IO.FLINE ?
+	BEQ	IO_FLINE
+	CMP.B	#3,D0		; IO.FSTRG ?
+	BEQ	IO_FSTRG
+	CMP.B	#5,D0		; IO.SBYTE ?
+	BEQ	IO_SBYTE
+	CMP.B	#7,D0		; IO.SSTRG ?
+	BEQ	IO_SSTRG
+	CMP.B	#$42,D0		; FS.POSAB ?
+	BEQ	FS_POSAB
+	CMP.B	#$43,D0		; FS.POSRE ?
+	BEQ	FS_POSRE
+	CMP.B	#$45,D0		; FS.MDINF ?
+	BEQ	FS_MDINF
+	CMP.B	#$46,D0		; FS.HEADS ?
+	BEQ	FS_HEADS
+	CMP.B	#$47,D0		; FS.HEADR ?
+	BEQ	FS_HEADR
+	CMP.B	#$48,D0		; FS.LOAD ?
+	BEQ	FS_LOAD
+	CMP.B	#$49,D0		; FS.SAVE ?
+	BEQ	FS_SAVE
+	BRA	IBM_EXIT 	; The other functions don't
+				; need parameters
+IO_FBYTE:
+	BSR	IBM_EXIT
+	MOVE.B	6(A2),D1 	; get byte
+	TST.B	D0		; set flags on error
+	RTS
+IO_FLINE:
+IO_FSTRG:
+	MOVE.W	D2,6(A2) 	; number of  bytes to fetch
+	BSR	IBM_EXIT
+	LEA	6(A2),A3
+	MOVEQ	#0,D1		; reset number of bytes
+				; fetched
+	MOVE.W	(A3)+,D1 	; get number of bytes
+	MOVE.W	D1,D7
+CPY_IOFS:
+	MOVE.B	(A3)+,(A1)+	; copy line to buffer
+	DBRA	D7,CPY_IOFS
+	TST.B	D0		; set flags on error
+	RTS
+IO_SBYTE:
+	MOVE.B	D1,6(A2) 	; put byte into buffer
+	BRA	IBM_EXIT
+IO_SSTRG:
+	MOVE.W	D2,D1		; assume, we are sending all
+				; bytes
+	MOVE.W	D2,D7
+	MOVE.W	D2,6(A2) 	; tell length of string to
+				; IBM
+	LEA	8(A2),A3 	; get string body
+CPY_IOSS:
+	MOVE.B	(A1)+,(A3)+	; copy string to send
+	DBRA	D7,CPY_IOSS
+	BRA	IBM_EXIT
+FS_POSAB:
+FS_POSRE:
+	MOVE.L	D1,6(A2) 	; write offset or absolute
+				; pointer to IBM
+	BSR	IBM_EXIT
+	MOVE.L	6(A2),D1 	; get new file position
+	TST.B	D0		; set flags on error
+	RTS
+FS_MDINF:
+	BSR	IBM_EXIT
+	MOVE.L	6(A2),D1 	; get empty/good sectors
+	MOVEQ	#10,D2		; number of bytes of Medium
+				; name
+	LEA	$A(A2),A5
+CPY_MDI:
+	MOVE.B	(A5)+,(A1)+
+	DBRA	D2,CPY_MDI
+	TST.B	D0
+	RTS
+FS_LOAD:
+	MOVE.L	D2,D7		; length of file
+	MOVE.B	#$AA,(A2)	; start transfer
+LOA_512:
+	BSR	WT_IBM5
+	CMP.L	#512,D7
+	BLT.S	CPY_LREM
+CPY_L512:
+	MOVE.L	(A5)+,(A1)+
+	DBRA	D5,CPY_L512
+	MOVE.B	#$AA,5(A2)	; signal 'ready' to IBM
+	SUB.L	#512,D7
+	BRA	LOA_512
+	BSR	WT_IBM5
+CPY_LREM:
+	SUBQ.L	#1,D7
+	BMI.S	TSTD0RTS
+	MOVE.B	(A5)+,(A1)+	; copy remainding bytes
+	BRA.S	CPY_LREM
+TSTD0RTS:
+	MOVE.B	#$AA,5(A2)	; signal 'ready' to IBM
+	BRA	IBM_WAIT
+WT_IBM5:
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	CMP.B	#$55,5(A2)	; IBM ready ?
+	BNE.S	WT_IBM5
+	LEA	6(A2),A5 	; get buffer start
+	MOVE.W	#127,D5
+	RTS
+FS_SAVE:
+	MOVE.L	D2,6(A2) 	; tell IBM length of file
+	MOVE.L	D2,D7		; length of file
+	MOVE.B	#$AA,(A2)	; initialize transfer
+SAV_512:
+	BSR	WT_IBM5
+	CMP.L	#512,D7
+	BLT.S	CPY_SREM
+CPY_S512:
+	MOVE.L	(A1)+,(A5)+
+	DBRA	D5,CPY_S512
+	MOVE.B	#$AA,5(A2)	; signal 'ready' to IBM
+	SUB.L	#512,D7
+	BRA	SAV_512
+	BSR	WT_IBM5
+CPY_SREM:
+	SUBQ.L	#1,D7
+	BMI.S	TSTD0RTS
+	MOVE.B	(A1)+,(A5)+	; copy remainding bytes
+	BRA.S	CPY_SREM
+FS_HEADR:
+	BSR	IBM_EXIT 	; read header
+	MOVE.L	D2,D1		; length of file header read
+	MOVE.L	D2,D7		; assume, its OK
+	LEA	6(A2),A5 	; Get dual ported buffer
+	BRA	CPY_LREM 	; OK, bad style, but it
+				; works !
+FS_HEADS:
+	MOVEQ	#14,D1		; this will be the correct
+				; length
+	MOVEQ	#14,D7		; counter
+	LEA	6(A2),A5 	; Get dual ported buffer
+	BSR	CPY_SREM 	; again bad style...
+	BRA	IBM_EXIT 	; the rest will be done by
+				; the IBM
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;		OPEN routine
+; A0 points to the channel definition block
+; A1 points to the physical definition block
+; A3 points to the assumed basse of the linkage block
+; DELETE is performed if the file access key $1C(A0) is negative
+
+FNUMS	DC.L	0		; here we store the
+				; filenumber in use
+JAN_OPEN ; open microdrive channel
+	MOVE.B	$1C(A0),D0	; get access mode
+	OR.B	#$80,D0		; signal OPEN call
+	BSR	INIDPRAM 	; get address of dual ported
+				; RAM...
+	MOVE.B	#0,1(A2) 	; reset error flag from last
+				; call
+	LEA	$32(A0),A5	; point to file name
+	LEA	6(A2),A4 	; point to PASCAL string for
+				; name
+	MOVE.W	(A5)+,D0 	; get length of name
+	MOVE.B	D0,(A4)+
+WRFNAM1	; copy file name
+	MOVE.B	(A5)+,(A4)+
+	DBRA	D0,WRFNAM1
+	MOVE.W	#$FF,D0		; dummy file number
+	TST.B	$1C(A0)		; only delete call ?
+	BMI	IBM_EXIT
+	LEA	FNUMS(PC),A5	; now find the next free
+				; filenumber
+			     ; (changed to LEA(PC) - MJS)
+	MOVE.L	(A5),D1
+	CMP.L	#-1,D1		; all numbers used ?
+	BEQ	ERR_IU
+	MOVEQ	#-1,D0
+FFNUM	ADDQ.L	#1,D0
+	BTST	D0,D1
+	BNE.S	FFNUM
+	BSET	D0,D1		; mark filenumber as used
+	MOVE.L	D1,(A5)
+IBM_OPEN:
+	MOVE.B	D0,4(A2) 	; give filenumber to IBM
+	MOVE.B	#$AA,(A2)	; let the IBM do its work
+	MOVE.W	D0,$1E(A0)	; store filenumber to
+				; channel def. block
+	BSR	IBM_WAIT 	; handshake and error
+				; handling
+	TST.B	D0		; any errors ?
+	BEQ.S	RET
+	MOVE.W	$1E(A0),D2	; restore file number
+	MOVE.L	(A5),D1
+	BCLR	D2,D1		; reset usage
+	MOVE.L	D1,(A5)		; and save this
+	TST.B	D0
+RET	RTS
+
+ERR_IU	MOVEQ	#-9,D0
+	RTS
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;		      CLOSE routine
+; A0 points to the channel definition block
+; A3 points  to the device driver definition block
+
+JAN_CLOSe ; channel close for Microdrive device driver
+	MOVE.B	#$90,D0		; signal CLOSE   call to IBM
+	BSR	INIDPRAM 	; get address of dual ported
+				; RAM ...
+	MOVE.W	$1E(A0),D0	; restore file number
+	LEA	FNUMS(PC),A5	; (changed to LEA(PC) - MJS)
+	MOVE.L	(A5),D1		; get numbers of files in
+				; use
+	BCLR	D0,D1		; reset actual file number
+	MOVE.L	D1,(A5)
+	MOVE.B	D0,4(A2) 	; tell IBM, which file
+				; number to close
+	BSR	GETTIME
+	MOVE.L	D1,6(A2) 	; give QDOS time to  IBM
+	BSR	IBM_EXIT 	; Let  IBM close	the file
+	MOVE.L	A0,-(A7) 	; clean up
+	LEA	$18(A0),A0	; Link to next file system
+				; channel
+	LEA	$140(A6),A1	; pointer to list of file
+				; channel defs
+	BSR	MT_UNLNK
+	MOVE.L	(A7)+,A0
+	BRA	MM_RECHP
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+MT_UNLNK:
+	MOVE.W	$D4,-(A7)
+	CLR.W	-(A7)
+	RTS
+
+MM_RECHP:
+	MOVE.W	$C2,-(A7)
+	CLR.W	-(A7)
+	RTS
+
+CA_GTSTR:
+	MOVE.W	$116,-(A7)
+	CLR.W	-(A7)
+	RTS
+
+IOSSTRG:
+	suba	a0,a0		; -> channel 0 (mjs)
+	MOVEQ	#-1,D3		; don't time out
+	MOVEQ	#7,D0		; IO.SSTRG
+	TRAP	#3
+	RTS
+
+GETTIME:
+	MOVEM.L	D0/D2/A0,-(A7)
+	MOVEQ	#$13,D0
+	TRAP	#1
+	MOVEM.L	(A7)+,D0/D2/A0
+	RTS
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;      Implement Subdirectory handling procedures
+
+CHDIR:
+	BSR	STRTOBUF
+	MOVE.B	#$B0,2(A2)	; perform QCHDIR
+	BRA	IBM_EXIT
+
+SHODIR:
+	MOVE.B	#$B1,D0		; perform QDIR
+	BSR	INIDPRAM 	; get dualported ram ...
+	BSR	IBM_EXIT
+	LEA	6(A2),A1 	; base of string
+	MOVEQ	#0,D2
+	MOVE.B	(A1)+,D2 	; number of bytes to send
+	MOVE.B	#10,0(A1,D2.W)	; add LF
+	ADDQ.W	#1,D2		; one more for LF
+	BRA	IOSSTRG
+
+MKDIR:
+	BSR	STRTOBUF
+	MOVE.B	#$B2,2(A2)	; perform MAKEDIR
+	BRA	IBM_EXIT
+
+RMDIR:
+	BSR	STRTOBUF
+	MOVE.B	#$B3,2(A2)	; perform REMDIR
+	BRA	IBM_EXIT
+
+STRTOBUF:
+	BSR	STR_RIX
+	bne.l	fini
+; Here (a6,a1) points to the string
+	PEA	0(A6,A1.L)
+	BSR	INIDPRAM 	; get address of dual ported
+				; ram
+	LEA	6(A2),A3 	; get address of PASCAL
+				; string
+	MOVE.L	(A7)+,A0
+	MOVE.W	(A0)+,D1 	; get length of string
+	MOVE.B	D1,(A3)+ 	; save length for pascal
+				; string
+CPY_PSTR:
+	MOVE.B	(A0)+,(A3)+	; copy string to IBM
+	DBRA	D1,CPY_PSTR
+;       MOVE.L  A1STO(PC),A1
+	RTS
+fini:
+;       MOVE.L  A1STO(PC),A1
+	ADDQ.L	#4,A7
+	RTS
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;	      JAN_USE
+
+JAN_USE:
+	BSR	STR_RIX
+	BNE.S	LB8474
+	SUBQ.W	#3,0(A6,A1.L)
+	BNE.S	LB8472
+	MOVE.L	2(A6,A1.L),D6
+	ANDI.L	#$5F5F5F00,D6
+	ADDI.B	#$30,D6
+LB845A	MOVEQ	#$00,D0
+	TRAP	#$01
+	MOVEA.L	$48(A0),A0
+	LEA	FS_JAN(PC),A2	; (changed to LEA(PC) - MJS)
+LB8466	CMPA.L	4(A0),A2
+	BEQ.S	LB8476
+	MOVEA.L	(A0),A0
+	MOVE.L	A0,D1
+	BNE.S	LB8466
+LB8472	MOVEQ	#-$0F,D0
+LB8474	RTS
+
+LB8476	MOVE.L	D6,$26(A0)
+	RTS
+
+STR_RIX:
+	MOVEQ	#$0F,D0
+	AND.B	$01(A6,A3.L),D0
+	SUBQ.B	#1,D0
+	BNE.S	LB84A6
+	MOVE.L	A5,-(A7)
+	LEA	$8(A3),A5
+	BSR	CA_GTSTR
+	MOVEA.L	(A7)+,A5
+	BNE.S	LB84F2
+	MOVEQ	#3,D1
+	ADD.W	0(A6,A1.L),D1
+	BCLR	#0,D1
+	ADD.L	D1,$58(A6)
+	BRA.S	LB84F0
+LB84A6	MOVEQ	#-$0F,D0
+	MOVEQ	#$00,D1
+	MOVE.W	$02(A6,A3.L),D1
+	BMI.S	LB84F2
+	LSL.L	#3,D1
+	ADD.L	$0018(A6),D1
+	MOVEQ	#$00,D6
+	MOVE.W	$02(A6,D1.L),D6
+	ADD.L	$0020(A6),D6
+	MOVEQ	#$00,D1
+	MOVE.B	$00(A6,D6.L),D1
+	ADDQ.L	#1,D1
+	BCLR	#$00,D1
+	MOVE.W	D1,D4
+	ADDQ.L	#2,D1
+	SUBA	A2,A2
+	MOVEA.W	$011A,A2 	; allocate space on
+				; arithmetic stack
+	JSR	(A2)
+	MOVEA.L	$58(A6),A1
+	ADD.W	D4,D6
+LB84DC	SUBQ.L	#1,A1
+	MOVE.B	0(A6,D6.L),0(A6,A1.L)
+	SUBQ.L	#1,D6
+	DBF	D4,LB84DC
+	SUBQ.L	#1,A1
+	CLR.B	0(A6,A1.L)
+LB84F0	MOVEQ	#0,D0
+LB84F2	RTS
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	END

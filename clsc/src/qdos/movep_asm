@@ -1,0 +1,307 @@
+; INPUT *************************************************************** #
+;  none								#
+;								#
+; OUTPUT ************************************************************** #
+;  If exiting through isp_dacc...					#
+;   a0 = failing address						#
+;   d0 = FSLW							#
+;  else								#
+;   none 							#
+;								#
+; ALGORITHM *********************************************************** #
+;  Decode the movep instruction words stored at EXC_OPWORD and 	#
+;  either read or write the required bytes from/to memory. Use the	#
+;  _dmem_{read,write}_byte() routines. If one of the memory routines	#
+;  returns a failing value, we must pass the failing address and a FSLW #
+;  to the _isp_dacc() routine.					#
+;  Since this instruction is used to access peripherals, make sure	#
+;  to only access the required bytes.				#
+
+; XDEF _moveperipheral	; emulate movep instruction
+
+; XREF _dmem_read_byte	; read byte from memory
+; XREF _dmem_write_byte	; write byte to memory
+; XREF _isp_dacc		; handle data access error exception
+
+; ###########################
+; movep.(w,l)	Dx,(d,Ay) #
+; movep.(w,l)	(d,Ay),Dx #
+; ###########################
+
+EXC_AREGS	equ	4+$20
+EXC_DREGS	equ	4+$0
+EXC_PC		equ	4+$42
+
+EXC_OPWORD	equ	$0
+EXC_EXTWORD	equ	$2
+
+_moveperipheral:
+
+	move.l	EXC_PC(a7),a6
+	move.w	EXC_OPWORD(a6),d1 	; fetch the opcode word
+
+	move.b	d1,d0
+	and.w	#$7,d0			; extract Ay from opcode word
+
+	dc.w	$2077,$0424		; move.l   (EXC_AREGS,a7,d0.w*4),a0   ; fetch ay
+;	lsl.w	#2,d0
+;	move.l	EXC_AREGS(a7,d0.w),a0
+;	lsr.w	#2,d0
+
+	add.w	EXC_EXTWORD(a6),a0	; add: an + sgn_ext(disp)
+
+	btst	#$7,d1			; (reg 2 mem) or (mem 2 reg)
+	beq.w	mem2reg
+
+; reg2mem: fetch dx, then write it to memory
+reg2mem:
+	move.w	d1,d0
+	rol.w	#$7,d0
+	and.w	#$7,d0			; extract Dx from opcode word
+
+	dc.w	$2037,$0404		; move.l   (EXC_DREGS,a7,d0.w*4),d0   ; fetch dx
+;	lsl.w	#2,d0
+;	move.l	EXC_DREGS(a7,d0.w),d0
+;	lsr.w	#2,d0
+
+	btst	#$6,d1			; word or long operation?
+	beq.b	r2mwtrans
+
+; a0 = dst addr
+; d0 = Dx
+r2mltrans:
+	move.l	d0,d2			; store data
+	move.l	a0,a2			; store addr
+	rol.l	#$8,d2
+	move.l	d2,d0
+
+	bsr.l	_dmem_write_byte		; os  : write hi
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_write_err		; yes
+
+	add.w	#$2,a2			; incr addr
+	move.l	a2,a0
+	rol.l	#$8,d2
+	move.l	d2,d0
+
+	bsr.l	_dmem_write_byte		; os  : write lo
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_write_err		; yes
+
+	add.w	#$2,a2			; incr addr
+	move.l	a2,a0
+	rol.l	#$8,d2
+	move.l	d2,d0
+
+	bsr.l	_dmem_write_byte		; os  : write lo
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_write_err		; yes
+
+	add.w	#$2,a2			; incr addr
+	move.l	a2,a0
+	rol.l	#$8,d2
+	move.l	d2,d0
+
+	bsr.l	_dmem_write_byte		; os  : write lo
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_write_err		; yes
+
+	bra	_movep_exit		; (rts)
+
+; a0 = dst addr
+; d0 = Dx
+r2mwtrans:
+	move.l	d0,d2			; store data
+	move.l	a0,a2			; store addr
+	lsr.w	#$8,d0
+
+	bsr.l	_dmem_write_byte		; os  : write hi
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_write_err		; yes
+
+	add.w	#$2,a2
+	move.l	a2,a0
+	move.l	d2,d0
+
+	bsr.l	_dmem_write_byte		; os  : write lo
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_write_err		; yes
+
+	bra	_movep_exit		; (rts)
+
+; mem2reg: read bytes from memory.
+; determines the dest register, and then writes the bytes into it.
+mem2reg:
+	btst	#$6,d1			; word or long operation?
+	beq.b	m2rwtrans
+
+; a0 = dst addr
+m2rltrans:
+	move.l	a0,a2			; store addr
+
+	bsr.l	_dmem_read_byte		; read first byte
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_read_err		; yes
+
+	move.l	d0,d2
+
+	add.w	#$2,a2			; incr addr by 2 bytes
+	move.l	a2,a0
+
+	bsr.l	_dmem_read_byte		; read second byte
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_read_err		; yes
+
+	lsl.w	#$8,d2
+	move.b	d0,d2			; append bytes
+
+	add.w	#$2,a2			; incr addr by 2 bytes
+	move.l	a2,a0
+
+	bsr.l	_dmem_read_byte		; read second byte
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_read_err		; yes
+
+	lsl.l	#$8,d2
+	move.b	d0,d2			; append bytes
+
+	add.w	#$2,a2			; incr addr by 2 bytes
+	move.l	a2,a0
+
+	bsr.l	_dmem_read_byte		; read second byte
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_read_err		; yes
+
+	lsl.l	#$8,d2
+	move.b	d0,d2			; append bytes
+
+	move.b	EXC_OPWORD(a6),d1
+	lsr.b	#$1,d1
+	and.w	#$7,d1			; extract Dx from opcode word
+
+	dc.w	$2F82,$1404		; move.l   d2,(EXC_DREGS,a7,d1.w*4)   ; store dx
+;	lsl.w	#2,d1
+;	move.l	d2,EXC_DREGS(a7,d1.w)
+;	lsr.w	#2,d1
+
+	bra	_movep_exit		; (rts)
+
+; a0 = dst addr
+m2rwtrans:
+	move.l	a0,a2			; store addr
+
+	bsr.l	_dmem_read_byte		; read first byte
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_read_err		; yes
+
+	move.l	d0,d2
+
+	add.w	#$2,a2			; incr addr by 2 bytes
+	move.l	a2,a0
+
+	bsr.l	_dmem_read_byte		; read second byte
+
+	tst.l	d1			; dfetch error?
+	bne.w	movp_read_err		; yes
+
+	lsl.w	#$8,d2
+	move.b	d0,d2			; append bytes
+
+	move.b	EXC_OPWORD(a6),d1
+	lsr.b	#$1,d1
+	and.w	#$7,d1			; extract Dx from opcode word
+
+	dc.w	$3F82,$1406		; move.w   d2,(EXC_DREGS+2,a7,d1.w*4) ; store dx
+;	lsl.w	#2,d1
+;	move.w	d2,EXC_DREGS+2(a7,d1.w)
+;	lsr.w	#2,d1
+
+	bra	_movep_exit		; (rts)
+
+; if dmem_{read,write}_byte() returns a fail message in d1, the package
+; must create an access error frame. here, we pass a skeleton fslw
+; and the failing address to the routine that creates the new frame.
+; FSLW:
+;	write = true
+;	size = byte
+;	TM = data
+;	software emulation error = true
+movp_write_err:
+	move.l	a2,a0			; pass failing address
+	move.l	#$00a10001,d0		; pass fslw
+	bra.l	_isp_dacc
+
+; FSLW:
+;	read = true
+;	size = byte
+;	TM = data
+;	software emulation error = true
+movp_read_err:
+	move.l	a2,a0			; pass failing address
+	move.l	#$01210001,d0		; pass fslw
+	bra.l	_isp_dacc
+
+_dmem_read_byte:
+	movem.l	a1-a4,-(a7)
+
+	move.l	a7,a4		; save for later
+
+	dc.w	$4E7A,$B801	; movec	  vbr,a3
+;	sub.l	a3,a3
+
+	move.l	$08(a3),a1	; (bus err vector)
+	lea	_dmem_read_EXIT(pc),a2
+	move.l	a2,$08(a3)
+
+	moveq	#-1,d1
+	move.b	(a0),d0		; read byte
+	moveq	#0,d1
+
+_dmem_read_EXIT:
+	move.l	a1,$08(a3)	; (bus err vector)
+
+	move.l	a4,a7		; tidy up stack
+
+	movem.l	(a7)+,a1-a4
+	rts
+
+_dmem_write_byte:
+	movem.l	a1-a4,-(a7)
+
+	move.l	a7,a4		; save for later
+
+	dc.w	$4E7A,$B801	; movec	  vbr,a3
+;	sub.l	a3,a3
+
+	move.l	$08(a3),a1	; (bus err vector)
+	lea	_dmem_write_EXIT(pc),a2
+	move.l	a2,$08(a3)
+
+	moveq	#-1,d1
+	move.b	d0,(a0)		; write byte
+	moveq	#0,d1
+
+_dmem_write_EXIT:
+	move.l	a1,$08(a3)	; (bus err vector)
+
+	move.l	a4,a7		; tidy up stack
+
+	movem.l	(a7)+,a1-a4
+	rts
+
+_isp_dacc:			; just ignore
+
+_movep_exit:
+	addq.l	#4,EXC_PC(a7)
+	rts

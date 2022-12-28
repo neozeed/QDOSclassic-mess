@@ -1,0 +1,798 @@
+*/beginfile QDOS2_asm
+; --------------------------------------------------------------
+; QDOS2_asm - The QDOS kernel
+;	   - last modified 06/09/95
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...latest changes by Mark J Swift
+; --------------------------------------------------------------
+
+; --------------------------------------------------------------
+; was serial input/output routines
+L00AC0:
+
+; --------------------------------------------------------------
+;*/beginoverlay
+;*/beginfilling
+NOP00C88:
+	DCB.w	($C88-(NOP00C88-ORGN))/2,$4E71
+L00C88:
+;*/endfilling
+*/endoverlay
+; --------------------------------------------------------------
+;  PIPE Device driver
+; --------------------------------------------------------------
+DRLST:
+	DC.L	L00D36-ORG0
+	DC.L	IO_SERQ-ORG0	; I/O Routine
+	DC.L	PIPE_OPEn-ORG0	; OPEN
+	DC.L	PIPE_CLOse-ORG0	; CLOSE
+L00C98:
+PIPE_OPEn:
+	SUBQ.W	#2,A7		;*/undomend SUBQ.L #2,A7
+	MOVEA.L	A7,A3
+	JSR	IO_NAME(PC)	;*/undomodify BSR IO_NAME
+	BRA.S	L00D00		; error
+	BRA.S	L00D00		; error
+	BRA.S	L00CB2		; success
+	DC.W	4
+	DC.B	'PIPE'
+	DC.W	1,$205F		; 1 parameter, " _"
+				; necessary
+	DC.W	0		; length parameter
+L00CB2:
+	MOVE.W	(A7),D1
+	BEQ.S	L00CD2
+	ADDI.W	#$31,D1
+	JSR	MM_ALCHP(PC)	;*/undomodify BSR MM_ALCHP
+	BNE.S	L00D00
+	MOVE.W	(A7),D1		;!!! word length	may cause
+				; errors !!!
+	ADDQ.W	#1,D1
+	LEA	$20(A0),A2	; pointer to buffer
+	JSR	IO_QSET(PC)	;*/undomodify BSR IO_QSET
+	MOVE.L	A2,$1C(A0)
+	BRA.S	L00CFE
+L00CD2:
+				;*/undoinsert SUB.L A2,A2
+	MOVEA.W	D3,A2		;*/note d3 sign exten long
+	ADDA.L	A2,A2
+	ADDA.L	A2,A2
+	ADDA.L	$78(A6),A2	; pointer to base of channel
+				; table
+	MOVEA.L	(A2),A2
+; is it a pipe channel ?
+RLOC02	CMPI.L	#(DRLST-ORG0),4(A2) ;*/undomodify EXG D0,A0;
+				  ;LEA DRLST(PC),A0; EXG A0,D0
+				  ;CMP.L 4(A2),D0
+	BNE.S	L00D04		; no -> continue searching
+	MOVE.L	A2,-(A7)
+	MOVEQ	#$20,D1
+	JSR	MM_ALCHP(PC)	;*/undomodify BSR MM_ALCHP
+	MOVEA.L	(A7)+,A2
+	BNE.S	L00D00
+	LEA	$20(A2),A2	; pointer to buffer
+	MOVE.L	A0,(A2)
+	MOVE.L	A2,$18(A0)
+L00CFE:
+	MOVEQ	#0,D0
+L00D00:
+	ADDQ.W	#2,A7		;*/undomend ADDQ.L #2,A7
+	RTS
+L00D04:
+	MOVEQ	#-15,D0
+	ADDQ.W	#2,A7		;*/undomend ADDQ.L #2,A7
+	RTS
+L00D0A:
+PIPE_CLOse:
+	TST.L	$18(A0)		; is channel open ?
+	BNE.S	L00D1C
+	LEA	$20(A0),A2	; pointer to buffer
+	TST.L	(A2)		; file empty ?
+;if so - close channel
+	beq.s	L00D32		;*/undomodify BEQ MM_RECHP
+				;*/note would be quicker though
+; --------------------------------------------------------------
+;*/beginoverlay
+	JMP	IO_QEOF(PC)	;*/undomodify BRA IO_QEOF
+				;*/note routine has moved
+;*/endoverlay
+; --------------------------------------------------------------
+L00D1C:
+	MOVE.L	$18(A0),-(A7)
+;close channel
+	bsr.s	L00D32		;*/undomodify  BSR MM_RECHP
+				;*/note would be quicker though
+	MOVEA.L	(A7)+,A2
+	LEA	-$20(A2),A0
+	TST.B	(A2)		; file empty ?
+;if so - close channel
+	blt.s	L00D32		;*/undomodify BLT MM_RECHP
+				;*/note would be quicker though
+	CLR.L	(A2)
+	MOVEQ	#0,D0
+	RTS
+;*/beginrestorecode
+L00D32:
+	JMP	MM_RECHP(PC)	;*/undomodify bra MM_RECHP
+;*/endrestorecode
+; *******************************************************
+; * CONsole and SCReen device driver		  *
+; *******************************************************
+; --------------------------------------------------------------
+;*/beginoverlay
+L00D36:
+	DC.L	0		;*/modify DC.L L01104-ORG0
+				;*/note now last in list
+;*/endoverlay
+; --------------------------------------------------------------
+	DC.L	CON_IN_Out-ORG0	; I/O routine
+	DC.L	CON_OPEN-ORG0	; OPEN
+	DC.L	CON_CLOSe-ORG0	; CLOSE
+L00D46:
+CON_OPEN:
+	SUBA.W	#$A,A7		;*/undomend SUBA.L
+				;*/note #$A sign extended long
+	MOVEA.L	A7,A3
+	JSR	IO_NAME(PC)	;*/undomodify BSR IO_NAME
+	BRA.S	L00D9E		; error	, try SCR
+	BRA.S	L00DC8		; error
+	BRA.S	L00D72		; success
+	DC.W	3
+	DC.B	'CON',0
+	DC.W	5,' _'		; 5 parameters, needs " _"
+	DC.W	$1C0,' X'	; width needs " X"
+	DC.W	$B4,' A' 	; hight needs " A"
+	DC.W	$20,' X' 	; x-origin needs " X"
+	DC.W	$10,' _' 	; y-origin needs " _"
+	DC.W	$80		; defaut buffer: 128 bytes
+L00D72:
+	MOVEQ	#$7A,D1		; initialize
+	ADD.W	8(A7),D1
+	BSR.S	L00DCE		; open
+	BNE.S	L00DC8		; out of memory
+	LEA	$68(A0),A2	; initialize keyboard buffer
+	SUBI.W	#$78,D1
+	JSR	IO_QSET(PC)	;*/undomodify BSR IO_QSET
+	MOVEA.L	$4C(A6),A3	; pointer to keyboard queue
+	MOVE.L	A3,D3
+	BNE.S	L00D98		; if buffer exists: create
+				; new one
+	MOVE.L	A2,(A2)
+	MOVE.L	A2,$4C(A6)	; Pointer to keyboard queue
+	BRA.S	L00DC6
+L00D98:
+	MOVE.L	(A3),(A2)	; link buffer-address
+	MOVE.L	A2,(A3)
+	BRA.S	L00DC6		; back without error
+L00D9E:
+	JSR	IO_NAME(PC)	;*/undomodify BSR IO_NAME
+	BRA.S	L00DC8		; error
+	BRA.S	L00DC8		; error
+	BRA.S	L00DC0		; success
+	DC.W	3
+	DC.B	'SCR',0
+	DC.W	4,' _',$01C0,' X',$00B4,' A',$0020,' X',$0010
+L00DC0:
+	MOVEQ	#$6C,D1		; length of description
+	BSR.S	L00DCE		; open channel
+	BRA.S	L00DC8
+L00DC6:
+	MOVEQ	#0,D0
+L00DC8:
+	ADDA.W	#$0A,A7		;*/undomend ADDA.L
+				;*/note #$0A sign extended long
+	RTS
+L00DCE:
+	JSR	MM_ALCHP(PC)	;*/undomodify BSR MM_ALCHP
+	BNE.S	L00E38
+	MOVE.W	D1,-(A7)
+	LEA	$26(A0),A2
+	MOVE.L	#$06000A,(A2)+	; character size / cursor
+				; increment
+RLOC03	MOVE.L	#(FONT1-ORG0),(A2)+ ; Character fount 0-127
+	MOVE.L	#(FONT2-ORG0),(A2)+ ; Character fount 128-256
+	bsr	CONFIX		;*/modify  MOVE.L   #$20000,(A2)+
+	nop			;*/modify
+	MOVE.W	#$80,$64(A0)	; length of buffer ?
+	LEA	$3E(A0),A1
+	MOVEQ	#4,D1
+	MOVE.B	D1,$46(A0)	; ink colour
+	JSR	L027D8(PC)	;*/undomodify BSR L027D8
+	MOVE.L	#$08076400,$56(A0) ; 100.0 = graphics scale
+				 ; factor
+	bsr.l	MDTSTFIX 	;*/modify BTST	 #3,$34(A6)
+	nop			;*/modify
+	BEQ.S	L00E20
+	ADDQ.W	#6,$26(A0)	; SD.XINC cursor increment
+	BSET	#6,$42(A0)	; character attributes =
+				; double width
+L00E20:
+	MOVEQ	#0,D2
+	LEA	6(A7),A1
+	JSR	SD_WDEF(PC)	;*/undomodify BSR SD_WDEF
+	MOVE.W	(A7)+,D1
+	TST.L	D0		; error ?
+	BEQ.S	L00E38
+	MOVE.L	D0,-(A7)
+	JSR	MM_RECHP(PC)	;*/undomodify BSR MM_RECHP
+	MOVE.L	(A7)+,D0 	; report
+L00E38:
+	RTS
+; Console close
+L00E3A:
+CON_CLOSe:
+	LEA	$68(A0),A3	; Input queue
+	TST.L	(A3)
+	BEQ.S	L00E70
+	MOVEA.L	(A3),A2
+	CMPA.L	A2,A3
+	BNE.S	L00E4E
+	CLR.L	$4C(A6)		;SV.KEYQ Pointer to a
+				; keyboard queue
+	BRA.S	L00E70
+L00E4E:
+	CMPA.L	$4C(A6),A3	;SV.KEYQ    Pointer to a
+				; keyboard queue
+	BNE.S	L00E66
+L00E54:
+	TST.B	(SD_CURF-$68)(A2)
+	BNE.S	L00E62
+	CMPA.L	(A2),A3
+	BEQ.S	L00E62
+	MOVEA.L	(A2),A2
+	BRA.S	L00E54
+L00E62:
+	MOVE.L	A2,$4C(A6)	;SV.KEYQ    Pointer to a
+				; keyboard queue
+L00E66:
+	MOVEA.L	A3,A2
+L00E68:
+	MOVEA.L	(A2),A2
+	CMPA.L	(A2),A3
+	BNE.S	L00E68
+	MOVE.L	(A3),(A2)
+L00E70:
+	JSR	MM_RECHP(PC)	;*/undomodify BRA MM_RECHP
+	RTS			;*/undomodify nop
+; CONsole I/O
+L00E76:
+CON_IN_Out:
+	TST.B	$33(A6)		; screen status (freeze ?)
+	BEQ.S	L00E80		; call TRAP3_UP
+	MOVEQ	#-1,D0		; not complete
+	RTS
+; This is called by the CON_ and SCR_ device driver
+L00E80:
+	CMPI.B	#7,D0
+	BHI.S	L00EFC		;*/undomodify BHI TRAP3_UP
+				;*/note would be quicker though
+	MOVEQ	#-1,D7
+	MOVEQ	#0,D6
+	MOVE.W	D2,D5
+	MOVE.L	D1,D4
+	MOVEA.L	A1,A4
+	LEA	$68(A0),A5
+	TST.L	D3
+	BLT.S	L00EB0
+	CMPI.B	#$04,D0
+	BHI.S	L00EB0
+	TST.L	(A5)
+	BEQ.S	L00EEC
+	MOVEA.L	$4C(A6),A2	; pointer to keyboard queue
+	TST.B	-$25(A2)
+	BNE.S	L00EB0
+	MOVE.L	A5,$4C(A6)	; pointer to keyboard queue
+L00EB0:
+	MOVE.B	L00EB8(PC,D0.W),D0
+	JMP	L00EB8(PC,D0.W)
+L00EB8:
+	DC.B	L00EC0-L00EB8	; test pending input
+	DC.B	L00EC4-L00EB8	; put byte
+	DC.B	L00F54-L00EB8
+	DC.B	L00ECA-L00EB8	; edit line
+	DC.B	L00F5A-L00EB8
+	DC.B	L00F00-L00EB8
+	DC.B	L00EEC-L00EB8	; not used
+	DC.B	L00EDE-L00EB8	; put in queue
+; ----------------------------------------------------
+;	       General scr I/O
+; ----------------------------------------------------
+L00EC0:
+	JMP	IO_QTEST(PC)	;*/undomodify BRA IO_QTEST
+L00EC4:
+	MOVEA.L	A5,A2		; A2=buffer address of
+				; keyboard
+	JMP	IO_QOUT(PC)	;*/undomodify BRA IO_QOUT
+L00ECA:
+	MOVEQ	#0,D0
+L00ECC:
+	CMP.W	D4,D5		; all chars printed
+	BLS.S	L00EEE
+	MOVEA.L	A5,A2
+	JSR	IO_QOUT(PC)	;*/undomodify BSR IO_QOUT
+	BLT.S	L00EEE
+	MOVE.B	D1,(A4)+
+	ADDQ.W	#1,D4
+	BRA.S	L00ECC
+L00EDE:
+	MOVEQ	#0,D0
+	CMP.W	D4,D5
+	BLS.S	L00EEE
+	MOVE.B	(A4)+,D1
+	BSR.S	L00F00
+	ADDQ.W	#1,D4
+	BRA.S	L00EDE
+L00EEC:
+	MOVEQ	#-$0F,D0
+L00EEE:
+	MOVE.W	D4,D1
+	MOVEA.L	A4,A1
+	BCLR	#$07,$42(A0)
+	RTS
+L00EFA:
+	MOVEQ	#5,D0		; IO.SBYTE
+L00EFC:
+	JMP	TRAP3_UP(PC)	;*/undomodify BRA TRAP3_UP
+L00F00:
+	MOVEQ	#0,D0
+	CMPI.B	#$0A,D1		; Line Feed ?
+	BEQ.S	L00F36		; add new line
+	TST.B	$48(A0)		; new line status
+	BEQ.S	L00F14		; position cursor
+	MOVE.B	D1,-(A7) 	; byte to send on stack
+	BSR.S	L00F46		; position cursor
+	MOVE.B	(A7)+,D1 	; ?????? REALLY ?
+L00F14:
+	BSR.S	L00EFA		; put byte
+	BEQ.S	L00F44		; succeeded -> end
+	MOVE.W	$26(A0),D0	; if not: increment cursor
+	ADD.W	D0,$22(A0)
+	BTST	#$07,$42(A0)
+	BNE.S	L00F42
+	MOVE.B	D0,$48(A0)
+	TST.B	$43(A0)		; cursor off ?
+	BEQ.S	L00F42		; end
+	BSR.S	L00F46		; position cursor
+	BRA.S	L00F42
+L00F36:
+	TST.B	$48(A0)		; is cursor at end of line ?
+	BGE.S	L00F3E
+	BSR.S	L00F46		; position cursor
+L00F3E:
+	ST	$48(A0)
+L00F42:
+	MOVEQ	#0,D0
+L00F44:
+	RTS
+; position cursor
+L00F46:
+	TST.B	$43(A0)		; new line - cursor activ ?
+	BLE.S	L00F50		;  no
+	JSR	GET_CURPos(PC)	;*/undomodify BSR GET_CURPos
+				; test position
+L00F50:
+	JMP	L01BF8(PC)	;*/undomodify BRA L01BF8
+				; if necessary: LF
+L00F54:
+	TST.L	D3
+	BEQ.S	L00F6C
+	BRA.S	L00F5E
+; line editor
+L00F5A:
+	MOVEQ	#-1,D4
+	MOVE.W	D1,D4
+L00F5E:
+	SWAP	D1
+	MOVE.W	D1,D6		; position of cursor
+	SUBA.W	D4,A4		; position cursor in buffer
+	ADDA.W	D6,A4
+	BNE.S	L00F84		; end of buffer
+	TST.L	D3
+	BLT.S	L00F84
+L00F6C:
+	TST.B	$43(A0)		; cursor on ?
+	BLE.S	L00F76
+	JSR	GET_CURPos(PC)	;*/undomodify BSR GET_CURPos
+				; position cursor
+L00F76:
+	JSR	L01BF2(PC)	;*/undomodify BSR L01BF2
+				; if neccessary to start
+	BSR	L010DC		; of next line
+	MOVE.W	D4,D6
+	SUB.W	D3,D6
+	SUBA.W	D3,A4		;!!! word length may cause
+				; errors !!!
+L00F84:
+	MOVE.B	$43(A0),-(A7)
+L00F88:
+	MOVEA.L	A5,A2		; keyboard buffer
+	JSR	IO_QOUT(PC)	;*/undomodify BSR IO_QOUT
+				; get byte
+	BLT	L01018		; EOF ?
+	TST.B	$43(A0)		; cursor activ
+	BLE.S	L00FA0
+	MOVE.B	D1,-(A7) 	; received byte
+	JSR	GET_CURPos(PC)	;*/undomodify BSR GET_CURPos
+				; position cursor
+	MOVE.B	(A7)+,D1 	; ????
+L00FA0:
+	CMPI.B	#$0A,D1		; Line Feed ?
+	BEQ.S	L01002
+	CMPI.B	#$1F,D1		; not a valid character ->
+				; do nothing
+	BLS.S	L00F88
+	CMPI.B	#$BF,D1		; >191 -> append chequer
+				; board
+	BHI.S	L00FDA
+	MOVE.W	D4,D0		; length of line
+	SUB.W	D6,D0		; actual position
+	BRA.S	L00FBE		; store byte
+L00FB8:
+	MOVE.B	0(A4,D0.W),1(A4,D0.W) ; line out
+L00FBE:
+	DBF	D0,L00FB8
+	ADDQ.W	#1,D6
+	ADDQ.W	#1,D4		; correct pointer
+	MOVE.B	D1,(A4)+ 	; store byte
+	MOVEQ	#-1,D7
+	BSR	L010AC
+	BSR	L010CE		; scroll ?
+	CMP.W	D4,D5
+	BHI.S	L00F88		; more bytes editable
+	MOVEQ	#-5,D0		; buffer full error
+	BRA.S	L01022
+L00FDA:
+	TST.L	D4
+	BGE.S	L00FEA
+	CMPI.B	#$D0,D1		; cursor up
+	BEQ.S	L01002
+	CMPI.B	#$D8,D1		; down
+	BEQ.S	L01002
+L00FEA:
+	SUBI.B	#$C0,D1		; left
+	BEQ.S	L01030
+	SUBQ.B	#2,D1		; ctrl. left = delete
+	BEQ	L0107C
+	SUBQ.B	#6,D1		; right
+	BEQ.S	L01038
+	SUBQ.B	#2,D1		; ctrl. right
+	BEQ	L01080
+L01000:
+	BRA.S	L00F88		; position cursor
+L01002:
+	MOVE.B	D1,-(A7) 	; output of line - cursor
+				; up/down
+	MOVEQ	#-1,D7
+	BSR	L010E0
+	MOVE.B	(A7)+,(A4)+
+	ADDQ.W	#1,D4
+	JSR	SD_CURS(PC)	;*/undomodify BSR SD_CURS
+	BSR	L00F36
+	BRA.S	L0102A
+L01018:
+	TST.B	(A7)		; end of edit
+	BLT.S	L01022
+	JSR	SD_CURE(PC)	;*/undomodify BSR SD_CURE
+	MOVEQ	#-1,D0
+L01022:
+	SUBA.W	D6,A4		;!!! word  length may cause
+				; errors !!!
+	ADDA.W	D4,A4
+	MOVE.W	D6,D1
+	SWAP	D1
+L0102A:
+	ADDQ.W	#2,A7		;*/undomend ADDQ.L #2,A7
+	BRA	L00EEE
+L01030:
+	BSR.S	L01054		; cursor left previous line
+				; ?
+	BEQ.S	L01000		; pos cursor
+L01034:
+	ADDQ.W	#1,D6
+	BRA.S	L01000
+L01038:
+	ADDQ.W	#1,D6		; cursor right
+	CMP.W	D4,D6
+	BHI.S	L01050		; end of buffer ?
+	ADDQ.W	#1,A4		;*/undomend ADDQ.L #1,A4
+	JSR	SD_NCOL(PC)	;*/undomodify BSR SD_NCOL
+	BEQ.S	L01000
+	JSR	L01BF8(PC)	;*/undomodify BSR L01BF8
+	BSR	L010CE
+	BRA.S	L01000
+L01050:
+	SUBQ.W	#1,D6
+L01052:
+	BRA.S	L01000
+L01054:
+	SUBQ.W	#1,D6		; previous line to edit
+	BLT.S	L0107A
+	JSR	SD_PCOL(PC)	;*/undomodify BSR SD_PCOL
+	BEQ.S	L01078
+	JSR	SD_PROW(PC)	;*/undomodify BSR SD_PROW
+	BNE.S	L010DA
+	MOVE.W	$1C(A0),D0
+	DIVU	$26(A0),D0
+	SUBQ.W	#1,D0
+	MULU	$26(A0),D0
+	MOVE.W	D0,$22(A0)
+	MOVEQ	#0,D0
+L01078:
+	SUBQ.W	#1,A4		;*/undomend SUBQ.L #1,A4
+L0107A:
+	BRA.S	L010DA
+L0107C:
+	BSR.S	L01054		; delete one character:
+				; ctrl. left/right
+	BNE.S	L01034
+L01080:
+	CMP.W	D6,D4
+	BEQ.S	L01052
+	SUBQ.W	#1,D4
+	MOVE.W	D4,D0
+	SUB.W	D6,D0
+	MOVE.W	D0,D1
+	BRA.S	L01092
+L0108E:
+	MOVE.B	$01(A4),(A4)+
+L01092:
+	DBF	D0,L0108E
+	SUBA.W	D1,A4		;!!! word length may cause
+				; errors !!!
+	MOVE.L	$22(A0),-(A7)
+	MOVEQ	#0,D7
+	BSR.S	L010E0
+	BNE.S	L010A6
+	MOVEQ	#$20,D1
+	BSR.S	L010AC
+L010A6:
+	MOVE.L	(A7)+,D7
+	BSR.S	L010D0
+	BRA.S	L01052
+L010AC:
+	BSR	L00EFA		; position cursor
+	BEQ.S	L010DA
+	JSR	SD_NL(PC)	;*/undomodify BSR SD_NL
+	BEQ.S	L010DA
+	TST.W	D7
+	BLT.S	L010C8
+	SUB.W	$28(A0),D7
+	BGE.S	L010C8
+	ADD.W	$28(A0),D7
+	BRA.S	L01100
+L010C8:
+	JSR	L01BF8(PC)	;*/undomodify BSR L01BF8
+				; scroll if needed
+	BRA.S	L010D8
+L010CE:
+	BSR.S	L010DC
+L010D0:
+	SUBA.W	D4,A4		;!!! word length may cause
+				; errors !!!
+	ADDA.W	D6,A4
+	MOVE.L	D7,$22(A0)
+L010D8:
+	MOVEQ	#0,D0
+L010DA:
+	RTS
+L010DC:
+	MOVE.L	$22(A0),D7
+L010E0:
+	MOVEQ	#0,D0
+	MOVE.W	D4,D3
+	SUB.W	D6,D3
+	BRA.S	L010F4
+L010E8:
+	MOVE.B	(A4)+,D1
+	MOVE.W	D3,-(A7)
+	BSR.S	L010AC
+	MOVE.W	(A7)+,D3
+	TST.L	D0
+	BNE.S	L010FC
+L010F4:
+	DBF	D3,L010E8
+	MOVEQ	#0,D3
+	RTS
+L010FC:
+	ADDA.W	D3,A4		;!!! word length may cause
+				; errors !!!
+	ADDQ.W	#1,D3
+L01100:
+	TST.L	D0
+	RTS
+; end of line editor
+; --------------------------------------------------------------
+;*/beginoverlay
+; was network input/output routines
+L01104:
+
+; --------------------------------------------------------------
+; Return ID of actual job in D0, base address in A3
+L00408:
+JOBID_ME:
+	MOVEA.L	SV_JBPNT(A6),A3	; Ptr to current job table
+				; entry
+JOBID_ME2:
+	MOVE.L	A3,D0
+	SUB.L	SV_JBBAS(A6),D0	; Ptr to base of job table
+	LSR.W	#2,D0
+	MOVEA.L	(A3),A3
+	SWAP	D0
+	MOVE.W	JB_TAG(A3),D0
+	SWAP	D0
+	RTS
+
+MODEFIX:
+	moveq	#0,d0
+	MOVE.B	SV_MCSTA(A6),D0	; Current value of MC status
+				; register
+
+	lsl.w	#1,d0		; position correctly
+	lsl.b	#3,d0
+	lsr.w	#1,d0
+	asr.b	#3,d0
+
+	andi.b	#%10011111,d0	; keep relevant bits
+
+	move.l	SV_JBPNT(a6),a4	; current job
+	move.l	(a4),a4		; JCB of job
+	btst	#0,JB_RELA6(a4)	; test dflt scrn bit of JOBs' JB_RELA6
+	beq.s	MODEFIX1
+
+	eori.b	#%10100000,d0
+
+MODEFIX1:
+	tst.b	d0
+	bpl.s	MODEFIX2
+
+	bsr	MODEFIX4
+
+MODEFIX2:
+	bclr	#7,d0
+	cmp.l	#$30000,a6
+	blt.s	MODEFIX3
+
+	ori.b	#%10000000,d0
+
+MODEFIX3:
+	rts
+
+MODEFIX4:
+	swap	d1
+	lsl.w	#4,d0
+	move.b	d0,d1
+	andi.b	#%10100000,d1
+	lsr.b	#2,d1
+	andi.b	#%01010000,d0
+	or.b	d1,d0
+	lsl.b	#1,d0
+	lsr.w	#4,d0
+	swap	d1
+	rts
+
+
+; CLEAR SCREEN 1 & 2 COMPLETELY
+
+MDCLS:
+
+; Clear scrn0 ?
+
+MDCLS0:
+	btst.w	#15,d1
+	bne.s	MDCLS1
+
+	bsr.s	SCRADR
+	addi.w	#$8000,d0
+	move.l	d0,a4
+	move.w	#$1FFF,d0
+
+MDCLSLUP0:
+	clr.l	-(a4)
+	DBF	D0,MDCLSLUP0
+
+; Clear scrn1 ?
+
+MDCLS1:
+	btst.w	#14,d1
+	bne.s	MDCLSX
+
+	bsr.s	SCRADR
+	addi.l	#$10000,d0
+	move.l	d0,a4
+	move.w	#$1FFF,d0
+	cmp.l	a4,a6
+	blt.s	MDCLSX
+
+MDCLSLUP1:
+	clr.l	-(a4)
+	DBF	D0,MDCLSLUP1
+
+MDCLSX:
+	rts
+
+; SET SCRBASE FOR CON
+
+CONFIX:
+	bsr.s	SCRADR
+	move.l	d0,(a2)+ 	; Base of screen
+	move.l	SV_JBPNT(a6),a1
+	move.l	(a1),a1
+	btst	#0,JB_RELA6(a1)
+	beq.s	CONFIX1
+
+	cmp.l	#$30000,a6	; if sys vars too low
+	blt.s	CONFIX1		; then no 2nd screen.
+
+	bset	#7,-2(a2)	; second screen
+
+CONFIX1:
+	rts
+
+; GET HARDWARE ADDRESS OF 1ST SCREEN.
+; If #0 is closed, use default ($20000)
+; otherwise calculate from #0's screen base (...thus pokeable)
+
+SCRADR:
+	exg	d0,a0
+	MOVE.L	SV_CHBAS(A6),a0	; Ptr to base of channel table
+	tst.l	(a0)
+	bpl.s	SCRADR1		; branch if #0 open
+
+	lea	$20000,a0	; default address
+	bra.s	SCRADR3
+
+SCRADR1:
+	move.l	(a0),a0		; Ptr to channel #0
+	move.l	4(a0),a1 	; Ptr to linkage block
+	move.l	4(a1),a1 	; io address
+	cmpi.l	#$D0FC0030,(a1)	; PTR_GEN loaded?
+	bne.s	SCRADR2
+
+	move.l	$30+SD_SCRB(a0),a0 ; PTR_GEN screws everything up
+	bra.s	SCRADR3
+
+SCRADR2:
+	move.l	SD_SCRB(a0),a0
+
+SCRADR3:
+	exg	d0,a0
+	clr.w	d0
+	rts
+
+;*/beginfilling
+NOP01202:
+	DCB.w	($1202-(NOP01202-ORGN))/2,$4E71
+L01202:
+;*/endfilling
+;*/endoverlay
+; --------------------------------------------------------------
+;  scheduler loop tasks (Cursor)
+; --------------------------------------------------------------
+SHLST:
+; --------------------------------------------------------------
+;*/beginoverlay
+	DC.L	SHLST2-ORG0	;*/modify DC.L SHLST1-ORG0
+;*/endoverlay
+; --------------------------------------------------------------
+	DC.L	CURSOR_Task-ORG0
+CURSOR_Task:
+	MOVE.L	$4C(A6),D4	; Pointer to a keyboard
+				; queue
+	BEQ.S	L0122E
+	MOVEA.L	D4,A0
+	LEA	-$68(A0),A0
+	MOVE.W	$AA(A6),D4	; flashing cursor status
+	TST.B	$43(A0)
+	BEQ.S	L01228
+	SUB.W	D3,D4
+	BGT.S	L0122A
+	JSR	GET_CURPos(PC)	;*/undomodify BSR GET_CURPos
+L01228:
+	MOVEQ	#$0C,D4
+L0122A:
+	MOVE.W	D4,$AA(A6)	; flashing cursor status
+L0122E:
+	RTS
+; --------------------------------------------------------------
+;*/endfile
+

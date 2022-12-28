@@ -1,0 +1,52 @@
+100 REMark A demonstration of the Q40s
+110 REMark hi-res screen modes.
+120 REMark Plots a colourful function.
+130 :
+140 MasterChip = -16777216
+150 SC_512
+160 FOR y=0 TO 255
+170  y2=(y-128)*(y-128)
+180  FOR x=0 TO 511
+190   SC_512_PLOT x,y,31.5*(1+SIN(SQRT(x*x+y2)/16)),15.75*(2+SIN((x+y)/16)+SIN((x-y)/4)),31.5*(1+SIN(SQRT((x-512)*(x-512)+y2)/16))
+200  END FOR x
+210 END FOR y
+220 PAUSE
+230 SC_SHOW
+240 :
+250 REMark Hide QDOS screen
+260 DEFine PROCedure SC_HIDE
+270  POKE 98403,PEEK(98403)||2
+280 END DEFine 
+290 :
+300 REMark Show QDOS screen
+310 DEFine PROCedure SC_SHOW
+320  POKE 98403,PEEK(98403)&&253
+330 END DEFine 
+340 :
+350 REMark Set Q40 512x256 screen mode
+360 DEFine PROCedure SC_512
+370  SC_HIDE
+380  POKE MasterChip+24,2
+390 END DEFine 
+400 :
+410 REMark Set Q40 1024x512 screen mode
+420 DEFine PROCedure SC_1024
+430  SC_HIDE
+440  POKE MasterChip+24,3
+450 END DEFine 
+460 :
+470 REMark Plot x%,y% on Q40 512x256
+480 REMark screen. r%,g%,b% = [0,63]
+490 DEFine PROCedure SC_512_PLOT(x%,y%,r%,g%,b% )
+500 POKE_W -25165824+2*(x%&&511)+1024*(y%&&255),(((g%&&30)-(g%&&32))*32 + (r%&&62))*32 + (b%&&62) + (((r%&&1)+(g%&&1)+(b%&&1))>((x%&&1)*2+(y%&&1)))
+510 END DEFine 
+520 :
+530 REMark Plot x%,y% on Q40 1024x512
+540 REMark screen. r%,g%,b% = [0,63]
+550 DEFine PROCedure SC_1024_PLOT(x%,y%,r%,g%,b% )
+560 POKE_W -25165824+2*(x%&&1023)+2048*(y%&&511),(((g%&&30)-(g%&&32))*32 + (r%&&62))*32 + (b%&&62) + (((r%&&1)+(g%&&1)+(b%&&1))>((x%&&1)*2+(y%&&1)))
+570 END DEFine 
+580 :
+590 DEFine PROCedure sav
+600  SAVE "win1_MODEDEMO_bas"
+610 END DEFine 

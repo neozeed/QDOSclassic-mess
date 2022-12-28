@@ -1,0 +1,1526 @@
+*******************************************************************
+*
+* FLP_asm - low level floppy routines for hardware
+*	 - that uses a 8272-like controller
+*	 - originated July 98 - Mark Swift
+*	 - last modified 22/09/99 (MSW)
+*
+
+;debug	 equ	 1
+;
+;	 ifd	 debug
+;
+;BLACK1	 EQU $00000000
+;RED1	 EQU $00FF00FF
+;GREEN1	 EQU $FF00FF00
+;WHITE1	 EQU $FFFFFFFF
+;RED2	 EQU $00F000F0
+;GREEN2	 EQU $F000F000
+;WHITE2	 EQU $F0F0F0F0
+;
+;	 endc
+;
+*******************************************************************
+*
+*  Hardware specific routines
+
+user_ini:
+	rts
+
+; -------------------------------------------------------------
+fd_hwrestore:
+	movem.l	d1-d4/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00020000+'RS',d0
+;	 bsr	 IOD0
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	lea	FD_BASE+IO_8BIT,a2
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+
+	cmp.b	#fd.ndriv,d1	; check if drive within range
+	bge.s	fd_hwrestbad
+
+	move.b	#0,fdd_trak(a3,d1.w)
+
+	move.b	#%10000000,d2	; Step Rate Time
+	move.b	#%10000000,d3	; Head Unload Time
+	move.b	d3,d4		; Head Load Time
+	bsr	Specify
+
+	moveq	#1,d3		; count (for retries)
+
+fd_hwrestlup:
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+
+	bsr	Recalibrate
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	tst.l	d0
+	bne.s	fd_hwrestnxt
+
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+	move.b	fdd_side(a3),d2
+	bsr	Sense_Drive_Status
+	moveq	#ERR.OK,d0
+	andi.b	#%00010000,d1	; test for track 0
+	bne.s	fd_hwrestxit1
+
+fd_hwrestnxt:
+	dbra	d3,fd_hwrestlup
+
+fd_hwrestbad:
+	moveq	#ERR.FE,d0	; bad or changed medium
+
+fd_hwrestxit1:
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+fd_hwrestxit:
+	move.w	(sp)+,sr 	; restore mode
+
+	tst.l	d0
+	movem.l	(a7)+,d1-d4/a2
+	rts
+
+; -------------------------------------------------------------
+fd_hwchng:
+	movem.l	d1-d4/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00020000+'CG',d0
+;	 bsr	 IOD0
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	lea	FD_BASE+IO_8BIT,a2
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+	move.b	fdd_side(a3),d2
+
+	move.b	FD_DIR(a2),d0
+	andi.b	#%10000000,d0
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	move.w	(sp)+,sr 	; restore mode
+
+	tst.b	d0
+	movem.l	(a7)+,d1-d4/a2
+	rts
+
+; -------------------------------------------------------------
+fd_hwwpro:
+	movem.l	d1-d4/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00020000+'WP',d0
+;	 bsr	 IOD0
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	lea	FD_BASE+IO_8BIT,a2
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+	move.b	fdd_side(a3),d2
+
+	bsr	Sense_Drive_Status
+	move.b	d1,d0
+	andi.b	#%01000000,d0
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	move.w	(sp)+,sr 	; restore mode
+
+	tst.b	d0
+	movem.l	(a7)+,d1-d4/a2
+	rts
+
+; -------------------------------------------------------------
+fd_hwckrdy:
+	movem.l	d1-d4/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00020000+'CK',d0
+;	 bsr	 IOD0
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	lea	FD_BASE+IO_8BIT,a2
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+	move.b	fdd_side(a3),d2
+
+	cmp.b	#fd.ndriv,d1	; check if drive within range
+	bge.s	fd_hwckbad
+
+	bsr	Sense_Drive_Status
+	move.b	d1,d0
+	not.b	d0
+	andi.b	#%00100000,d0
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+fd_hwckxit:
+	move.w	(sp)+,sr 	; restore mode
+
+	tst.b	d0
+	movem.l	(a7)+,d1-d4/a2
+	rts
+
+fd_hwckbad:
+	moveq	#ERR.FE,d0	; bad or changed medium
+	bra.s	fd_hwckxit
+
+; -------------------------------------------------------------
+fd_hwseek:
+	movem.l	d1-d4/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00020000+'SK',d0
+;	 bsr	 IOD0
+;	 move.l	 #0,a0
+;	 move.l	 d1,d0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	lea	FD_BASE+IO_8BIT,a2
+
+	move.b	d1,d3
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+	move.b	fdd_side(a3),d2
+
+	move.b	d3,fdd_trak(a3,d1.w)
+
+fd_hwseek1:
+	bsr	Seek
+
+	move.w	(sp)+,sr 	; restore mode
+
+	tst.l	d0
+	movem.l	(a7)+,d1-d4/a2
+	rts
+
+; -------------------------------------------------------------
+fd_hwside
+	movem.l	d1-d4/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00020000+'SD',d0
+;	 bsr	 IOD0
+;	 move.l	 #0,a0
+;	 move.l	 d1,d0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	lea	FD_BASE+IO_8BIT,a2
+
+	move.b	d1,fdd_side(a3)	; set side number
+	bra.s	fd_hwssset
+
+; -------------------------------------------------------------
+fd_hwselect
+	movem.l	d1-d4/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00020000+'SL',d0
+;	 bsr	 IOD0
+;	 move.l	 #0,a0
+;	 move.l	 d1,d0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	lea	FD_BASE+IO_8BIT,a2
+
+	clr.b	fdd_side(a3)	; set side number 0
+	cmp.b	#fd.ndriv,d1	; check if drive within range
+	bgt.s	fd_hwsel_rts
+	cmp.b	#1,d1
+	blt.s	fd_hwsel_rts
+
+fd_hwselnc
+	move.b	d1,fdd_driv(a3)	; set drive number
+fd_hwssset
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+	move.b	fdd_side(a3),d2
+	bsr	Motor_ON
+	addq.b	#1,d1
+
+	moveq	#0,d0
+
+fd_hwsel_rts
+	move.w	(sp)+,sr 	; restore mode
+
+	movem.l	(a7)+,d1-d4/a2
+	rts
+
+; -------------------------------------------------------------
+fd_hwraddr:
+	movem.l	d2-d4/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00020000+'RA',d0
+;	 bsr	 IOD0
+;	 move.l	 #0,a0
+;	 move.l	 d1,d0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	lea	FD_BASE+IO_8BIT,a2
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+
+	move.b	#%00000010,d2
+	move.b	d2,FD_DRR(a2)
+	move.b	d2,fdd_dens(a3,d1.w) ; set dd
+
+	move.b	#%01000000,d2	; Step Rate Time
+	move.b	#%01000000,d3	; Head Unload Time
+	move.b	d3,d4		; Head Load Time
+	bsr	Specify
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+	move.b	fdd_side(a3),d2
+	bsr	ReadID
+	beq.s	fd_hwraddx
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+
+	move.b	#%00000000,d2
+	move.b	d2,FD_DRR(a2)
+	move.b	d2,fdd_dens(a3,d1.w) ; set hd
+
+	move.b	#%10000000,d2	; Step Rate Time
+	move.b	#%10000000,d3	; Head Unload Time
+	move.b	d3,d4		; Head Load Time
+	bsr	Specify
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+	move.b	fdd_side(a3),d2
+	bsr	ReadID
+	beq.s	fd_hwraddx
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+
+	move.b	#%00000010,d2
+	move.b	d2,FD_DRR(a2)
+	move.b	d2,fdd_dens(a3,d1.w) ; set dd
+
+	move.b	#%01000000,d2	; Step Rate Time
+	move.b	#%01000000,d3	; Head Unload Time
+	move.b	d3,d4		; Head Load Time
+	bsr	Specify
+
+	moveq	#ERR.FE,d0	; bad or changed medium
+
+fd_hwraddx:
+	move.w	(sp)+,sr 	; restore mode
+
+	tst.l	d0
+	movem.l	(a7)+,d2-d4/a2
+	rts
+
+; -------------------------------------------------------------
+fd_hwread:
+	movem.l	d0-d1/d3-d7/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00020000+'RD',d0
+;	 bsr	 IOD0
+;	 move.l	 #0,a0
+;	 move.l	 d1,d0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	lea	FD_BASE+IO_8BIT,a2
+
+	move.l	d1,d4
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+
+	move.b	fdd_dens(a3,d1.w),d3 ; set density (dd/hd)
+	move.b	d3,FD_DRR(a2)
+
+	move.b	fdd_side(a3),d2
+	move.b	fdd_trak(a3,d1.w),d3
+
+	moveq	#0,d5
+	move.b	fdd_slen(a3,d1.w),d5 ; sector length (2 = 512)
+	move.w	fdd_rbeg(a3),d6	; get no of bytes to skip
+	move.w	fdd_rend(a3),d7	; get no of bytes to leave
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 d5,d0
+;	 bsr	 HEX08
+;	 move.l	 #0,a0
+;	 move.l	 d6,d0
+;	 bsr	 HEX08
+;	 move.l	 #0,a0
+;	 move.l	 d7,d0
+;	 bsr	 HEX08
+;	 move.l	 a1,d0
+;	 bsr	 HEX20
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+fd_hwreadl:
+	bsr	ReadDATA
+
+fd_hwreadx:
+	move.w	(sp)+,sr 	; restore mode
+
+	move.l	d0,d2		; error return in d2 !
+	movem.l	(a7)+,d0-d1/d3-d7/a2
+	rts
+
+; -------------------------------------------------------------
+fd_hwwrite:
+	movem.l	d0-d1/d3-d5/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00020000+'WR',d0
+;	 bsr	 IOD0
+;	 move.l	 #0,a0
+;	 move.l	 d1,d0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	lea	FD_BASE+IO_8BIT,a2
+
+	move.l	d1,d4
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+
+	move.b	fdd_dens(a3,d1.w),d3 ; set density (dd/hd)
+	move.b	d3,FD_DRR(a2)
+
+	move.b	fdd_side(a3),d2
+	move.b	fdd_trak(a3,d1.w),d3
+
+	moveq	#0,d5
+	move.b	fdd_slen(a3,d1.w),d5 ; sector length (2 = 512)
+
+fd_hwwritl:
+	bsr	WriteDATA
+
+fd_hwwritx:
+	move.w	(sp)+,sr 	; restore mode
+
+	move.w	d0,d2		; error return in d2 !
+	movem.l	(a7)+,d0-d1/d3-d5/a2
+	rts
+
+; -------------------------------------------------------------
+fd_hwftrack:
+	movem.l	d1-d5/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+;	 ifd	 debug
+;	 movem.l  d0/a0,-(a7)	 ; temporary aberration
+;	 move.l	 #0,a0
+;	 move.l	 #$00020000+'FT',d0
+;	 bsr	 IOD0
+;	 move.l	 #0,a0
+;	 move.l	 d1,d0
+;	 bsr	 HEX08
+;	 movem.l  (a7)+,d0/a0
+;	 endc
+;
+	lea	FD_BASE+IO_8BIT,a2
+
+	moveq	#0,d1
+	move.b	fdd_driv(a3),d1
+	subq.b	#1,d1
+
+	move.b	#9,d4		; sectors per track
+
+	move.b	fdd_dens(a3,d1.w),d3 ; get density (dd/hd)
+	bne.s	fd_hwftrak1
+
+	asl.b	#1,d4
+
+fd_hwftrak1:
+	move.b	d3,FD_DRR(a2)
+
+	move.b	fdd_side(a3),d2
+	move.b	fdd_trak(a3,d1.w),d3
+
+	moveq	#2,d5		; sector length (2 = 512)
+
+	bsr	FormatTrack
+
+	move.w	(sp)+,sr 	; restore mode
+
+	tst.l	d0
+	movem.l	(a7)+,d1-d5/a2
+	rts
+
+; -------------------------------------------------------------
+fd_hwmtrsoff:
+	movem.l	d0-d1/a2,-(a7)
+
+	bsr	noints		; sv mode, ints off
+
+	lea	FD_BASE+IO_8BIT,a2
+
+	moveq	#0,d1
+	bsr	Motor_OFF
+
+	move.w	(sp)+,sr 	; restore mode
+
+	movem.l	(a7)+,d0-d1/a2
+	rts
+
+*******************************************************************
+*
+*  Report disk errors
+*
+
+DO_ERR:
+	btst	#5,d1
+	bne.s	DO_ERROK 	; OK if seek or recalibrate completed
+
+	btst	#4,d1
+	bne.s	DO_ERRBM 	; error if track0 not found after recal
+
+	andi.b	#%11000000,d1
+	beq.s	DO_ERROK 	; OK if normal termination
+
+	cmpi.b	#%01000000,d1
+	bne.s	DO_ERRBM 	; error if not abnormal termination
+
+	btst	#7,d2
+	bne.s	DO_ERROK 	; OK if last byte transfered (non-DMA)
+
+	btst	#1,d2
+	bne.s	DO_ERRRO 	; disk not writeable
+
+DO_ERRBM:
+	moveq	#ERR.FE,d0	; bad or changed medium
+	rts
+
+DO_ERRRO:
+	moveq	#ERR.RO,d0	; write protected
+	rts
+
+DO_ERROK:
+	moveq	#ERR.OK,d0
+	rts
+
+*******************************************************************
+*
+*  WAIT UNTIL DATA REG READY :
+*
+
+Wait_DREG:
+;	 ifd	 debug
+;	 move.l	 #RED1,163836	 ; on-screen proof
+;	 endc
+	move.b	FD_STATUS(a2),d0
+	btst	#7,d0		; FD_DATA free?
+	beq.s	Wait_DREG	; nope
+;	 ifd	 debug
+;	 move.l	 #BLACK1,163836	 ; on-screen proof
+;	 endc
+;
+	btst	#6,d0		; FD_DATA has data?
+	rts
+
+*******************************************************************
+*
+*  WAIT UNTIL DATA REG READY - WITH TIME-OUT:
+*
+*  exit: ne = free, eq = not-free
+*
+
+Wait_DWTO:
+	movem.l	d0-d1,-(a7)
+
+;	 ifd	 debug
+;	 move.l	 #RED2,163836	 ; on-screen proof
+;	 endc
+;
+	move.w	#50,d1
+
+Wait_DWlup:
+	move.b	FD_STATUS(a2),d0
+	btst	#7,d0		; FD_DATA free?
+	bne.s	Wait_DWexit	; yup
+
+	btst	#3,MASTER_CHIP+INT_REG ; frame int?
+	beq.s	Wait_DWlup	; no
+
+	move.b	#1,MASTER_CHIP+FRAME_INT_CLEAR ; clear frame int
+	dbra	d1,Wait_DWlup
+
+Wait_DWexit:
+;	 ifd	 debug
+;	 move.l	 #BLACK1,163836	 ; on-screen proof
+;	 endc
+;
+	btst	#7,d0
+
+	movem.l	(a7)+,d0-d1
+	rts
+
+*******************************************************************
+*
+*  SENSE INTERRUPT STATUS
+*
+*  exit d1:     status register 0
+*       d2:     present cylinder number
+*
+*       FDC Command Status Register 0:
+*
+*	|7|6|5|4|3|2|1|0|  Command Status Register 0 at port 3F5h
+*	 | | | | | | ------- unit selected at interrupt (0=A, 1=B, 2=...)
+*	 | | | | | -------- head number at interrupt (head 0 or 1)
+*	 | | | | --------- not ready on read/write or SS access to head 1
+*	 | | | ---------- equipment check (see note)
+*	 | | ----------- set to 1 when FDD completes a seek command
+*	 -------------- last command status (see below)
+*
+*	Bits
+*	 76  Last Command Status
+*	 00  command terminated successfully
+*	 01  command execution started but terminated abnormally
+*	 10  invalid command issued
+*	 11  command terminated abnormally due to a change in state of
+*	     the Ready Signal from the FDC
+*
+*	- equipment check can occur if FDD signals a fault or track zero is
+*	  not found after 77 steps on a recalibrate command
+
+Sense_Int_Status:
+	bsr	Wait_DREG
+	move.b	#FD_SENSEI,FD_DATA(a2)    ; send command
+	bsr	Wait_DREG
+	move.b	FD_DATA(a2),d1
+	bsr	Wait_DREG
+	move.b	FD_DATA(a2),d2
+
+	rts
+
+*******************************************************************
+*
+*  SENSE DRIVE STATUS
+*
+*  entry d1:	drive
+*	d2:	head
+*
+*  exit	d1:	status register 3
+*
+*       FDC Command Status Register 3:
+*
+*	|7|6|5|4|3|2|1|0|  Floppy Disk Drive Status at port 3F5h
+*	 | | | | | | ------- FDD unit selected status (0=A, 1=B, 2=...)
+*	 | | | | | -------- FDD side head select status (0=head 0, 1=head 1)
+*	 | | | | --------- FDD two sided status signal
+*	 | | | ---------- FDD track zero status signal
+*	 | | ----------- FDD ready status signal
+*	 | ------------ FDD write protect status signal
+*	 ------------- FDD fault status signal
+
+Sense_Drive_Status:
+	bsr.s	Motor_ON
+	andi.b	#%00000011,d1
+	andi.b	#%00000001,d2
+	asl.b	#2,d2
+	add.b	d2,d1
+	bsr	Wait_DREG
+	move.b	#FD_GETSTATUS,FD_DATA(a2) ; send command
+	bsr	Wait_DREG
+	move.b	d1,FD_DATA(a2)	        ; Hed<<2 + Drv
+	bsr	Wait_DREG
+	move.b	FD_DATA(a2),d1
+
+	rts
+
+*******************************************************************
+*
+*  MOTOR ON
+*
+*  entry d1:	drive
+*
+
+Motor_ON:
+	movem.l	d0-d1,-(a7)
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	addq.b	#4,d0
+	move.b	d0,FD_DOR(a2) ; motor on & RESET-END
+	movem.l	(a7)+,d0-d1
+
+	rts
+
+*******************************************************************
+*
+*  MOTOR OFF
+*
+*  entry d1:	drive
+*
+
+Motor_OFF:
+	movem.l	d0-d1,-(a7)
+	andi.b	#3,d1		; only drives 0 - 3
+	moveq	#4,d0
+	add.b	d1,d0		; drive select
+	move.b	d0,FD_DOR(a2) ; motor off & RESET-END
+	movem.l	(a7)+,d0-d1
+
+	rts
+
+*******************************************************************
+*
+*  SPECIFY STEP RATE, HEAD UNLOAD/LOAD TIMES AND SET NON DMA MODE
+*
+*  entry d1:	drive
+*	d2:	step rate in 1ms increments
+*	d3:	head unload time in 1ms increments
+*	d4:	head load time in 1 ms increments
+*
+*	Step Rate Time = 1 to 16ms in 1ms increments
+*	Head Unload Time = 16 to 240ms in 16ms increments
+*	Head Load Time = 2 to 254ms in 2ms increments
+
+Specify:
+	movem.l	d2-d4,-(a7)
+
+* first switch on the drive in non-DMA mode
+
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	addq.b	#4,d0		; dont RESET (normal operation)
+	move.b	d0,FD_DOR(a2) ; do it
+
+* now send the specify command
+
+	not.b	d2
+	lsr.b	#4,d2		; 1 to 16 in 1ms increments
+	andi.b	#%11110000,d3	; 16 to 240ms in 16ms increments
+	add.b	d3,d2
+	andi.b	#%11111110,d4	; 2 to 254 in 2ms increments
+	ori.b	#%00000001,d4	; NON-DMA MODE
+
+	bsr	Wait_DREG
+	move.b	#FD_SPECIFY,FD_DATA(a2)   ; send command
+	bsr	Wait_DREG
+	move.b	d2,FD_DATA(a2)	        ; step rate time | head unload time
+	bsr	Wait_DREG
+	move.b	d4,FD_DATA(a2)	        ;   ------head load time------   ND
+
+	movem.l	(a7)+,d2-d4
+	rts
+
+*******************************************************************
+*
+*  RECALIBRATE DRIVE - FIND CYLINDER ZERO ?
+*
+*  entry d1:	drive
+*
+
+Recalibrate:
+	movem.l	d1-d4,-(a7)
+
+* first switch on the drive in DMA mode (so we get an int signal)
+
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	addq.b	#4,d0		; dont RESET (normal operation)
+	addq.b	#8,d0		; DMA enable (DRQ, DAK, INT pins)
+	move.b	d0,FD_DOR(a2) ; do it
+
+* now do the recaclibrate (seek to track zero)
+
+	bsr	Wait_DREG
+	move.b	#FD_RECALIBRATE,FD_DATA(a2)  ; send command
+	bsr	Wait_DREG
+	andi.b	#3,d1		; only drives 0 - 3
+	move.b	d1,FD_DATA(a2)
+
+RecaIRQ6:
+;	 ifd	 debug
+;	 move.l	 #GREEN1,163836	 ; on-screen proof
+;	 endc
+;
+	move.b	MASTER_CHIP+EXT_INT_REG,d0
+	btst	#3,d0		; Floppy interrupt?
+	beq.s	RecaIRQ6 	; nope, wait for IRQ6
+
+;	 ifd	 debug
+;	 move.l	 #BLACK1,163836	 ; on-screen proof
+;	 endc
+;
+	bsr	Sense_Int_Status
+	bsr	DO_ERR
+
+	tst.l	d0
+	movem.l	(a7)+,d1-d4
+	rts
+
+*******************************************************************
+*
+*  SEEK TO A GIVEN CYLINDER
+*
+*  entry d1:	drive
+*	d2:	head
+*	d3:	cylinder
+*
+
+Seek:
+	movem.l	d1-d3,-(a7)
+
+* first switch on the drive in DMA mode (so we get an int signal)
+
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	addq.b	#4,d0		; dont RESET (normal operation)
+	addq.b	#8,d0		; DMA enable (DRQ, DAK, INT pins)
+	move.b	d0,FD_DOR(a2) ; do it
+
+* now do the seek
+
+	andi.b	#%0000011,d1
+	andi.b	#%0000001,d2
+	asl.b	#2,d2
+	add.b	d2,d1
+	bsr	Wait_DREG
+	move.b	#FD_SEEK,FD_DATA(a2)  ; send command
+	bsr	Wait_DREG
+	move.b	d1,FD_DATA(a2)	    ; Hed<<2 + Drv
+	bsr	Wait_DREG
+	move.b	d3,FD_DATA(a2)	    ; Cyl
+
+Seeklup:
+;	 ifd	 debug
+;	 move.l	 #GREEN1,163836	 ; on-screen proof
+;	 endc
+;
+	move.b	MASTER_CHIP+EXT_INT_REG,d0
+	btst	#3,d0		; Floppy interrupt?
+	beq.s	Seeklup		; nope, wait for IRQ6
+
+;	 ifd	 debug
+;	 move.l	 #BLACK1,163836	 ; on-screen proof
+;	 endc
+;
+	bsr	Sense_Int_Status
+
+	bsr	DO_ERR
+
+	movem.l	(a7)+,d1-d3
+	rts
+
+*******************************************************************
+*
+*  READ ID
+*
+*  entry d1:	drive
+*	d2:	head
+*
+*  exit: d0	error
+*	d1	track number
+
+ReadID:
+	movem.l	d2-d7/a1,-(a7)
+
+* first switch on the drive in non-DMA mode
+
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	addq.b	#4,d0		; dont RESET (normal operation)
+	move.b	d0,FD_DOR(a2) ; do it
+
+* now send the read ID command
+
+	andi.b	#%0000011,d1
+	andi.b	#%0000001,d2
+	asl.b	#2,d2
+	add.b	d2,d1
+	lsr.b	#2,d2
+	bsr	Wait_DREG
+	move.b	#FD_READID,FD_DATA(a2) ; send command
+	bsr	Wait_DREG
+	move.b	d1,FD_DATA(a2)	     ; Hed<<2 + Drv
+
+;	 ifd	 debug
+;	 move.l	 #WHITE1,163836	 ; on-screen proof
+;	 endc
+;
+	bsr	Wait_DWTO
+	bne.s	ReadID_lup2
+
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	move.b	d0,FD_DOR(a2) ; motor on & RESET
+	addq.b	#4,d0
+	move.b	d0,FD_DOR(a2) ; motor on & RESET-END
+
+	bra.s	ReadID_lup2
+
+ReadID_lup1:
+	move.b	FD_DATA(a2),d0
+
+ReadID_lup2:
+	move.b	FD_STATUS(a2),d0
+	btst	#7,d0		; FD_DATA free?
+	beq.s	ReadID_lup2	; nope, so loop
+
+	btst	#6,d0		; FD_DATA has data?
+	beq.s	ReadIDBM 	; nope, so exit
+
+	btst	#5,d0		; result phase?
+	bne.s	ReadID_lup1	; nope, throw bytes
+
+;	 ifd	 debug
+;	 move.l	 #BLACK1,163836	 ; on-screen proof
+;	 endc
+;
+	bsr	Wait_DREG
+	beq.s	ReadIDBM
+	move.b	FD_DATA(a2),d1   ; Status Register 0
+
+	bsr	Wait_DREG
+	beq.s	ReadIDBM
+	move.b	FD_DATA(a2),d2   ; Status Register 1
+
+	bsr	Wait_DREG
+	beq.s	ReadIDBM
+	move.b	FD_DATA(a2),d3   ; Status Register 2
+
+	bsr	Wait_DREG
+	beq.s	ReadIDBM
+	move.b	FD_DATA(a2),d4   ; Track Number
+
+	bsr	Wait_DREG
+	beq.s	ReadIDBM
+	move.b	FD_DATA(a2),d0   ; Head Number
+
+	bsr	Wait_DREG
+	beq.s	ReadIDBM
+	move.b	FD_DATA(a2),d0   ; Sector Number
+
+	bsr	Wait_DREG
+	beq.s	ReadIDBM
+	move.b	FD_DATA(a2),d0   ; Bytes per Sector
+
+	bsr	DO_ERR
+	moveq	#0,d1
+	move.b	d4,d1
+
+	bra.s	ReadIDX
+
+ReadIDBM:
+	moveq	#ERR.FE,d0
+
+ReadIDX:
+	tst.l	d0
+	movem.l	(a7)+,d2-d7/a1
+	rts
+
+*******************************************************************
+*
+*  READ DATA
+*
+*  entry d1:	drive
+*	d2:	head
+*	d3:	track number
+*	d4:	sector number
+*	d5:	sector length ($02 = 512 bytes)
+*	d6:	no of bytes to skip
+*	d7:	no of bytes to leave
+*	a1:	buffer pointer
+*
+*  exit: d0	error
+*	a1	updated buffer pointer
+
+ReadDATA:
+	movem.l	d1-d7,-(a7)
+
+* first switch on the drive in non-DMA mode
+
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	addq.b	#4,d0		; dont RESET (normal operation)
+	move.b	d0,FD_DOR(a2) ; do it
+
+* now send the read command
+
+	andi.b	#%0000011,d1
+	andi.b	#%0000001,d2
+	asl.b	#2,d2
+	add.b	d2,d1
+	lsr.b	#2,d2
+	bsr	Wait_DREG
+	move.b	#FD_READDATA,FD_DATA(a2) ; send command
+	bsr	Wait_DREG
+	move.b	d1,FD_DATA(a2)   ; Hed<<2 + Drv
+
+	bsr	Wait_DREG
+	move.b	d3,FD_DATA(a2)   ; Track Number
+	bsr	Wait_DREG
+	move.b	d2,FD_DATA(a2)   ; Drive Head Number
+	bsr	Wait_DREG
+	move.b	d4,FD_DATA(a2)   ; Sector Number
+	bsr	Wait_DREG
+	move.b	d5,FD_DATA(a2)   ; Bytes per Sector
+	bsr	Wait_DREG
+	move.b	d4,FD_DATA(a2)   ; EOT Sector Number
+	bsr	Wait_DREG
+	move.b	#$1B,FD_DATA(a2) ; Inter-Sector Gap
+	bsr	Wait_DREG
+	move.b	#$FF,FD_DATA(a2) ; Data Length
+
+	addq.b	#7,d5
+	moveq	#0,d3
+	bset	d5,d3
+
+	move.w	d3,d0
+	sub.w	d6,d0
+	move.w	d0,d6
+
+;	 ifd	 debug
+;	 move.l	 #WHITE1,163836	 ; on-screen proof
+;	 endc
+;
+	bsr	Wait_DWTO
+	bne.s	ReadD_lup2
+
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	move.b	d0,FD_DOR(a2)    ; motor on & RESET
+	addq.b	#4,d0
+	move.b	d0,FD_DOR(a2)    ; motor on & RESET-END
+
+	bra.s	ReadD_lup2
+
+ReadD_lup1:
+	move.b	FD_DATA(a2),d0
+
+	cmp.w	d3,d6
+	ble.s	ReadD_skip
+
+	cmp.w	d3,d7
+	bgt.s	ReadD_skip
+
+	move.b	d0,(a1)+
+
+ReadD_skip:
+
+ReadD_lup2:
+	move.b	FD_STATUS(a2),d0
+	btst	#7,d0		; FD_DATA free?
+	beq.s	ReadD_lup2	; nope, so loop
+
+	btst	#6,d0		; FD_DATA has data?
+	beq.s	ReadDBM		; nope, so exit
+
+	btst	#5,d0		; result phase?
+	beq.s	ReadD_rphase	; yup, read result
+
+	dbra	d3,ReadD_lup1
+
+ReadD_rphase:
+;	 ifd	 debug
+;	 move.l	 #BLACK1,163836	 ; on-screen proof
+;	 endc
+;
+	bsr	Wait_DREG
+	beq.s	ReadDBM
+	move.b	FD_DATA(a2),d1   ; Status Register 0
+
+	bsr	Wait_DREG
+	beq.s	ReadDBM
+	move.b	FD_DATA(a2),d2   ; Status Register 1
+
+	bsr	Wait_DREG
+	beq.s	ReadDBM
+	move.b	FD_DATA(a2),d3   ; Status Register 2
+
+	bsr	Wait_DREG
+	beq.s	ReadDBM
+	move.b	FD_DATA(a2),d0   ; Track Number
+
+	bsr	Wait_DREG
+	beq.s	ReadDBM
+	move.b	FD_DATA(a2),d0   ; Head Number
+
+	bsr	Wait_DREG
+	beq.s	ReadDBM
+	move.b	FD_DATA(a2),d0   ; Sector Number
+
+	bsr	Wait_DREG
+	beq.s	ReadDBM
+	move.b	FD_DATA(a2),d0   ; Bytes per Sector
+
+	bsr	DO_ERR
+	bra.s	ReadDX
+
+ReadDBM:
+	moveq	#ERR.FE,d0
+
+ReadDX:
+	tst.l	d0
+	movem.l	(a7)+,d1-d7
+	rts
+
+*******************************************************************
+*
+*  WRITE DATA
+*
+*  entry d1:	drive
+*	d2:	head
+*	d3:	track number
+*	d4:	sector number
+*	d5:	sector length ($02 = 512 bytes)
+*      (a1):	sector buffer
+*
+*  exit: d0	status register 0
+*	d1	status register 1
+*	d2	status register 2
+
+WriteDATA:
+	movem.l	d1-d5/a1,-(a7)
+
+* first switch on the drive in non-DMA mode
+
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	addq.b	#4,d0		; dont RESET (normal operation)
+	move.b	d0,FD_DOR(a2) ; do it
+
+* now send the read command
+
+	andi.b	#%0000011,d1
+	andi.b	#%0000001,d2
+	asl.b	#2,d2
+	add.b	d2,d1
+	lsr.b	#2,d2
+	bsr	Wait_DREG
+	move.b	#FD_WRITEDATA,FD_DATA(a2) ; send command
+	bsr	Wait_DREG
+	move.b	d1,FD_DATA(a2)   ; Hed<<2 + Drv
+
+	bsr	Wait_DREG
+	move.b	d3,FD_DATA(a2)   ; Track Number
+	bsr	Wait_DREG
+	move.b	d2,FD_DATA(a2)   ; Drive Head Number
+	bsr	Wait_DREG
+	move.b	d4,FD_DATA(a2)   ; Sector Number
+	bsr	Wait_DREG
+	move.b	d5,FD_DATA(a2)   ; Bytes per Sector
+	bsr	Wait_DREG
+	move.b	d4,FD_DATA(a2)   ; EOT Sector Number
+	bsr	Wait_DREG
+	move.b	#$1B,FD_DATA(a2) ; Inter-Sector Gap
+	bsr	Wait_DREG
+	move.b	#$FF,FD_DATA(a2) ; Data Length
+
+	addq.b	#7,d5
+	moveq	#0,d3
+	bset	d5,d3
+
+;	 ifd	 debug
+;	 move.l	 #WHITE1,163836	 ; on-screen proof
+;	 endc
+;
+	bsr	Wait_DWTO
+	bne.s	WritD_lbeg
+
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	move.b	d0,FD_DOR(a2)    ; motor on & RESET
+	addq.b	#4,d0
+	move.b	d0,FD_DOR(a2)    ; motor on & RESET-END
+
+	bra.s	WritD_lbeg
+
+WritD_lup1:
+	move.b	FD_STATUS(a2),d0
+	btst	#7,d0		; FD_DATA free?
+	beq.s	WritD_lup1	; nope, so loop
+
+	btst	#5,d0		; result phase?
+	beq.s	WritD_rphase	; yup, read result
+
+	btst	#6,d0		; FD_DATA has data?
+	bne.s	WritD_rphase	; yup, so exit
+
+	move.b	(a1)+,FD_DATA(a2)
+
+WritD_lbeg:
+	dbra	d3,WritD_lup1
+
+WritD_rphase:
+;	 ifd	 debug
+;	 move.l	 #BLACK1,163836	 ; on-screen proof
+;	 endc
+;
+	bsr	Wait_DREG
+	beq.s	WritDBM
+	move.b	FD_DATA(a2),d1   ; Status Register 0
+
+	bsr	Wait_DREG
+	beq.s	WritDBM
+	move.b	FD_DATA(a2),d2   ; Status Register 1
+
+	bsr	Wait_DREG
+	beq.s	WritDBM
+	move.b	FD_DATA(a2),d3   ; Status Register 2
+
+	bsr	Wait_DREG
+	beq.s	WritDBM
+	move.b	FD_DATA(a2),d0   ; Track Number
+
+	bsr	Wait_DREG
+	beq.s	WritDBM
+	move.b	FD_DATA(a2),d0   ; Head Number
+
+	bsr	Wait_DREG
+	beq.s	WritDBM
+	move.b	FD_DATA(a2),d0   ; Sector Number
+
+	bsr	Wait_DREG
+	beq.s	WritDBM
+	move.b	FD_DATA(a2),d0   ; Bytes per Sector
+
+	bsr	DO_ERR
+	bra.s	WritDX
+
+WritDBM:
+	moveq	#ERR.FE,d0
+
+WritDX:
+	movem.l	(a7)+,d1-d5/a1
+	rts
+
+*******************************************************************
+*
+*  FORMAT A TRACK
+*
+*  entry d1:	drive
+*	d2:	head
+*	d3:	track number
+*	d4:	number of sectors
+*	d5:	sector length ($02 = 512 bytes)
+*
+*  exit: d0	error
+
+FormatTrack:
+	movem.l	d1-d6,-(a7)
+
+* first switch on the drive in non-DMA mode
+
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	addq.b	#4,d0		; dont RESET (normal operation)
+	move.b	d0,FD_DOR(a2) ; do it
+
+* now send the format command
+
+	andi.b	#%0000011,d1
+	andi.b	#%0000001,d2
+	asl.b	#2,d2
+	add.b	d2,d1
+	lsr.b	#2,d2
+	bsr	Wait_DREG
+	move.b	#FD_FORMATTRACK,FD_DATA(a2) ; send command
+	bsr	Wait_DREG
+	move.b	d1,FD_DATA(a2)   ; Hed<<2 + Drv
+
+	bsr	Wait_DREG
+	move.b	d5,FD_DATA(a2)   ; Bytes per Sector
+	bsr	Wait_DREG
+	move.b	d4,FD_DATA(a2)   ; Number of Sectors
+	bsr	Wait_DREG
+	move.b	#$50,FD_DATA(a2) ; Format Gap
+	bsr	Wait_DREG
+	move.b	#$AA,FD_DATA(a2) ; Data Pattern
+
+	moveq	#0,d6
+
+	bsr	Wait_DWTO
+	bne.s	Formt_lbeg
+
+	andi.b	#%00000011,d1	; only drives 0 - 3
+	moveq	#1,d0
+	asl.b	d1,d0
+	asl.b	#4,d0		; motor on bit
+	add.b	d1,d0		; drive select
+	move.b	d0,FD_DOR(a2)    ; motor on & RESET
+	addq.b	#4,d0
+	move.b	d0,FD_DOR(a2)    ; motor on & RESET-END
+
+	bra.s	Formt_rphase
+
+Formt_lup1:
+	bsr	Wait_DREG
+	btst	#5,d0		; result phase?
+	beq.s	Formt_rphase	; yup, read result
+
+	move.b	d3,FD_DATA(a2)   ; track number
+	bsr	Wait_DREG
+	move.b	d2,FD_DATA(a2)   ; head
+	bsr	Wait_DREG
+	move.b	d6,FD_DATA(a2)   ; sector number
+	bsr	Wait_DREG
+	move.b	d5,FD_DATA(a2)   ; Bytes per Sector
+
+Formt_lbeg:
+	addq.b	#1,d6
+	bra.s	Formt_lup1
+
+Formt_rphase:
+	bsr	Wait_DREG
+	beq.s	FormtBM
+	move.b	FD_DATA(a2),d1   ; Status Register 0
+
+	bsr	Wait_DREG
+	beq.s	FormtBM
+	move.b	FD_DATA(a2),d2   ; Status Register 1
+
+	bsr	Wait_DREG
+	beq.s	FormtBM
+	move.b	FD_DATA(a2),d3   ; Status Register 2
+
+	bra.s	Formt_lbeg3
+
+Formt_lup3:
+	move.b	FD_DATA(a2),d0
+
+Formt_lbeg3:
+	bsr	Wait_DREG
+	bne.s	Formt_lup3
+
+	bsr	DO_ERR
+	bra.s	FormtX
+
+FormtBM:
+	moveq	#ERR.FE,d0
+
+FormtX:
+	movem.l	(a7)+,d1-d6
+	rts
+
+*******************************************************************
+
+;	 ifd	 debug
+;
+; -------------------------------------------------------------
+;    print string at (a1) to channel with id a0
+;
+;IOSTRG:
+;	 movem.l  d1-d3/a1-a2,-(a7)
+;
+;	 move.w	 UT.MTEXT,a2
+;	 jsr	 (a2)
+;
+;	 movem.l  (a7)+,d1-d3/a1-a2;
+;	 rts
+;
+; -------------------------------------------------------------
+;    print byte d0.l as HEX to channel with id a0
+;
+;HEX20:
+;	 swap	 d0
+;	 bsr	 HEX10
+;	 swap	 d0
+;	 bsr	 HEX10
+;	 rts
+;
+; -------------------------------------------------------------
+;    print byte d0.w as HEX to channel with id a0
+;
+;HEX10:
+;	 ror.w	 #8,d0
+;	 bsr	 HEX08
+;	 rol.w	 #8,d0
+;	 bsr	 HEX08
+;	 rts
+;
+; -------------------------------------------------------------
+;    print byte d0.b as HEX to channel with id a0
+;
+;HEX08:
+;	 movem.l  d0-d1,-(a7)
+;
+;	 moveq	 #2,d1
+;
+;	 lsl.l	 #8,d1
+;	 move.b	 d0,d1
+;	 lsr.b	 #4,d1
+;	 and.b	 #$F,d1
+;	 add.b	 #'0',d1
+;	 cmp.b	 #'9',d1
+;	 ble.s	 HEX081
+;	 add.b	 #7,d1
+;
+;HEX081:
+;	 lsl.l	 #8,d1
+;	 move.b	 d0,d1
+;	 and.b	 #$F,d1
+;	 add.b	 #'0',d1
+;	 cmp.b	 #'9',d1
+;	 ble.s	 HEX082
+;	 add.b	 #7,d1
+;
+;HEX082:
+;	 move.l	 d1,d0
+;	 bsr	 IOD0
+;
+;	 movem.l  (a7)+,d0-d1
+;	 rts
+;
+;IOD0:
+;	 movem.l  a1,-(a7)
+;	 move.l	 d0,-(a7)
+;	 move.l	 a7,a1		 ; address of string
+;	 bsr	 IOSTRG
+;	 move.l	 (a7)+,d0
+;	 movem.l  (a7)+,a1
+;	 rts
+;
+; -------------------------------------------------------------
+;
+;	 endc
+;
+*******************************************************************

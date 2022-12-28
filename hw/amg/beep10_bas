@@ -1,0 +1,136 @@
+100 REMark Amiga Qdos STEREO TONE GENERATOR
+110 REMark Uses 32 chip RAM bytes. Rev. 10
+120 REMark By Simon N Goodwin, 18 July 1993
+130 REMark Uses HEX, ALCHP and RECHP extns.
+140 :
+150 REMark Pentatonic musical constants
+160 root=2^(1/53)
+170 note2=root^9
+180 note3=root^17
+190 note4=root^31
+200 note5=root^39
+210 DIM note%(39)
+220 here=28800:REMark Or 25920, or 32767
+230 FOR i=39 TO 4 STEP -5
+240   note%(i)=here
+250   note%(i-1)=here/note2
+260   note%(i-2)=here/note3
+270   note%(i-3)=here/note4
+280   note%(i-4)=here/note5
+290   here=here/2
+300 END FOR i
+310 :
+320 REMark Limit of chip RAM
+330 chip_top=2^21
+340 REMark Hardware register labels
+350 pra    =HEX("BFE001")
+360 DMACONx=HEX("DFF096")
+370 adkcon =HEX("DFF09E")
+380 aud0lc =HEX("DFF0A0")
+390 aud0len=aud0lc+4
+400 aud0per=aud0lc+6
+410 aud0vol=aud0lc+8
+420 aud1lc =aud0lc+16
+430 aud1len=aud0len+16
+440 aud1per=aud0per+16
+450 aud1vol=aud0vol+16
+460 :
+470 REMark Find some chip memory
+480 MaxVoice=32
+490 chipx=ALCHP(MaxVoice)
+500 fast_ram=(chipx>=chip_top)
+510 IF fast_ram
+520   RECHP chipx
+530   REMark Use the spare Qdos chip RAM bytes
+540   chipx=98688:REMark Guaranteed to be free
+550   REMark Grab workspace after Qdos tables?
+560   REMark This is incompatible with MMU use
+570   REMark chipx=PEEK_L(SYSBASE+124)
+580 END IF 
+590 REMark Prepare four simple wave tables
+600 RESTORE 
+610 DATA -126,-90,-54,-18,18,54,90,126
+620 DATA 127,127,127,127,-127,-127,-127,-127
+630 DATA 0,90,127,90,0,-90,-127,-90
+640 DATA 0,127,0,-127,63,-63,32,-32
+650 FOR i=chipx TO chipx+MaxVoice-1
+660   READ x : POKE i,x
+670 END FOR i
+680 voice=16
+690 :
+700 POKE_L aud0lc,chipx+voice
+710 POKE_L aud1lc,chipx+voice
+720 POKE_W aud0len,4
+730 POKE_W aud1len,4
+740 POKE_W aud0per,789
+750 POKE_W aud1per,789
+760 POKE_W aud0vol,64
+770 POKE_W aud1vol,64
+780 POKE_W adkcon,255 :REMark No modulation
+790 :
+800 HELLO : POINTER
+810 AUDIO_ON 1+2 : cutoff=0
+820 REPeat sing
+830   POKE_W aud0per,note%(PTR_X% DIV 6)
+840   POKE_W aud1per,note%(PTR_Y% DIV 6)
+850   k$=INKEY$ : IF k$=" " : EXIT sing
+860   IF k$="#" : cutoff=NOT cutoff : FILTER cutoff
+870   IF k$="+" OR k$="-"
+880     IF k$="+" : voice=(voice+8) MOD MaxVoice
+890     IF k$="-" : voice=(voice-8) MOD MaxVoice
+900     POKE_L aud0lc,chipx+voice
+910     POKE_L aud1lc,chipx+voice
+920   END IF 
+930 END REPeat sing
+940 AUDIO_OFF 1+2
+950 IF NOT fast_ram : RECHP chipx
+960 CLS #0 : PTR_OFF
+970 STOP
+980 :
+990 DEFine PROCedure POINTER
+1000 PTR_LIMITS 0,0,239,239
+1010 PTR_POS 120,120
+1020 PTR_INC 1,1 : PTR_ON
+1030 END DEFine POINTER
+1040 :
+1050 DEFine PROCedure HELLO
+1060 REMark Display note grid
+1070 OPEN #3,scr_480x240a0x0 : CLS #3
+1080 FOR j=6 TO 239 STEP 6
+1090   pen=3 + ((j MOD 30)=18)
+1100   BLOCK #3,2,240,j*2,0,pen
+1110   BLOCK #3,480,1,0,j,pen
+1120 END FOR j
+1130 REMark Overlay instructions
+1140 CSIZE #3,2,1 : OVER #3,-1 : INK #3,7
+1150 PRINT #3,\," AMIGA QDOS SOUND DEMO 2"\\
+1160 INK #3,4 : OVER #3,1
+1170 PRINT #3;" Move the mouse to play a stereo sample"
+1180 PRINT #3;" Keys +/- alter timbre # toggles filter"\\
+1190 PRINT #3;"    Top left gives highest pitches"
+1200 PRINT #3;"    Bottom right for lowest pitches"\\
+1210 PRINT #3;" Press  SPACE  for silent SuperBASIC..."
+1220 CLOSE #3
+1230 END DEFine HELLO
+1240 :
+1250 DEFine PROCedure AUDIO_ON(x)
+1260 REMark X =1, 2, 4, 8 for channels 1-4 on
+1270 IF x>0 AND x<16
+1280   POKE_W DMACONx,x-32768
+1290 END IF 
+1300 END DEFine AUDIO_ON
+1310 :
+1320 DEFine PROCedure AUDIO_OFF(c)
+1330 REMark Turn off audio channels 1.2.4,8 only
+1340 IF 1<=c AND c<=15
+1350   POKE_W DMACONx,c
+1360 END IF 
+1370 END DEFine AUDIO_OFF
+1380 :
+1390 DEFine PROCedure FILTER(f)
+1400 IF f
+1410   POKE pra,PEEK(pra) && 253
+1420 ELSE 
+1430   POKE pra,PEEK(pra) || 2
+1440 END IF 
+1450 END DEFine FILTER

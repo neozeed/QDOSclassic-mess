@@ -1,0 +1,229 @@
+	INCLUDE	'DEV/ASM/QDOS/DEFINES_inc'
+	INCLUDE	'CLSC/SRC/CORE/PAR_inc'
+	INCLUDE	'DEV/ASM/AMG/HW_inc'
+	INCLUDE	'CLSC/SRC/AMG/CLSC_inc'
+
+	SECTION	PAR
+
+	XDEF	HW_RESET,HW_ENABLE,HW_DISABLE
+	XDEF	POLL_SERver,XINT_SERver
+
+	XDEF	HW_VCTR_BEG
+	XDEF	HW_VCTR.LEN
+
+	XDEF	HARDTAG
+
+*******************************************************************
+*
+* SER_asm - serial device driver
+*	 - originated July 98 - Mark Swift
+*	 - last modified 30/03/99 (MSW)
+
+BASE:
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+HW_VCTR_BEG:
+
+*******************************************************************
+*
+*  HARDWARE RESET : initialise hardware to factory defaults
+
+HW_RESET:
+	movem.l	d0/d7,-(a7)
+
+	bsr.s	HW_DISABLE
+
+	move.b	CIAB_DDRA,d7
+	andi.b	#%11111000,d7
+	move.b	d7,CIAB_DDRA	; SEL,POUT,BUSY to inputs
+
+	MOVE.B	#$FF,CIAA_DDRB	; set PRB to all output
+
+	movem.l	(a7)+,d0/d7
+	rts
+
+*******************************************************************
+*
+*  HARDWARE DISABLE : disable hardware
+
+HW_DISABLE:
+	movem.l	d0/d7,-(a7)
+
+	move.b	CIAA_ICR,d7	; read & clear CIA-A ICR
+	or.b	AV.CIAA_ICR,d7
+	bclr	#4,d7		; clear FLAG bit
+	move.b	d7,AV.CIAA_ICR	; store for another program
+
+	move.b	#%00010000,CIAA_ICR ; disable FLAG interrupt
+
+	andi.b	#%11101111,AV.CIAA_MSK ; take note
+
+	movem.l	(a7)+,d0/d7
+	rts
+
+*******************************************************************
+*
+* End custom vector routines
+
+NOPpad3:
+	DCB.w ((0-(NOPpad3-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+HW_VCTR_END:
+
+HW_VCTR.LEN	EQU	(HW_VCTR_END-HW_VCTR_BEG)
+
+*******************************************************************
+*
+*  HARDWARE ENABLE : enable hardware
+
+HW_ENABLE:
+	movem.l	d0/d7,-(a7)
+
+	move.b	CIAA_ICR,d7	; read & clear CIA-A ICR
+	or.b	AV.CIAA_ICR,d7
+	bclr	#4,d7		; clear FLAG bit
+	move.b	d7,AV.CIAA_ICR	; store for another program
+
+	move.w	#%0000000000001000,INTREQ ; clear and enable
+	move.w	#%1000000000001000,INTENA ; CIA-A interrupts
+
+	move.b	#%10010000,CIAA_ICR ; enable FLAG interrupt
+
+	ori.b	#%00010000,AV.CIAA_MSK ; take note
+
+	movem.l	(a7)+,d0/d7
+	rts
+
+*******************************************************************
+*
+*  poll interrupt server for parallel port. If interrupts are off,
+*  restarts interrupts by sending a byte.
+
+POLL_SERver:
+	btst	#4,AV.CIAA_MSK	; test FLAG bit in mask
+	beq.s	POLL_X		; exit (PAR not open)
+
+	bsr.s	PAR_SEND 	; if port ready, send byte
+
+POLL_X:
+	rts
+
+*******************************************************************
+*
+*  external interrupt server for parallel port
+*  enters with a6=sys vars, a3=our (parallel) vars
+
+XINT_SERver:
+	movem.l	d7/a0,-(a7)
+
+	move.w	INTENAR,d7	; read interrupt enable reg
+	btst	#3,d7		; branch if ints not on
+	beq.s	XINT_OTHer
+
+	move.w	INTREQR,d7	; read interrupt request reg
+	btst	#3,d7		; branch if from CIA-A or
+	bne.s	CIAA_SERv	; expansion ports
+
+; --------------------------------------------------------------
+;  otherwise let another external interrupt server handle it
+
+XINT_OTHer:
+	movem.l	(a7)+,d7/a0
+	rts
+
+*******************************************************************
+*
+*  Interrupt from CIA-A or expansion port
+
+CIAA_SERv:
+	move.b	CIAA_ICR,d7	; read CIA-A ICR
+	or.b	AV.CIAA_ICR,d7
+	move.b	d7,AV.CIAA_ICR	; store for another program
+
+	bclr	#4,d7		; port ready? (FLAG bit=1)
+	beq	XINT_OTHer	; no
+
+; --------------------------------------------------------------
+;  External interrupt server for acting on par port ready
+;  (CIAA FLAG bit=1).
+
+PAR_RDY:
+	move.b	d7,AV.CIAA_ICR
+
+	and.b	AV.CIAA_MSK,d7	; don't clear INTREQ if
+	bne.s	PAR_RDY0 	; other CIAA ints occured
+
+	move.w	#%0000000000001000,INTREQ ; clear interrupts
+
+; -------------------------------------------------------------
+PAR_RDY0:
+	move.l	VAR.PARTQ(a3),d7	; address of transmit Q
+	beq.s	XINT_EXIt	; exit if Q doesn't exist
+
+	move.l	d7,a0
+	bset	#0,1+PAR_FLGS-PAR_TXQ(a0) ; port ready
+
+	bsr.s	PAR_SEND
+
+; -------------------------------------------------------------
+XINT_EXIt:
+	bra	XINT_OTHer
+
+*******************************************************************
+*
+*  write next byte from queue to parallel port
+
+PAR_SEND:
+	movem.l	d1/d7/a2-a4,-(a7)
+
+	moveq	#ERR.NC,d0	; assume no can do
+
+	move.l	VAR.PARTQ(a3),d1	; address of transmit Q
+	beq.s	PAR_S_X		; exit if Q doesn't exist
+
+	move.l	d1,a2
+	btst	#0,1+PAR_FLGS-PAR_TXQ(a2) ; port ready?
+	beq.s	PAR_S_X
+
+	btst	#0,CIAB_PRA	; printer busy?
+	bne.s	PAR_S_X
+
+	btst	#1,CIAB_PRA	; paper out?
+	bne.s	PAR_S_X
+
+	btst	#2,CIAB_PRA	; printer select?
+	beq.s	PAR_S_X
+
+	moveq	#0,d1
+	move.w	IO.QOUT,a4
+	jsr	(a4)		; get byte d1 from queue a2
+	tst.l	d0
+	bne.s	PAR_S_X		; exit if error
+
+	bclr	#0,1+PAR_FLGS-PAR_TXQ(a2) ; port busy
+
+	move.b	CIAA_ICR,d7	; read CIA-A ICR
+	or.b	AV.CIAA_ICR,d7
+	bclr	#4,d7		; clear FLAG bit
+	move.b	d7,AV.CIAA_ICR	; store for another program
+	move.w	#%0000000000001000,INTREQ ; clear interrupts
+
+	move.b	d1,CIAA_PRB	; write data to par port
+
+PAR_S_X:
+	movem.l	(a7)+,d1/d7/a2-a4
+	rts
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad5:
+	DCB.w ((0-(NOPpad5-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+*******************************************************************
+
+	END

@@ -1,0 +1,13 @@
+*
+* Control link file for BEEP ROM
+*
+SECTION BEEP
+*
+* Start with the core initialisation code
+*
+INPUT CLSC_SRC_CORE_BEEP_REL
+*
+* Now include the rest of the Assembler module(s)
+*
+INPUT CLSC_SRC_SSS_BEEP_REL
+*

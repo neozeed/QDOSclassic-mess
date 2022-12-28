@@ -1,0 +1,18 @@
+100 REMark Blitter demonstration
+110 REMark SNG 29-12-92 - 8/2/93
+120 SCR_PRIORITY 8,1
+130 x=ALCHP(100)
+140 LBYTES flp1_blitter_bin,x
+150 LIST : LIST  : LIST #1
+160 PAUSE 50
+170 REPeat poll
+180   CALL x:REMark Get blitting
+190   PAUSE 2:REMark Let Amiga screen catch up
+200   IF CODE(INKEY$(#0,2)) >0 : EXIT poll
+210 END REPeat poll
+220 REMark N.B. Returns NOT COMPLETE if the blitter has no spare time
+230 RECHP x
+240 REMark This example uses the blitter
+250 REMark to invert the colours of a 16K
+260 REMark half of the Qdos screen.
+270 REMark HOLD DOWN any key to stop it.

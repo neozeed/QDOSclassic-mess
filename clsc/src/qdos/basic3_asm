@@ -1,0 +1,96 @@
+*/beginfile BASIC3_asm
+; --------------------------------------------------------------
+; BASIC3_asm - BASIC bits
+;	    - last modified 27/11/96
+; QDOS-Amiga sources by Rainer Kowallik
+;  ...latest changes by Mark J Swift
+; --------------------------------------------------------------
+L06DA2:
+	LEA	BASIC_KEys(PC),A1
+; Vectored utility BP_INIT
+; A1=pointer to definition list
+BP_INIT:
+	MOVEM.L	D1-D2/D5-D7/A0/A2-A3,-(A7)
+	MOVEQ	#8,D6		; identifier for machinecode
+				; procedure
+L06DAC:
+	MOVEQ	#0,D7
+	MOVEQ	#0,D5
+	MOVE.W	(A1)+,D5 	; get number of procedures
+	LSL.L	#3,D5		; * 8 since we have two long
+				; word pointers
+	MOVE.L	D5,D1
+	MOVE.L	A1,-(A7)
+	JSR	L04E60(PC)	;*/undomodify BSR L04E60
+				; allocate space for name
+				; table
+	MOVE.L	D5,D1
+				;*/undoinsert LSL.L #1,D1
+				; assume names are 14 bytes
+				; long. !!!! NEW !!!!
+	JSR	L04E72(PC)	;*/undomodify BSR L04E72
+				; allocate memory for name
+				; list
+	MOVEA.L	(A7)+,A3 	; get pointer to procedure
+				; list -> A3 !!!
+L06DC4:
+	MOVEA.L	A3,A1		; save pointer to procedure
+				; list for offset
+	MOVE.W	(A3)+,D0 	; get address of procedure
+	BEQ.S	L06E0C		; if end of procedure list
+	ADDA.W	D0,A1		; calculate absolute address
+	MOVE.L	A1,-(A7)
+	MOVE.B	(A3)+,D5 	; length of procedure name
+	MOVE.B	D5,-(A7)
+	MOVE.B	D6,-(A7)
+	MOVE.B	D5,D1
+	MOVEA.L	(A6),A1		; get buffer base
+L06DD8	MOVE.B	(A3)+,0(A6,A1.L)	; copy name of procedure to
+				; buffer
+	ADDQ.W	#1,A1
+	SUBQ.B	#1,D1
+	BGT.S	L06DD8		; continue copy
+	MOVE.L	A3,-(A7) 	; save pointer to procedure
+				; list
+	MOVEA.L	(A6),A3		; aagain get buffer address
+;RLOC15	 movea.l  #(TB_LIST-ORGN),a2  ;*/modify LEA TB_LIST(PC),A2
+	movea.w	#(vTB_LIST-ORGN),a2  ;*/modify LEA TB_LIST(PC),A2
+;	 LEA	 TB_LIST(PC),A2
+	MOVEA.L	(A2),A2
+	JSR	L08622(PC)	;*/undomodify BSR L08622
+				; check name in Buffer and
+				; get address of name table
+	BRA.S	L06E16		; bad name return
+	MOVEA.L	(A7)+,A3 	; restore pointer to
+				; procedure list
+	MOVE.B	(A7)+,D6
+	MOVE.B	(A7)+,D5 	; restore length of name
+	MOVE.L	(A7)+,4(A6,A2.L)	; write Address of procedure
+				; to name table
+	MOVE.B	D6,0(A6,A2.L)	; identifier procedure /
+				; function
+	MOVE.B	D7,1(A6,A2.L)	; identifier string / float
+				; / int
+	BTST	D7,D5		; even number of bytes ?
+	BNE.S	L06DC4		; continue with next
+				; procedure
+	ADDQ.W	#1,A3		; make it even
+	BRA.S	L06DC4		; continue with next
+				; procedure
+L06E0C	SUBQ.W	#8,D6		; was it Procedure or
+				; function before ?
+	BNE.S	L06E1C		; return if it was already
+				; for functions
+	MOVEQ	#9,D6		; if not, set function
+				; identifier now
+	MOVEA.L	A3,A1
+	BRA.S	L06DAC		; and continue linking in
+				; like procedure
+L06E16	ADDA.W	#12,A7		; clean up stack for error
+				; return
+	MOVEQ	#-12,D0		; Bad name error
+L06E1C	MOVEM.L	(A7)+,D1-D2/D5-D7/A0/A2-A3
+	RTS
+;  end of BP_INIT
+; --------------------------------------------------------------
+;*/endfile

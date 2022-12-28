@@ -1,0 +1,75 @@
+*******************************************************************
+*  SSS_inc - Sampled Sound System includes file
+*	  - last modified 21/09/99
+*
+*  Various SSS specific system calls
+*******************************************************************
+
+HARDTAG	EQU	'SSS '
+
+**************************************************************
+*
+* SSS_ADD1 ($04)
+*
+* This call is used to add one sample to the sound queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*	D1 (byte) left hand sound level
+*	D2 (byte) right hand sound level
+*
+* Exit:	A1 smashed
+*	status Z if operation not complete due to queue full
+
+SSS_ADD1 	EQU	$04
+
+
+**************************************************************
+*
+* SSS_SETM ($08)
+*
+* This call sets up to add multiple samples to the sound queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*
+* Exit:	A1 (long) pointer to the next free byte pair in the queue
+*	A2 (long) pointer past the last free byte pair in the queue
+
+SSS_SETM 	EQU	$08
+
+
+**************************************************************
+*
+* SSS_ADDM ($0C)
+*
+* This call notifies that samples have been added to the
+* sound queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*	A1 (long) the updated pointer to the next free byte pair
+*		 in the queue
+
+SSS_ADDM 	EQU	$0C
+
+
+**************************************************************
+*
+* SSS_KILL ($10)
+*
+* This call stops the sound system and throws the queue away.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+
+SSS_KILL 	EQU	$10
+
+
+**************************************************************
+*
+* SSS_SAMPLE ($14)
+*
+* This call estimates the number of samples remaining in the queue.
+*
+* Entry: A3 (long) pointer to 'SSSS' flag (see code above)
+*
+* Exit:	D0 (long) number of samples remaining in queue
+
+SSS_SAMPLE	EQU	$14

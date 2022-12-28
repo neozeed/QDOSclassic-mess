@@ -1,0 +1,29 @@
+Short:    BASIC prog to upload a ROM to the Q40
+Author:   Mark J Swift
+Version:  1.00
+Uploader: msw@blackpool.ac.uk
+Type:     clsc/run/q40
+
+
+This program uploads a ROM file to the Q40 from a QL via
+the serial port at 9600.
+
+
+ARCHIVE CONTENTS
+
+ UPLOAD_readme  - this file
+ UPLOAD_boot    - BASIC prog to upload a ROM to the Q40
+
+
+FEATURES
+
+* FREEWARE
+
+
+CONTACT
+
+  post: MARK J SWIFT                    e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

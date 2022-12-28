@@ -1,0 +1,74 @@
+Short:    Toolkit to load ROM images onto Q40 computer
+Author:   Mark J Swift
+Version:  1.57
+Uploader: msw@blackpool.ac.uk
+Type:     hw/q40
+
+This toolkit adds a single keyword - SOFTROM - to superBASIC.
+
+This keyword allows ROM images to be loaded into the ROM
+area (usually 0-96k) on the Q40 computer.
+
+This is useful in implementing system ROM upgrades, where
+burning a new EPROM is inconvenient - or for loading
+alternative operating systems.
+
+There are two versions of the command:
+
+The first variant of the keyword:
+
+  SOFTROM
+
+  ...will load a new ROM over serial port 1 at 9600 baud.
+     Once complete, the machine will reboot.
+
+     The serial data should be a <long word> for the length of
+     the ROM followed by the actual <bytes> of ROM data.
+     The following BASIC program, run on a remote QL,
+     would achieve this.
+
+     150 REMark -- SEND LENGTH --
+     160 OPEN#4;"SER1H"
+     170 PRINT#4;CHR$(0);CHR$(1);CHR$(128);CHR$(0);
+     180 CLOSE#4
+     190 :
+     200 REMark -- UPLOAD ROM TO Q40 --
+     210 COPY "flp1_CLASSICn_ROM" TO "SER1H"
+
+
+The second variant of the keyword:
+
+  SOFTROM <filename>
+
+  ...will load the specified ROM file from disk into the
+     ROM area. The machine will then reboot.
+
+     for example the command:
+
+     SOFTROM "win1_CLASSICn_ROM"
+
+     will load a QDOS Classic ROM (version beta n) into
+     the ROM area and then reboot the machine.
+
+
+ARCHIVE CONTENTS
+
+ SOFTROM_rext     - Toolkit to load ROM images onto Q40 computer
+ SOFTROM_asm      - the assembly source
+ QDOS_inc         - QDOS assembly includes
+ Q40_inc          - Q40 assembly includes
+ SOFTROM_readme   - this file
+
+
+FEATURES
+
+* FREEWARE
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

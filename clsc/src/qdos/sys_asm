@@ -1,0 +1,88 @@
+*/beginfile SYS_asm
+; --------------------------------------------------------------
+; SYS_asm - Main system ROM
+;  - last modified 25/08/99
+
+; These are all the necessary sources required to create a
+; standard QL specific QDOS ROM.
+
+; QDOS-Amiga sources by Rainer Kowallik
+;  ...latest changes by Mark J Swift
+; --------------------------------------------------------------
+
+	SECTION	SYS
+
+REGSTK	EQU	$1FFA0	; register store for trace
+
+MODCODE	EQU	$1FFE8	; address of self modifying
+			; code (TAS and MOVE SR,??)
+			; ...yeuch!
+
+NoTas equ 1
+;ShoCach  equ  1
+DoCach equ 1
+;serdbg equ 1
+;seramg	equ  1
+;serq40 equ 1
+
+ORGN:
+	INCLUDE	'DEV/ASM/QDOS/DEFINES_inc'
+
+	INCLUDE	'CLSC/SRC/QDOS/QDOS1_asm'
+
+	INCLUDE	'CLSC/SRC/QDOS/QDOS2_asm'
+	INCLUDE	'CLSC/SRC/QDOS/DBUGCODE_asm'
+	INCLUDE	'CLSC/SRC/QDOS/QDOS3_asm'
+	INCLUDE	'CLSC/SRC/QDOS/DBUGTBLS_asm'
+
+	INCLUDE	'CLSC/SRC/QDOS/PROCESSOR_asm'
+
+	INCLUDE	'CLSC/SRC/QDOS/QDOS4_asm'
+
+	INCLUDE	'CLSC/SRC/QDOS/ARITH_asm'
+	INCLUDE	'CLSC/SRC/QDOS/BASIC1_asm'
+	INCLUDE	'CLSC/SRC/QDOS/PROCS7_asm'
+	INCLUDE	'CLSC/SRC/QDOS/PROCS2_asm'
+	INCLUDE	'CLSC/SRC/QDOS/PROCS8_asm'
+	INCLUDE	'CLSC/SRC/QDOS/PROCS3_asm'
+	INCLUDE	'CLSC/SRC/QDOS/PROCS5_asm'
+	INCLUDE	'CLSC/SRC/QDOS/PROCS4_asm'
+	INCLUDE	'CLSC/SRC/QDOS/PROCS6_asm'
+	INCLUDE	'CLSC/SRC/QDOS/BASIC2_asm'
+	INCLUDE	'CLSC/SRC/QDOS/PROCS9_asm'
+	INCLUDE	'CLSC/SRC/QDOS/BASIC3_asm'
+	INCLUDE	'CLSC/SRC/QDOS/PROCS1_asm'
+	INCLUDE	'CLSC/SRC/QDOS/BASIC4_asm'
+	INCLUDE	'CLSC/SRC/QDOS/PROCS10_asm'
+	INCLUDE	'CLSC/SRC/QDOS/BASIC5_asm'
+	INCLUDE	'CLSC/SRC/QDOS/FONT_asm'
+
+	INCLUDE	'CLSC/SRC/QDOS/BASICFIX_asm'
+; --------------------------------------------------------------
+;*/beginfilling
+
+NOP0B614:
+	DCB.w	($B614-(NOP0B614-ORGN))/2,$4E71
+
+;*/endfilling
+; --------------------------------------------------------------
+	INCLUDE	'CLSC/SRC/QDOS/QDOSTBLS_asm'
+	INCLUDE	'CLSC/SRC/QDOS/MOVEP_asm'
+	INCLUDE	'CLSC/SRC/QDOS/STARTUP_asm'
+
+; --------------------------------------------------------------
+;*/beginfilling
+
+NOP0C000:
+;	 DCB.w ($C000-(NOP0C000-ORGN)-(RLOCEND-ORGN)+(RLOCTBL-ORGN)-2)/2,$4E71
+	DCB.W	(49152-48594-12-2+6+4-(9*8)+2+8)/2,$4E71
+
+;*/endfilling
+; --------------------------------------------------------------
+
+	INCLUDE	'CLSC/SRC/QDOS/RELOC_asm'
+
+	END
+
+; --------------------------------------------------------------
+*/endfile

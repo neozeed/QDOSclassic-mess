@@ -1,0 +1,26 @@
+	INCLUDE	'DEV_ASM_Q40_HW_inc'
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_FLP_inc'
+	INCLUDE	'DEV_ASM_ISA_HW_inc'
+
+	XDEF	HARDTAG
+	XDEF	user_ini
+	XDEF	fd_hwselect,fd_hwckrdy,fd_hwrestore,fd_hwraddr
+	XDEF	fd_hwside,fd_hwseek,fd_hwmtrsoff,fd_hwwpro
+	XDEF	fd_hwchng,fd_hwread,fd_hwwrite,fd_hwftrack
+
+	XREF	noints
+
+	SECTION FLP
+
+*******************************************************************
+*
+* FLP_asm - Q40 specific routines for floppy drive
+*	 - originated July 98 - Mark Swift
+*	 - last modified 22/09/99 (MSW)
+
+	INCLUDE	'CLSC_SRC_ISA_8272_asm'	 ; use the 8272 routines
+
+*******************************************************************
+
+	END

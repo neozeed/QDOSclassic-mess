@@ -1,0 +1,170 @@
+*******************************************************************
+*
+*  FLOPPY variables
+
+; floppy disk physical layer
+
+fdd_xilk equ	$00		; link for external
+				; interrupt 2
+fdd_pllk equ	$08		; link for polling interrupt
+fdd_shlk equ	$10		; link for schedular
+fdd_ddlk equ	$18		; link for directory devices
+fdd_iolk equ	$1c		; link to io routine
+;
+fdd_name equ	$3e		; 4*b name (ends with 0)
+fdd_side equ	$42		; b side number
+fdd_driv equ	$43		; b drive number
+fdd_sadd equ	$44		; b side number to add to
+				; read/write command
+fdd_pend equ	$45		; b flag for pending ops (<0
+				; start drive, >0 do not
+				; start)
+fdd_fint equ	$46		; b set if forced interrupt
+fdd_nset equ	$47		; b set if name set
+fdd_step equ	$48		; 4*b step rates per drive
+				; (-1 is not set)
+fdd_slen equ	$4c		; 4*b sector length per
+				; drive (0=128)
+
+fdd_wprt equ	$50		; 4*b write protect per
+				; drive (also 40/80 if +ve)
+fdd_sden equ	$54		; 4*b single density flag
+				; per drive
+fdd_rbeg equ	$58		; w number of bytes to skip
+				; at beginning of record
+fdd_rend equ	$5a		; w number of bytes to skip
+				; at end of record
+fdd_time equ	$5c		; b time_out for watchdog
+				; (set by any action)
+fdd_rnup equ	$5d		; b run-up counter
+fdd_rndn equ	$5e		; b run_down counter
+fdd_wait equ	$5f		; b timer for pending ops.
+fdd_scty equ	$60		; b security level
+fdd_ntrk equ	$61		; b number of tracks
+fdd_stim equ	$62		; b start up time
+fdd_sord equ	$63		; b step rate order 0 =
+				; 6,12,20,30, 2=6,12,2,3
+fdd_chck equ	$64		; 4*b -ve if drive has been
+				; checked since
+				; stopped/deselected
+fdd_pact equ	$68		; b flag, if polled task is
+				; already active
+fdd_trak equ	$6A		; 4*b track # per drive
+fdd_dens equ	$6E		; 4*b density (dd/hd) per drive
+fdd_end	equ	$72
+
+fd_estat equ	$23		; error status 0=ok, -1=bad,
+				; 1=ignore
+fd_fail	equ	$24		; failure count
+fd_mupdt equ	$25		; map updated
+fd_sflag equ	$26		; sector read/write flag
+fd_mwrit equ	$27		; map to be written
+fd_pend	equ	$28		; pending operation list
+fd.npend equ	$0A		; 10 ops max
+
+fd_mapend equ	$50
+fd_mphlog equ	$54
+fd_mhead equ	$8C		; medium header
+fd.fmtid equ	'QL5A'
+fd.hdfmtid equ	'QL5B'		;*/insert format ID for HD disks
+fd_fmtid equ	fd_mhead+$0	; format ID
+fd_mdnam equ	fd_mhead+$4	; ... medium name
+fd_mdupd equ	fd_mhead+$10	; ... count of updates
+fd_mfree equ	fd_mhead+$14	; ... free sectors in map
+fd_mgood equ	fd_mhead+$16	; ... good sectors in map
+fd_mtotl equ	fd_mhead+$18	; ... total sectors in map
+fd_mstrk equ	fd_mhead+$1a	; ... sectors per track
+fd_mscyl equ	fd_mhead+$1c	; ... sectors per cylinders
+fd_mtrak equ	fd_mhead+$1e	; ... number of tracks
+				; (cylinders)
+fd_mallc equ	fd_mhead+$20	; ... sectors per group
+fd_meodr equ	fd_mhead+$22	; ... current end of
+				; directory (block/byte
+				; format)
+fd_msoff equ	fd_mhead+$26	; ... sector offset
+fd_mlgph equ	fd_mhead+$28	; ... logical to physical
+				; sector translate
+fd_mphlg equ	fd_mhead+$3a	; ... physical to logical
+				; sector translate
+
+fd_map	equ	fd_mhead+$60	; sector map in 3 byte
+				; entries
+fd_end	equ	fd_mhead+6*512	;*/modify fd_end equ fd_mhead+3*512
+
+fd_delen equ	$00
+fd_deacs equ	$04
+fd_detyp equ	$05
+fd_deinf equ	$06
+fd_denam equ	$0e
+fd_deupd equ	$34
+fd_deend equ	$40
+fd.desft equ	$6		; shift to convert entry
+				; number to position
+
+fds..bsy equ	0		; status busy bit
+fds..drq equ	1		; status data request bit
+fds..ind equ	1		; status index pin bit
+fds..lst equ	2		; status lost data bit
+fds..tr0 equ	2		; status track 0 bit
+fds..crc equ	3		; status crc error bit
+fds..rnf equ	4		; status record not found
+				; bit
+fds..spn equ	5		; status spun up bit
+fds..wpr equ	6		; status write protect bit
+fds..mot equ	7		; status motor on bit (1770)
+fds..nrd equ	7		; status not ready bit
+				; (2793)
+
+fds.bsy	equ	%00000001	; busy
+fds.drq	equ	%00000010	; data request
+fds.ind	equ	%00000010	; index pin
+fds.rwok equ	%01011100	; read/write ok mask
+fds.raok equ	%00011000	; read address ok mask
+
+; --------------------------------------------------------------
+; Keys for CST QDisc controller (specific).
+
+fd_statr equ	0		; ... assumed 0!!!
+fd_comdr equ	0		; ... assumed 0!!!
+fd_trakr equ	2
+fd_sectr equ	1
+fd_datar equ	3
+fd_ctrlr equ	8
+
+fdf.rate equ	%00000000	; 6 ms step rate
+fdf.slow equ	%00000011	; 30 ms step rate
+fdf.prec equ	%00000010	; precompensate no tracks
+fdf.veri equ	%00000100
+fdf.setl equ	%00000000	; no settling time
+fdf.strt equ	%00001000	; no 6 cycle start up
+
+fdc.rest equ	%00000000+fdf.strt+fdf.rate
+fdc.seek equ	%00010000+fdf.strt+fdf.rate
+fdc.stin equ	%01010000+fdf.strt+fdf.rate
+fdc.read equ	$ffffff00+%10000000+fdf.strt+fdf.setl
+fdc.writ equ	$ffffff00+%10100000+fdf.strt+fdf.setl+fdf.prec
+fdc.radd equ	$ffffff00+%11000000+fdf.strt+fdf.setl
+fdc.fint equ	$ffffff00+%11010000
+fdc.rtrk equ	$ffffff00+%11100000+fdf.strt+fdf.setl
+fdc.wtrk equ	$ffffff00+%11110000+fdf.strt+fdf.setl+fdf.prec
+
+fdd.rnup equ	30		; write run up time
+fdd.wait equ	100		; wait for write time
+fdd.rndn equ	20		; run down after motor off
+
+fd.ndriv equ	2		; max number of drives
+fd.singl equ	'S'
+
+fdc.add	equ	%00010000	; constant to write to
+				; control register
+fdc.init equ	%00010010	; initial control reg value
+				; (drive one selected)
+fdc.desl equ	%00000000	; deselected control reg
+				; value
+fdc.oops equ	%00000000	; error control reg value no
+				; drive, no motor
+fdc.sing equ	%00001000	; constant to add for single
+				; density
+fdd.name equ	'FLP0'
+
+*******************************************************************

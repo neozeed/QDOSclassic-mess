@@ -1,0 +1,72 @@
+Short:    translate QUILL DOC files into .RTF form
+Author:   Mark J Swift
+Version:  1.04
+Uploader: msw@blackpool.ac.uk
+Type:     util/conv
+
+
+DOC2RTF is a utility that translates QUILL/XCHANGE '_DOC' files into
+rich text format (.RTF).
+
+Rich Text is a way of encoding documents using standard ASCII character
+codes with ancillary formatting information added so the exact
+appearance on a page is preserved even when the text is moved from one
+package - or computer - to another. Rich Text is extensively used on
+Apple Macintosh systems and is also recognised by workstations, Amiga
+Wordworth 5 and many PC programs, including Microsoft Works and Word
+for Windows.
+
+DOC2RTF translates ALL the formatting characteristics of a QUILL
+document including: bold, underline, tabs, margins, headers & footers.
+
+
+ARCHIVE CONTENTS
+
+ DOC2RTF_task   - TURBO compiled task.
+ DOC2RTF_bas    - BASIC source.
+ DOC2RTF_readme - This file.
+
+
+PROGRAM FEATURES
+
+* Translates ALL QUILL formatting features:
+    (bold, underline, tabs, margins, headers, footers etc.)
+* TURBO COMPILED for speed.
+* BASIC source is provided.
+* Task is patched to work on Minerva in two-screen mode.
+    (TURBO tasks usually rely on the system variables being
+    fixed at $28000.)
+* Task is 32-bit compliant.
+    (A lot of QL tasks have a 24-bit restriction so that they fail
+    if you have more than 16mb of memory, or if QDOS is relocated
+    such that SV.RAMTOP is greater than $1000000.)
+* Task is CACHE friendly.
+    (i.e. it will work on 68030, 68040 and 68060 processors.
+    It will also work with COPYBACK enabled if your O/S supports it)
+* The program is FREEWARE.
+
+
+INSTRUCTIONS
+
+Simply type 'EXEC DOC2RTF_task' to run the program. You will be asked
+to provide input and output filenames. A progress bar is displayed as
+the file is translated. Enter a null filename to quit the application.
+
+
+CREDITS
+
+Chas Dillon   - For (indirectly) providing vital information about the
+                QUILL '_DOC' document format.
+Simon Goodwin - For beta testing and bug fixes.
+                Also, Simon has ported the program to the Amiga.
+                The Amiga version supports PC XCHANGE DOC files and is
+                on the Aminet. The above explanation of the RTF file
+                format is taken from his documentation.
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

@@ -1,0 +1,57 @@
+*/beginfile PROCS5_asm
+; --------------------------------------------------------------
+; PROCS5_asm - BASIC bits
+;	    - last modified 27/08/95
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...some changes by Mark J Swift
+; --------------------------------------------------------------
+; Subroutine for READ , EOF
+; position pointer to next instruction of precompiled BASIC
+L066FA:
+	MOVE.L	BV_LINUM(A6),-(A7) ;current line number
+	MOVE.L	BV_INLIN(A6),-(A7) ;Processing in line
+				; clause or not
+	MOVE.W	BV_STMNT(A6),-(A7) ;current stmnt on line
+	MOVE.L	A4,-(A7)
+	JSR	L0958E(PC)	;*/undomodify BSR L0958E
+	BNE.S	L06784
+	MOVE.W	BV_DALNO(A6),D4	;Current DATA line number
+	JSR	L09FA2(PC)	;*/undomodify BSR L09FA2
+	JSR	L0A96A(PC)	;*/undomodify BSR L0A96A
+	BNE.S	L06784
+	MOVE.B	BV_DASTM(A6),D4	;Current DATA stmnt number
+	JSR	L0A00A(PC)	;*/undomodify BSR L0A00A
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8118,D1
+	BNE.S	L0674A
+	MOVE.B	BV_DAITM(A6),D5	;Next DATA item to read
+	ADDQ.B	#1,BV_DAITM(A6)	;Next DATA item to read
+L06736	ADDQ.W	#2,A4
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	SUBQ.B	#1,D5
+	BEQ.S	L0676E
+	MOVE.W	#$8404,D4
+	JSR	L0A5E0(PC)	;*/undomodify BSR L0A5E0
+	BEQ.S	L06736
+L0674A	JSR	L0A60E(PC)	;*/undomodify BSR L0A60E
+	BNE.S	L06784
+	JSR	L0A56C(PC)	;*/undomodify BSR L0A56C
+	CMPI.W	#$8118,D1
+	BNE.S	L0674A
+	ADDQ.W	#2,A4
+	MOVE.W	BV_LINUM(A6),$94(A6) ;current line number
+	MOVE.B	BV_STMNT(A6),$96(A6) ;current stmnt on line
+	MOVE.B	#2,BV_DAITM(A6)	   ;Next DATA item to read
+L0676E	MOVEA.L	A4,A0
+	MOVEQ	#0,D0
+L06772	MOVEA.L	(A7)+,A4
+	MOVE.W	(A7)+,BV_STMNT(A6) ;current stmnt on line
+	MOVE.L	(A7)+,BV_INLIN(A6) ;Processing in line
+				; clause or not
+	MOVE.L	(A7)+,BV_LINUM(A6) ;current line number
+	TST.L	D0
+	RTS
+L06784	MOVEQ	#-10,D0		; End of file
+	BRA.S	L06772
+; --------------------------------------------------------------
+;*/endfile

@@ -1,0 +1,612 @@
+100 REMark Amiga Qdos 3.23 SCSI CD player
+110 REMark Expects a C=/DKB 4091 and a CD
+120 REMark drive assigned to SCSI unit 1;
+130 REMark tested with NEC MultiSpin 2xi,
+135 REMark then adapted for Toshiba 3401.
+137 REMark REQUEST_SENSE & DRIVE_IDENT=OK
+138 REMark NCR CD PLAY etc. are rejected.
+140 REMark SCSI code should also suit CSA
+150 REMark Magnum, PP Zeus & Warp Engines
+160 REMark once the value of NCR53c710 is
+170 REMark adjusted to  point to the base
+180 REMark of your controller registers.
+190 :
+200 WINDOW 512,216,0,0
+250 CSIZE #0,2,0:CSIZE 0,0 : CSIZE #2,1,0
+300 WINDOW #2,512,210,0,6
+350 POKE_W HEX("DFF182"),15
+400 POKE_W HEX("DFF184"),4000
+450 :
+500 SCSI_VARS
+550 PRINT #0;"Initialising SCSI..."
+600 NCR_RESET
+610 REMark SUSPEND_TASK is the only Toolkit extension
+620 REMark needed by this program; it allows time for
+630 REMark the NEC 2x CD drive to respond to commands
+640 REMark that it needs time to digest.  It could be
+650 REMark replaced by a  FOR loop delay to suit your
+660 REMark own CD drive if you lack TURBO TOOLKIT.
+670 SUSPEND_TASK 200 :REMark Wait for reset
+680 REPeat init
+690   TEST_READY CD
+700   CD_TRACKS
+710   IF sense<>0 AND sense<>6
+715     PRINT #0;"CD drive unit"! CD !"is not responding."
+720     PRINT #0;"Type an alternative CD unit number"
+730     PRINT #0;"(not"!CD;") or tap ENTER to try again: ";
+735     PAN #0,0,115 : t$=INKEY$(#0,-1)
+740     PAN #0,0,116 : PRINT #0;t$
+745     IF CODE(t$)<33:NEXT init
+750     IF t$ INSTR "0123456" : CD=t$
+760   ELSE 
+770     EXIT init
+780   END IF 
+790 END REPeat init
+810 CLS #0
+850 CD_MENU
+990 :
+1100 DEFine PROCedure SCSI_VARS
+1120 debugging=0 : time=10000 : host%=7 : CD=1 : DAT=2
+1140 null$=FILL$(CHR$(0),32)
+1150 NEC=0 : STD=NOT NEC
+1290 REMark Assume a 53C710 is on the Zorro 3 bus
+1300 warp_rom=HEX("41000000"):REMark Second 16 Mb slot
+1305 REMark Register offset is +8 Mb for A4091
+1310 ncr53c710=warp_rom+8*1024*1024
+1315 REMark Register offset is +256 Kb for Warp
+1320 NCR_SIEN=ncr53c710
+1330 NCR_SCNTL0=ncr53c710+3
+1340 NCR_SCNTL1=ncr53c710+2
+1350 NCR_SDID  =ncr53c710+1
+1360 NCR_SOCL  =ncr53c710+4
+1370 NCR_SODL  =ncr53c710+5
+1400 NCR_SCID  =ncr53c710+7
+1410 NCR_SBCL  =ncr53c710+8
+1420 NCR_SBDL  =ncr53c710+9
+1430 NCR_SIDL  =ncr53c710+10
+1470 NCR_SSTAT1=ncr53c710+13
+1480 NCR_SSTAT0=ncr53c710+14
+1490 NCR_DSA   =ncr53c710+16 :REMark Long
+1495 NCR_CTEST2=ncr53c710+21
+1500 NCR_CTEST0=ncr53c710+23
+1510 NCR_CTEST7=ncr53c710+24
+1560 NCR_ISTAT =ncr53c710+34
+1770 NCR_DCNTL =ncr53c710+56
+1772 NCR_DWT   =ncr53c710+57
+1775 NCR_DIEN  =ncr53c710+58
+1780 NCR_DMODE =ncr53c710+59
+1790 :
+1800 REQ=128 : ACK=64 : BUSY=32 : SELT=16 : ATN=8
+1810 :
+1820 Phases%=7 : MessageOut%=6 : MessageIn%=7
+1830 DataIn%=1 : Command%=2 : StatusPhase%=3
+1840 DataOut%=0 :REMark 4 and 5 are reserved
+1850 END DEFine SCSI_VARS
+1990 :
+2000 DEFine PROCedure NCR_RESET
+2010 POKE NCR_SIEN,0 :REMark Mask ALL interrupts
+2020 POKE NCR_SCNTL1,8+32 :REMark ESR + RST
+2030 PAUSE 1 :REMark Well over 25 microseconds!
+2040 POKE NCR_SCNTL1,32 :REMark Cancel RST
+2050 POKE NCR_ISTAT,0 :REMark Clear Interrupt status
+2060 POKE NCR_SCNTL0,192+8+4 :REMark Full Arbitration & Parity
+2070 POKE NCR_DCNTL,0 :REMark SCLCK/2; 37.51 -> 50.00 MHz
+2080 POKE NCR_DMODE,128 :REMark DMA Burst length 4 long words
+2090 POKE NCR_DIEN,0 :REMark Mask off all DMA interrupts
+2100 POKE NCR_DWT,0 :REMark Disable Watchdog timer for now
+2110 POKE NCR_SCID,2^host% :REMark HOST%=7 unless arbitrating
+2120 POKE NCR_CTEST0,64+32+16 :REMark BTD +GRP +Active Negation
+2130 POKE NCR_CTEST7,128 :REMark or 34 (Warp) SC0 +TT1 (Bursts OK)
+2140 REMark Set CTEST7=128 on a 4091 to disable burst transfers
+2150 IF debugging THEN PRINT \"**** NCR controller reset."
+2250 END DEFine NCR_RESET
+2260 :
+2270 DEFine PROCedure NCR_SELECT(target%)
+2272 LOCal poll
+2275 IF debugging : PRINT \"Selecting SCSI device",target%,
+2280 POKE NCR_SODL,2^host%+2^target%
+2290 POKE NCR_SOCL,32      :REMark Assert BUSY
+2300 POKE NCR_SCNTL1,64+16 :REMark ADB + CON
+2310 POKE NCR_DCNTL,8      :REMark Low level mode
+2320 POKE NCR_SOCL,SELT+ATN+BUSY
+2330 POKE NCR_SOCL,SELT+ATN
+2340 REMark Wait till target asserts BUSY
+2350 FOR poll=1 TO time: IF PEEK(NCR_SBCL) && BUSY : EXIT poll
+2351 selected=poll<time
+2352 IF debugging
+2353   IF selected
+2355     PRINT "Ready after ";poll
+2356   ELSE PRINT "Timeout!"
+2357   END IF 
+2358 END IF 
+2360 POKE NCR_SOCL,ATN :REMark ATN sets I/O for MESSAGE OUT
+2370 REMark POKE NCR_SOCL,0    :REMark Deassert ATN
+2380 FOR poll=1 TO time: IF PEEK(NCR_SBCL) && REQ : EXIT poll
+2385 IF poll=time: PRINT #0;"REQ timeout after selection." :STOP
+2390 END DEFine NCR_SELECT
+2395 :
+2400 DEFine PROCedure POLL_ALL
+2405 LOCal id
+2410 FOR id=0 TO 1
+2420   IF NOT BUS_FREE : NCR_RESET
+2430   NCR_SELECT id
+2440   SHOW_STATE
+2450 END FOR id
+2490 POKE NCR_SOCL,0    :REMark Drop ATN
+2500 END DEFine POLL_ALL
+2510 :
+2520 DEFine PROCedure SHOW_STATE
+2530 LOCal bus,bit
+2535 IF NOT debugging : RETurn
+2540 bus=PEEK(NCR_SBCL)
+2545 PRINT bus!!
+2550 FOR bit=0 TO 7
+2560   PRINT "REQACKBSYSELATNMSGC/DI/O"(bit*3+1 TO bit*3+3);
+2570   IF bus && (2^(7-bit))
+2575     PRINT " set   ";
+2580   ELSE 
+2585     PRINT " reset ";
+2587   END IF 
+2590 END FOR bit
+2595 PRINT \"SODL = ";PEEK(NCR_SODL);" SIDL = ";PEEK(NCR_SIDL)
+2600 END DEFine SHOW_STATE
+2610 :
+2620 DEFine FuNction BUS_FREE
+2630 RETurn 0=(PEEK(NCR_SBCL) && (SELT+BUSY))
+2640 END DEFine BUS_FREE
+2650 :
+2660 DEFine PROCedure NCR_IDENTIFY
+2670 SEND_MESSAGE 128 :REMark No disconnect (yet)
+2680 END DEFine NCR_IDENTIFY
+2690 :
+2700 DEFine PROCedure NCR_ABORT
+2710 SEND_MESSAGE 6
+2770 END DEFine NCR_ABORT
+2780 :
+2790 DEFine PROCedure MESSAGE_IN
+2792 LOCal poll
+2794 IF (PEEK(NCR_SBCL) && Phases%)<>MessageIn%
+2796   PRINT #0;"Phase error; MESSAGE IN expected." : RETurn 
+2798 END IF 
+2799 message=PEEK(NCR_SBDL)
+2800 POKE NCR_SOCL,ACK+MessageIn%
+2810 IF debugging : PRINT "Message received: ";message
+2820 FOR poll=1 TO time: IF PEEK(NCR_SBCL)<REQ : EXIT poll
+2830 IF poll=time: PRINT #0;"REQ timeout after message in." :STOP
+2840 POKE NCR_SOCL,MessageIn%
+2845 REMark FOR poll=1 TO time: IF PEEK(NCR_SBCL) && REQ : EXIT poll
+2847 REMark IF poll=time: PRINT #0;"REQ timeout after message in." :STOP
+2850 END DEFine MESSAGE_IN
+2860 :
+2870 DEFine PROCedure COMMAND(command$)
+2880 LOCal poll,pos
+2883 IF (PEEK(NCR_SBCL) && Phases%)<>Command%
+2885   PRINT #0;"Phase error; COMMAND expected." : RETurn 
+2887 END IF 
+2890 FOR pos=1 TO LEN(command$)
+2900   POKE NCR_SODL,CODE(command$(pos))
+2910   POKE NCR_SOCL,ACK+Command%
+2920   FOR poll=1 TO time: IF PEEK(NCR_SBCL)<REQ : EXIT poll
+2930   IF poll=time: PRINT #0;"REQ timeout in command." :STOP
+2940   POKE NCR_SOCL,Command%
+2950 END FOR pos
+2953 FOR poll=1 TO time: IF PEEK(NCR_SBCL) && REQ : EXIT poll
+2956 IF poll=time: PRINT #0;"REQ timeout after command." :STOP
+2960 END DEFine COMMAND
+2970 :
+2980 DEFine PROCedure INQUIRY
+2985 reply%=36
+2990 COMMAND CHR$(18) & null$(1 TO 3) & CHR$(reply%) & null$(1)
+3000 READ_DATA attribute$,reply%
+3020 DriveType%=CODE(attribute$)
+3030 PRINT "Drive ";unit%;": ";attribute$(9 TO reply%);" type ";DriveType%
+3100 END DEFine INQUIRY
+3110 :
+3120 DEFine PROCedure ENQUIRY
+3130 INQUIRY
+3140 END DEFine ENQUIRY
+3150 :
+3160 REFERENCE info$
+3170 DEFine PROCedure READ_DATA(info$,length%)
+3175 LOCal poll,byte
+3180 IF (PEEK(NCR_SBCL) && Phases%)<>DataIn%
+3190   PRINT #0;"Phase error; DATA IN expected." : STOP
+3195 END IF 
+3210 info$=""
+3220 FOR byte=1 TO length%
+3230   info$=info$ & CHR$(PEEK(NCR_SBDL))
+3240   POKE NCR_SOCL,ACK+DataIn%
+3250   FOR poll=1 TO time: IF PEEK(NCR_SBCL)<REQ : EXIT poll
+3260   IF poll=time: PRINT #0;"REQ timeout after message." :STOP
+3270   POKE NCR_SOCL,DataIn%
+3280 END FOR byte
+3282 FOR poll=1 TO time: IF PEEK(NCR_SBCL) && REQ : EXIT poll
+3284 IF poll=time: PRINT #0;"REQ timeout after data in." :STOP
+3290 END DEFine READ_DATA
+3300 :
+3310 DEFine PROCedure NOW
+3320 IF NOT debugging : RETurn 
+3325 IF BUS_FREE
+3330   PRINT "Bus free."
+3340 ELSE 
+3350   PRINT "Bus busy, expecting ";
+3360   state=PEEK(NCR_SBCL) && Phases%
+3370   SELect ON state
+3380     =DataIn%,DataOut% : PRINT "DATA";
+3390     =MessageIn%,MessageOut% : PRINT "MESSAGE";
+3400     =Command% : PRINT "COMMAND";
+3410     =StatusPhase% : PRINT "STATUS";
+3420     =REMAINDER : PRINT "RESERVED";
+3430   END SELect 
+3440   IF state && 1 : PRINT " IN." : ELSE PRINT " OUT."
+3445 END IF 
+3450 END DEFine NOW
+3460 :
+3600 DEFine PROCedure RESET_DEVICE
+3610 SEND_MESSAGE 12
+3620 END DEFine RESET_DEVICE
+3630 :
+3660 DEFine PROCedure SEND_MESSAGE(code%)
+3665 LOCal poll
+3680 IF (PEEK(NCR_SBCL) && Phases%)<>MessageOut%
+3690   PRINT #0;"Phase error; MESSAGE OUT expected." : RETurn 
+3700 END IF 
+3710 POKE NCR_SODL,code%
+3720 POKE NCR_SOCL,ATN+MessageOut%
+3730 POKE NCR_SOCL,ACK+ATN+MessageOut%
+3740 FOR poll=1 TO time: IF PEEK(NCR_SBCL)<REQ : EXIT poll
+3750 IF poll=time:PRINT #0;"REQ timeout after MESSAGE OUT.":STOP
+3760 POKE NCR_SOCL,MessageOut%
+3765 FOR poll=1 TO time: IF PEEK(NCR_SBCL) && REQ : EXIT poll
+3767 IF poll=time: PRINT #0;"REQ timeout after status." :STOP
+3770 END DEFine SEND_MESSAGE
+3780 :
+3790 DEFine PROCedure GET_STATUS
+3792 LOCal poll
+3794 IF (PEEK(NCR_SBCL) && Phases%)<>StatusPhase%
+3796   PRINT #0;"Phase error; STATUS expected." : RETurn 
+3798 END IF 
+3799 status=PEEK(NCR_SBDL)
+3800 POKE NCR_SOCL,ACK+StatusPhase%
+3810 IF debugging : PRINT "Status  received: ";status
+3820 FOR poll=1 TO time: IF PEEK(NCR_SBCL)<REQ : EXIT poll
+3830 IF poll=time: PRINT #0;"REQ timeout after status." :STOP
+3840 POKE NCR_SOCL,StatusPhase%
+3845 FOR poll=1 TO time: IF PEEK(NCR_SBCL) && REQ : EXIT poll
+3847 IF poll=time: PRINT #0;"REQ timeout after status." :STOP
+3850 END DEFine GET_STATUS
+3860 :
+3870 DEFine PROCedure REQUEST_SENSE(unit%)
+3875 ok=0
+3880 NCR_SELECT unit%
+3890 NCR_IDENTIFY
+3895 length%=18 :REMark SCSI 2 Extended sense data please
+3900 COMMAND CHR$(3) & null$(1 TO 3)& CHR$(length%) & null$(1)
+3905 IF (PEEK(NCR_SBCL) && Phases%)<>StatusPhase%
+3910   READ_DATA sense$,length% : ok=1
+3915 END IF 
+3920 GET_STATUS
+3930 MESSAGE_IN
+3934 sense=CODE(sense$(3))
+3936 subSense=CODE(sense$(13))
+3938 IF debugging
+3939   PRINT_SENSE sense
+3940   SCSI_REPORT subSense
+3945 END IF 
+3950 END DEFine REQUEST_SENSE
+3960 :
+3970 DEFine PROCedure SCSI_REPORT(op%)
+3972 LOCal flag
+3975 PRINT "SCSI sense request reports: ";
+3977 flag=op%
+3980 SELect ON flag
+3990   =0  : PRINT "No sense."
+3995   =2  : PRINT "No seek complete."
+4000   =4  : PRINT "Drive not ready."
+4010   =11 : PRINT "No medium in drive."
+4020   =12 : PRINT "Unrecognised medium."
+4030   =13 : PRINT "Medium is ejected."
+4040   =14 : PRINT "Medium is stuck."
+4050   =17 : PRINT "Uncorrectable error in data."
+4060   =21 : PRINT "Seek not complete."
+4070   =22 : PRINT "Header not found."
+4075   =26 : PRINT "Parameter list error."
+4080   =28 : PRINT "Not a digital audio track."
+4090   =29 : PRINT "Not a CD ROM data track."
+4100   =32 : PRINT "Invalid command."
+4110   =33 : PRINT "Invalid subcode address."
+4120   =34 : PRINT "Invalid command parameter."
+4130   =36 : PRINT "Invalid command sequence."
+4140   =37 : PRINT "Past the end of the medium."
+4145   =38 : PRINT "Invalid parameter field."
+4150   =40 : PRINT "Media changed."
+4160   =41 : PRINT "Drive has been reset."
+4170   =42 : PRINT "Error in parameter list."
+4180   =44 : PRINT "Not currently playing audio."
+4190   =45 : PRINT "Invalid message amid data."
+4200   =47 : PRINT "SCSI unit not specified."
+4210   =48 : PRINT "SCSI parity error."
+4220   =49 : PRINT "Drive demands attention."
+4230   =50 : PRINT "Command aborted."
+4235   =58 : PRINT "No medium in drive."
+4240   =62 : PRINT "Interface timeout."
+4241   =71 : PRINT "SCSI parity error."
+4242   =83 : PRINT "Medium change failed."
+4245   =100: PRINT "Track is not suitable."
+4250   =REMAINDER 
+4260         PRINT "Error code ";flag
+4270 END SELect 
+4280 END DEFine SCSI_REPORT
+4290 :
+4300 DEFine PROCedure PRINT_SENSE(op%)
+4310 LOCal flag
+4315 PRINT "SCSI sense indicates: ";
+4320 flag=op% && 15
+4330 SELect ON flag
+4340   =0 : PRINT "Nothing to report."
+4350   =1 : PRINT "Recovered from read error."
+4360   =2 : PRINT "Drive is not ready."
+4370   =3 : PRINT "Medium in drive is defective."
+4380   =4 : PRINT "Unrecoverable hardware error."
+4390   =5 : PRINT "Illegal request."
+4400   =6 : PRINT "Drive demands attention."
+4410   =7 : PRINT "Drive protected against changes."
+4420   =8 : PRINT "Medium is blank."
+4430   =9 : PRINT "Vendor unique status."
+4440   =10: PRINT "Copy aborted."
+4450   =11: PRINT "Command abnormally terminated."
+4460   =12: PRINT "Data matches."
+4470   =13: PRINT "Too much data for this medium."
+4480   =14: PRINT "Data does not match."
+4490   =15: PRINT "Reserved status."
+4500 END SELect 
+4510 END DEFine PRINT_SENSE
+4520 :
+4530 DEFine PROCedure CD_TRACKS
+4532 IF NOT NEC
+4534   TOSH_TRACKS
+4536 ELSE 
+4540 NCR_SELECT CD
+4550 NCR_IDENTIFY
+4560 COMMAND CHR$(HEX("DE")) & null$(1 TO 9)
+4565 IF StatusPhase%<>(PEEK(NCR_SBCL) && Phases%)
+4567   READ_DATA info$,4
+4568 END IF 
+4570 GET_STATUS
+4575 MESSAGE_IN
+4577 IF status=0
+4580   FirstTrack%=BCD(info$(1))
+4585   IF debugging : PRINT "Minimum track number ";FirstTrack%
+4590   LastTrack%=BCD(info$(2))
+4595   IF debugging : PRINT "Maximum track number ";LastTrack%
+4597 ELSE 
+4598   REQUEST_SENSE CD
+4600   FirstTrack%=1 : LastTrack%=0
+4602 END IF 
+4603 END IF 
+4605 END DEFine CD_TRACKS
+4610 :
+4620 DEFine FuNction BCD(x$)
+4630 RETurn 10 * (CODE(x$) DIV 16) + (CODE(x$) MOD 16)
+4640 END DEFine BCD
+4650 :
+4660 DEFine FuNction BCD2$(num%)
+4670 RETurn CHR$((num% MOD 10) + 16 * (num% DIV 10))
+4680 END DEFine BCD2$
+4685 :
+4690 DEFine PROCedure CD_EJECT
+4700 NCR_SELECT CD
+4710 NCR_IDENTIFY
+4720 COMMAND CHR$(HEX("DC")) & null$(1 TO 9)
+4780 GET_STATUS
+4785 IF status=0 : PRINT #0;"Disc ejected."
+4790 MESSAGE_IN
+4800 END DEFine CD_EJECT
+4810 :
+5010 DEFine PROCedure CD_PLAY(track%)
+5020 NCR_SELECT CD
+5030 NCR_IDENTIFY
+5035 IF NEC
+5040   COMMAND CHR$(HEX("D8")) & CHR$(1) & BCD2$(track%) & null$(1 TO 6) & CHR$(128)
+5043 ELSE 
+5045   COMMAND CHR$(72) & null$(1 TO 3) & CHR$(track%) & CHR$(1) & CHR$(0) & CHR$(LastTrack%) & CHR$(99) & CHR$(0)
+5047 END IF 
+5050 GET_STATUS
+5060 MESSAGE_IN
+5062 IF status
+5064   PRINT #0;"CD track"!track%!"doesn't want to play."
+5066   REQUEST_SENSE CD
+5068 END IF 
+5070 END DEFine CD_PLAY
+5080 :
+5090 DEFine PROCedure CD_PAUSE
+5100 NCR_SELECT CD
+5110 NCR_IDENTIFY
+5115 IF NEC
+5120   COMMAND CHR$(HEX("DA")) & null$(1 TO 9)
+5125 ELSE 
+5126   COMMAND CHR$(75) & null$(1 TO 9)
+5127 END IF 
+5130 GET_STATUS
+5140 MESSAGE_IN
+5150 END DEFine CD_PAUSE
+5160 :
+5170 DEFine PROCedure CD_CONTINUE
+5180 NCR_SELECT CD
+5190 NCR_IDENTIFY
+5195 IF NEC
+5200   COMMAND CHR$(HEX("D9")) & CHR$(4) &null$(1 TO 7) & CHR$(192)
+5210   REMark PLAY_AUDIO type 3 mode 4 (no change)
+5212 ELSE 
+5214   COMMAND CHR$(75) & null$(1 TO 7) & CHR$(1) & CHR$(0)
+5216 END IF 
+5220 GET_STATUS
+5230 MESSAGE_IN
+5240 END DEFine CD_CONTINUE
+5250 :
+5252 DEFine PROCedure CD_MENU
+5253 paused=-1 :REMark -2=Empty, -1=Stopped, 0=Playing, 1=Paused
+5254 IF NOT debugging
+5255   PAPER 0 : INK 4 : CLS
+5256   CSIZE 2,1
+5258   PRINT "Amiga QDOS SCSI CD PLAYER v1.1"
+5259   PRINT "Simon N Goodwin September 1995"
+5260   CSIZE 1,0
+5261   REMark CSIZE 1,0 is good for up to 63 tracks; to make room for the
+5262   REMark maximum of 99 use CSIZE 0,0 and boost window #1 to 23 lines
+5263   PRINT : INK 7
+5264   FOR i=14 TO 5 STEP -1.5 : CIRCLE 150,85,i
+5265 END IF 
+5266 DRIVE_IDENT CD
+5267 REPeat disc
+5268   IF NOT debugging
+5269     AT 6,0 : CLS 2 : PRINT \"Tracks ";
+5270     FOR t=FirstTrack% TO LastTrack%
+5280       PAPER 2 : PRINT !" " & NUM$(t) & "  "!
+5290       PAPER 0 : PRINT !!!
+5295       IF (t && 7)=7 AND LastTrack%<32 : PRINT \\
+5300     END FOR t
+5305   END IF 
+5310   PRINT \\
+5315   REPeat commands
+5317   IF NOT debugging: AT 16,0 : CLS 2
+5320   PAPER 4 : INK 2
+5325   IF paused=-2
+5327     PRINT " No CD currently active -";
+5328   ELSE 
+5330     PRINT " Select a track number or";
+5332   END IF 
+5335   PRINT " type the first letter of a command "
+5340   PAPER 0 : INK 4
+5350   PRINT \"   ";
+5355   IF paused>-2
+5360     IF paused>0 : PRINT "[C] Continue";
+5363     IF paused=0 : PRINT "[P] Pause";
+5366     IF paused<0 : PRINT "[S] Start"; :ELSE PRINT "   [S] Stop";
+5370     IF NEC : PRINT "   [E] Eject CD";
+5371   END IF
+5373   IF NOT NEC OR paused=-2 : PRINT "   [N] New CD";
+5374   END IF 
+5375   PRINT "   [Q] Quit"
+5380   PAPER 4
+5390   PRINT \,,,,,,,"     "
+5400   PAPER 0 : INK 7
+5410   k=CODE(INKEY$(#0,-1)) || 32
+5415   PRINT #0;CHR$(k)
+5420   SELect ON k
+5430     =CODE("c") : IF paused>0 : CD_CONTINUE : paused=0
+5440     =CODE("p") : IF paused=0 : CD_PAUSE : paused=1
+5450     =CODE("e")
+5455       IF paused>-2
+5456         FirstTrack%=1 : LastTrack%=0 :REMark effectively, none
+5457         CD_EJECT : paused=-2 : EXIT commands
+5458       END IF 
+5460     =CODE("n")
+5465       CD_CONTROL 3
+5466       REPeat poll : TEST_READY CD : IF NOT sense : EXIT poll
+5468       CD_TRACKS : IF NEC : paused=-1
+5469       EXIT commands
+5470     =CODE("s")
+5480       IF paused=-1
+5490         CD_PLAY 1 : IF NOT status : paused=0
+5500       ELSE 
+5510         IF paused>=0 : CD_CONTROL 0 : paused=-1
+5520       END IF 
+5530     =CODE("q") : MODE 8 : MODE 4 : STOP
+5540     =CODE("0") TO CODE("9") : k=k-48
+5545      IF paused>-2
+5550        IF k<=LastTrack% DIV 10
+5552          IF k=0 AND LastTrack%<20
+5553            CD_PLAY 1 : IF status=0 : paused=0 :REMark 0 can only mean 1!
+5554          ELSE 
+5555            GET_K2
+5556            IF k2<>27 : CD_PLAY k*10+(k2-48) : paused=0
+5557          END IF 
+5558        ELSE 
+5560          IF k>=FirstTrack% AND k<=LastTrack%:CD_PLAY k:IF status=0:paused=0
+5570        END IF 
+5580      END IF 
+5730   END SELect 
+5735   END REPeat commands
+5740 END REPeat disc
+5800 END DEFine CD_MENU
+5810 :
+5820 DEFine FuNction NUM$(q)
+5830 IF q>9 : RETurn q
+5835 IF LastTrack%<=9 : RETurn " " & q
+5837 IF q<=LastTrack% DIV 10
+5838   RETurn "0" & q
+5839 ELSE 
+5840   RETurn " " & q
+5842 END IF 
+5845 END DEFine NUM$
+5850 :
+5860 DEFine PROCedure GET_K2
+5870 REMark Lots of ad-hoc-ery here
+5900 CLS #0,116 : CLS #0,115 : PAN #0,0,115 :REMark Move cursor
+5910 REPeat poll
+5930   k2=CODE(INKEY$(#0,-1))
+5940   SELect ON k2=27,CODE("0") TO CODE ("9") : EXIT poll
+5945   IF k2=10 OR k2=32 : k2=k+58 : k=-1 : EXIT poll
+5950   POKE_W HEX("DFF180"),2560 : REMark Error - so blink palette
+5960   PAUSE 10
+5970   POKE_W HEX("DFF180"),0
+5975 END REPeat poll
+5980 IF k>=0 : PRINT #0;CHR$(k2) : ELSE PRINT #0
+5990 PAN #0,0,116 :REMark Cursor off
+6000 END DEFine GET_K2
+6010 :
+6590 DEFine PROCedure TOSH_TRACKS
+6600 NCR_SELECT CD
+6610 NCR_IDENTIFY
+6620 COMMAND CHR$(67) & null$(1 TO 7) & CHR$(4) & CHR$(0)
+6630 READ_DATA info$,4
+6640 FirstTrack%=CODE(info$(3))
+6650   IF debugging : PRINT "Minimum track number ";FirstTrack%
+6660 LastTrack%=CODE(info$(4))
+6670   IF debugging : PRINT "Maximum track number ";LastTrack%
+6680 GET_STATUS
+6690 MESSAGE_IN
+6700 END DEFine TOSH_TRACKS
+6710 :
+8500 DEFine PROCedure TEST_READY(unit%)
+8510 NCR_SELECT unit%
+8520 NCR_IDENTIFY
+8530 COMMAND null$(1 TO 6)
+8540 GET_STATUS
+8550 MESSAGE_IN
+8553 REQUEST_SENSE unit% :REMark Get full SENSE data
+8560 END DEFine TEST_READY
+8570 :
+8580 DEFine PROCedure CD_CONTROL(op%)
+8590 NCR_SELECT CD
+8600 NCR_IDENTIFY
+8610 COMMAND CHR$(27) & null$(1 TO 3) & CHR$(op% && 3) & null$(1)
+8620 GET_STATUS
+8630 MESSAGE_IN
+8640 END DEFine CD_CONTROL
+8650 :
+8860 DEFine PROCedure DRIVE_RESET(unit%)
+8870 NCR_SELECT unit%
+8875 RESET_DEVICE
+8877 REQUEST_SENSE unit%
+8880 END DEFine DRIVE_RESET
+8890 :
+8895 DEFine PROCedure DRIVE_ABORT(unit%)
+8900 REMark Test 2 - drive ABORT
+8910 NCR_SELECT unit%
+8920 NCR_ABORT
+8925 END DEFine DRIVE_ABORT
+8930 :
+8940 DEFine PROCedure DRIVE_IDENT(unit%)
+8945 NCR_SELECT unit%
+8950 NCR_IDENTIFY
+8960 REMark MESSAGE_IN
+8970 INQUIRY
+8980 GET_STATUS
+8985 MESSAGE_IN
+8990 END DEFine DRIVE_IDENT
+8995 :
+9000 DEFine PROCedure S
+9010 SAVE_O CD_PLAYER_BAS
+9020 END DEFine S

@@ -1,0 +1,30 @@
+Short:    set the date & time the easy way
+Author:   Mark J Swift
+Version:  1.02
+Uploader: msw@blackpool.ac.uk
+Type:     util/time
+
+This program displays the date & time and allows you to
+change it with the cursor keys.
+
+
+ARCHIVE CONTENTS
+
+ SET_DATE_bas     - simple program to set the date & time
+ SET_DATE_task    - above program turbo compiled
+ SET_DATE_readme  - this file
+
+
+FEATURES
+
+* simple and small
+* FREEWARE
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

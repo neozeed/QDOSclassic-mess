@@ -1,0 +1,38 @@
+Short:    exhaustive test of floppy disk driver
+Author:   Mark J Swift
+Version:  1.00
+Uploader: msw@blackpool.ac.uk
+Type:     misc
+
+This program continuously and randomly moves the contents
+of FLP1_ backwards and forwards between FLP1_ and RAM1_.
+If it moves a file to RAM1_ it deletes it from FLP1_.
+If it moves a file to FLP1_ it deletes it from RAM1_.
+Thus the directory of FLP1_ is shuffled, and given enough time
+the disk in FLP1_ will become extremely fragmented.
+
+Pressing a key exits the program.
+
+Used as an exhaustive test of the floppy disk driver.
+If after 30 mins the driver hasn't failed, then you can
+be pretty sure that your floppy driver is bug-free.
+
+
+ARCHIVE CONTENTS
+
+ FLPTEST_bas     - exhausive test of floppy disk driver
+ FLPTEST_readme  - this file
+
+
+FEATURES
+
+* FREEWARE
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

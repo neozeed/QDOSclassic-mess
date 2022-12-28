@@ -1,0 +1,13 @@
+*
+* Control link file for KEYBOARD ROM
+*
+SECTION KBD
+*
+* Start with the core initialisation code
+*
+INPUT CLSC_SRC_CORE_KBD_REL
+*
+* Now include the rest of the Assembler module(s)
+*
+INPUT CLSC_SRC_Q40_KBD_REL
+*

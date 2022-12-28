@@ -1,0 +1,132 @@
+100 REMark PALETTE Editor for Amiga Qdos 3.22 (AGA)
+110 REMark v1.6, Simon N Goodwin, July 1994
+120 REMark N.B. MODE changes reset the default palette
+130 :
+140 REMark IMPLICIT% t,p,c:REM For Turbo speed
+150 REMark DATA_AREA 1:REM Minimal dataspace needed
+160 :
+170 MODE 4
+180 PALETTE_ED
+190 STOP
+200 DEFine PROCedure PALETTE_ED
+210  LET custom="14675968":REMark OCS/ECS Chip Set base = $DFF000
+220  LET palbase=custom+256+128:REMark Offset to palette word 0
+230  OPEN #3,"scr_512x256a0x0"
+240  PTR_LIMITS 0,0,255,95
+250  PTR_INC 64,32
+260  PTR_POS 0,0
+270  PTR_ON
+280  SCR_PRIORITY 8,1
+290  SETUP
+300  INTERACT
+310  SCR_PRIORITY 4,1
+320  PTR_OFF
+330  PTR_LIMITS 0,0,255,255
+340  PTR_INC 4,8
+350  CLOSE#3
+360 END DEFine PALETTE_ED
+370 :
+380 DEFine PROCedure SETUP
+382  IF PEEK(custom+125)=248 THEN 
+384   REMark AGA, select low palette bits
+386   POKE_W custom+262,0
+388  END IF 
+390  INK #3,7:PAPER#3,0:CLS#3
+400  BLOCK#3;120,16,0,88,0
+410  BLOCK#3;120,16,128,88,2
+420  BLOCK#3;120,16,256,88,4
+430  BLOCK#3;120,16,384,88,7
+440  CURSOR #3,0,104
+450  CSIZE #3,3,0
+460  PRINT #3," INK 0    INK 2  INK 4   INK 7 "
+470  CSIZE#3;0,1
+480  CURSOR #3,506,6
+490  PRINT #3,"R"
+500  CURSOR #3,506,38
+510  PRINT #3,"G"
+520  CURSOR #3,506,70
+530  PRINT #3,"B"
+540  DIM c%(3,2):REMark Colour 0-3; R, G, B values 0-15
+550  LET red%=0: green%=1: blue%=2:REMark Index 2 for C%
+560  CSIZE #3,2,0
+570  INK #3,2
+580  RESTORE 900
+590  FOR c=0 TO 3
+600   FOR p=red%,green%,blue%
+610    READ c%(c,p)
+620    SLIDEBAR 3,c*128,p*32,INT(100*c%(c,p)/15)
+630   END FOR p
+640   UPDATE
+650  END FOR c
+660  CSIZE #3,2,1
+670  CURSOR #3,0,130
+680  PRINT #3;" ";
+690  PAPER #3,7
+700  STRIPEY #3;"Qdos PALETTE EDITOR v 1.6  "
+710  CSIZE #3,0,1
+720  STRIPEY #3;" 1994 Simon N Goodwin  "
+730  CSIZE #3,2,0
+740  PAPER #3,0
+750  INK #3,4
+760  CURSOR #3,0,160
+770  PRINT #3,"Use arrow keys to select RED, GREEN or"\"BLUE component of any QL colour."
+780  INK #3,2
+790  PRINT #3,\"Press ENTER to increase component, SPACE"\"to decrease it, or ESC to end."
+800 END DEFine SETUP
+810 :
+820 DEFine PROCedure UPDATE
+830 LOCal t%
+840 t%=c%(c,blue%)+c%(c,red%)*256+c%(c,green%)*16
+850 POKE_W palbase+c*2,t%
+860 CURSOR #3,32+c*128,114:PRINT #3,t%;"   ";
+870 END DEFine UPDATE
+880 :
+890 REMark Initial MODE 4 palette values (R,G,B)
+900 DATA 0,0,0,  15,0,0
+910 DATA 0,15,0, 15,15,15
+920 :
+930 DEFine PROCedure INTERACT
+940  LET p=red% : c=0 :REMark Start somewhere!
+950  SLCTBAR 3,c*128,p*32
+960  REPeat setbox
+970   k%=KEYROW(1)
+980   IF k% && 8 : EXIT setbox
+990   IF (k% && 1) : c%(c,p)=c%(c,p)+(c%(c,p)<15):SLIDEBAR 3,c*128,p*32,INT(100*c%(c,p)/15):REMark ENTER = Increase
+1000   IF (k% && 64): c%(c,p)=c%(c,p)-(c%(c,p)>0):SLIDEBAR 3,c*128,p*32,INT(100*c%(c,p)/15):REMark SPACE = Decrease
+1010   IF k% && 2:DESLCTBAR 3,c*128,p*32:c=c-(c>0):SLCTBAR 3,c*128,p*32
+1020   IF k% && 4:DESLCTBAR 3,c*128,p*32:p=p-(p>0):SLCTBAR 3,c*128,p*32
+1030   IF k% && 16:DESLCTBAR 3,c*128,p*32:c=c+(c<3):SLCTBAR 3,c*128,p*32
+1040   IF k% && 128:DESLCTBAR 3,c*128,p*32:p=p+(p<2):SLCTBAR 3,c*128,p*32
+1050   UPDATE
+1060  END REPeat setbox
+1070 END DEFine INTERACT
+1080 :
+1090 DEFine PROCedure STRIPEY(Ch%,text$)
+1100  LOCal t,col%
+1110  col%=2
+1120  FOR t=1 TO LEN(text$)
+1130   INK #Ch%,col%
+1140   col%=2-col%
+1150   PRINT #Ch%,text$(t);
+1160  END FOR t
+1170 END DEFine STRIPEY
+1180 :
+1190 DEFine PROCedure SLIDEBAR(Ch%,x%,y%,p%)
+1200  BLOCK#Ch%;112,1,x%+4,y%+2,7:BLOCK#Ch%;112,1,x%+4,y%+21,7:BLOCK#Ch%;2,20,x%+4,y%+2,7:BLOCK#Ch%;2,20,x%+114,y%+2,7
+1210  BLOCK#Ch%;108,18,x%+6,y%+3,0
+1220  BLOCK#Ch%;4,16,x%+p%+8,y%+4,7
+1230 END DEFine SLIDEBAR
+1240 :
+1250 DEFine PROCedure SLCTBAR(Ch%,x%,y%)
+1260  BLOCK#Ch%;120,2,x%,y%,0:BLOCK#Ch%;120,2,x%,y%+22,0:BLOCK#Ch%;4,24,x%,y%,0:BLOCK#Ch%;4,24,x%+116,y%,0
+1270  BLOCK#Ch%;120,1,x%,y%,7:BLOCK#Ch%;120,1,x%,y%+23,7:BLOCK#Ch%;2,24,x%,y%,7:BLOCK#Ch%;2,24,x%+118,y%,7
+1280 END DEFine SLCTBAR
+1290 :
+1300 DEFine PROCedure DESLCTBAR(Ch%,x%,y%)
+1310  BLOCK#Ch%;120,2,x%,y%,0:BLOCK#Ch%;120,2,x%,y%+22,0:BLOCK#Ch%;4,24,x%,y%,0:BLOCK#Ch%;4,24,x%+116,y%,0
+1320 END DEFine DESLCTBAR
+1330 :
+1340 DEFine PROCedure s
+1350  DELETE flp1_PALETTE_bas
+1360  SAVE flp1_PALETTE_bas
+1370 END DEFine s

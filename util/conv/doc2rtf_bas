@@ -1,0 +1,763 @@
+10  TURBO_objfil "ram1_DOC2RTF_task"
+11  TURBO_taskn "DOC2RTF"
+12  TURBO_repfil "scr"
+13  TURBO_windo 0
+14  TURBO_diags 'omit'
+15  TURBO_struct "S"
+16  TURBO_model "<"
+17  TURBO_objdat 10
+18  TURBO_optim "R"
+19 :
+1000 REMark ------------------------------
+1010 REMark    DOC2RTF_bas - Mark J Swift
+1020 :
+1052 REMark Thanks go to S N Goodwin for
+1053 REMark obtaining vital information
+1054 REMark about the DOC format, and to
+1055 REMark Chas Dillon for providing it
+1060 REMark ------------------------------
+1070 :
+1160 DIM InFile$(100),OutFile$(100),verstag$(4)
+1170 DIM RTFtbs%(256),RTFtbs$(256),K$(1),extra$(4),RTFo$(4096),t$(256),ANSI%(256)
+1180 cWdth=11880/98: REMark width of 10pt courier in 1/20 pts (approx)
+1190 verstag$="1.04":REMark this version
+1200 OPEN#3;"Con_456x144a28x12"
+1210 OPEN#4;"Scr_104x12a362x20"
+1220 OPEN#5;"Scr_436x52a38x99"
+1222 RESTORE 6040
+1224 FOR K=127 TO 255
+1226  READ ANSI%(K)
+1228 NEXT K
+1230 REPeat outer_loop
+1235  RETRY_HERE
+1240  IF COMPILED
+1241   WHEN ERRor 
+1242    PRINT #3\\"Error: "
+1243    REPORT #3,ERNUM
+1244    INPUT #3;\" Press ENTER to re-start.";Rplc$
+1245    RETRY
+1246   END WHEN 
+1247  END IF 
+1249  WINDOW#3;456,144,28,12:PAPER#3;0:INK#3;7:CLS#3:BORDER#3;3,2:BORDER#3;2,0:BORDER#3;1,2:WINDOW#3;438,130,36,19:BORDER#5;1,4:INK#5;4:PAPER#5;0
+1250  CSIZE#3;2,1:PRINT#3;"DOC2RTF v";verstag$:CSIZE#3;0,0
+1260  PRINT#3;"DOC file translation utility by MARK J SWIFT";
+1270  CLS#4:BORDER#4;1,7:INK#4;4:CLS#5
+1280  WINDOW#3;438,40,36,59
+1290  INK#5;4
+1300  PRINT#5;" DOC2RTF is a file utility that translates QUILL/XCHANGE doc files into"
+1310  PRINT#5;" rich text format (RTF)."
+1320  PRINT#5;\" RTF files can easily be read into most PC and Apple Macintosh"
+1330  PRINT#5;" word-processors and DTP applications."
+1370  INPUT#3;\"      Input source DOC filename  >";InFile$
+1380  IF InFile$="" THEN EXIT outer_loop
+1390  INPUT#3;" Input destination RTF filename  >";OutFile$
+1400  IF OutFile$="" THEN EXIT outer_loop
+1410  CLS#5
+1419  DOCbeginDocument InFile$
+1420  RTFleading=240
+1421  IF (DOChjust<>0) THEN DOCdoHeader
+1422  IF (DOCfjust<>0) THEN DOCdoFooter
+1423  DOCclearEnhance
+1425  SET_POSITION#6,tblOffs+22+14+14
+1427  RTFleading=240*(1+DOCLineGap)
+1430  REPeat tblLoop
+1440   IF DOCdone% THEN EXIT tblLoop
+1450   DOCdoParagraph
+1460   IF txtOffs>tblOffs THEN 
+1470    BLOCK#4;100,10,0,0,4
+1480   ELSE 
+1490    BLOCK#4;INT((txtOffs/tblOffs)*100),10,0,0,4
+1500   END IF 
+1510  END REPeat tblLoop
+1520  DOCendDocument
+1540 END REPeat outer_loop
+1550 CLOSE#3
+1560 CLOSE#4
+1570 CLOSE#5
+1580 STOP
+1581 :
+1582 DEFine FuNction HEX4$(b%)
+1583  RETurn "0123456789abcdef"(b%+1)
+1584 END DEFine 
+1585 DEFine FuNction HEX8$(c%)
+1586  RETurn HEX4$(c% DIV 16)&HEX4$(c% && 15)
+1587 END DEFine 
+1590 :
+1600 DEFine PROCedure DOCbeginDocument(InFile$)
+1610  OPEN_IN#6,InFile$
+1620  SET_POSITION#6,10
+1630  tblOffs=STRINGL(INPUT$(#6,4))
+1641  tblLen=STRING%(INPUT$(#6,2))
+1645  PagOffs=tblOffs+tblLen
+1647  PagLen=STRING%(INPUT$(#6,2))
+1648  GenOffs=PagOffs+PagLen
+1649  GenLen=STRING%(INPUT$(#6,2))
+1650  RulOffs=GenOffs+20
+1651  rulLen=GenLen-20
+1652  GenLen=20
+1659  OPEN_IN#7,InFile$
+1660  DOCclearEnhance
+1670  DOCrulID=0
+1680  SET_POSITION#6,GenOffs
+1681  DOCbotM=CODE(INKEY$(#6,-1))
+1689  K=CODE(INKEY$(#6,-1))
+1690  SELect ON K
+1691  =1:DOCpwid=40
+1692  =2:DOCpwid=64
+1693  =REMAINDER :DOCpwid=80
+1694  END SELect 
+1695  RTFpwid=INT(cWdth*DOCpwid+.5)
+1696  SET_POSITION#6,GenOffs+2
+1697  DOCLineGap=CODE(INKEY$(#6,-1))
+1698  DOCLinePP=CODE(INKEY$(#6,-1))
+1699  DOCStartPag=CODE(INKEY$(#6,-1))
+1700  SET_POSITION#6,GenOffs+6
+1701  DOCtopM=CODE(INKEY$(#6,-1))
+1702  SET_POSITION#6,GenOffs+14
+1703  DOChjust=CODE(INKEY$(#6,-1))
+1704  DOCfjust=CODE(INKEY$(#6,-1))
+1705  DOChGap=CODE(INKEY$(#6,-1))
+1706  DOCfGap=CODE(INKEY$(#6,-1))
+1707  IF (DOCLinePP<=0) OR (DOCLinePP>70) THEN DOCLinePP=66
+1708  RTFextra=240*(70-DOCLinePP)/2
+1709  RTFheadery=240*DOCtopM+RTFextra
+1710  RTFfootery=240*DOCbotM+RTFextra
+1711  RTFmargt=RTFheadery
+1712  IF (DOChjust<>0) THEN RTFmargt=RTFmargt+240*(1+DOChGap)
+1713  RTFmargb=RTFfootery
+1714  IF (DOCfjust<>0) THEN RTFmargb=RTFmargb+240*(DOCfGap+1)
+1717  RTFstartPag=DOCStartPag
+1720  RTFbeginDocument OutFile$
+1730 END DEFine 
+1740 :
+1750 DEFine PROCedure DOCendDocument
+1760  CLOSE#6
+1770  CLOSE#7
+1780  RTFendDocument
+1790 END DEFine 
+1800 :
+1810 DEFine FuNction DOCdone%
+1811  RETurn POSITION(#7)>=tblOffs
+1812 END DEFine 
+1813 :
+1814 DEFine PROCedure DOCdoFooter
+1815  RTFbeginFooter
+1816  SET_POSITION#6,tblOffs+22+14
+1817  txtOffs=STRINGL(INPUT$(#6,4))
+1818  SET_POSITION#6,GenOffs+15
+1819  DOCdoHeaderFooter
+1820  RTFendFooter
+1821 END DEFine 
+1822 :
+1823 DEFine PROCedure DOCdoHeader
+1824  RTFbeginHeader
+1825  SET_POSITION#6,tblOffs+22
+1826  txtOffs=STRINGL(INPUT$(#6,4))
+1827  SET_POSITION#6,GenOffs+14
+1828  DOCdoHeaderFooter
+1829  RTFendHeader
+1830 END DEFine 
+1831 :
+1832 DEFine PROCedure DOCdoHeaderFooter
+1833  DOCclearEnhance
+1834  DOCjFlg=CODE(INKEY$(#6,-1))
+1835  SELect ON DOCjFlg
+1836  =1:RTFleftAlign
+1837  =2:RTFcentreAlign
+1838  =3:RTFrightAlign
+1839  END SELect 
+1840  extra$=INKEY$(#6,-1)
+1841  extra$=INPUT$(#6,2)
+1842  Kk=CODE(INKEY$(#6,-1))
+1843  IF Kk<>0 THEN DOCbold
+1844  SET_POSITION#7,txtOffs
+1845  REPeat txtLoop
+1846   IF EOF(#7) THEN EXIT txtLoop
+1847   K$=INKEY$(#7,-1)
+1848   K=CODE(K$)
+1849   IF K=0 THEN EXIT txtLoop
+1850   RTFoutChar K$
+1851  END REPeat txtLoop
+1852  IF Kk<>0 THEN DOCbold
+1853  REPeat loop
+1854   K="nnn" INSTR RTFo$
+1855   IF K=0 THEN K="aaa" INSTR RTFo$
+1856   IF K=0 THEN EXIT loop
+1857   IF K=(LEN(RTFo$)-2) THEN 
+1858    RTFo$=RTFo$(1 TO K-1)&"\chpgn "
+1859   ELSE 
+1860    RTFo$=RTFo$(1 TO K-1)&"\chpgn "&RTFo$(K+3 TO LEN(RTFo$))
+1861   END IF 
+1862  END REPeat loop
+1865 END DEFine 
+1866 :
+1867 DEFine PROCedure DOCdoParagraph
+1868  DOCclearEnhance
+1869  txtOffs=STRINGL(INPUT$(#6,4))
+1870  IF txtOffs<>0 THEN 
+1890   extra$=INPUT$(#6,2)
+1900   extra$=INKEY$(#6,-1)
+1910   t=CODE(INKEY$(#6,-1)):IF t>128 THEN t=128-t
+1920   RTFleftIndent INT((t+1)*cWdth+.5)
+1930   t=CODE(INKEY$(#6,-1)):IF t>128 THEN t=128-t
+1940   RTFfirstIndent (INT((t+1)*cWdth+.5)-RTFli)
+1950   t=CODE(INKEY$(#6,-1)):IF t>128 THEN t=128-t
+1960   RTFrightIndent INT(RTFpwid-t*cWdth+.5)
+1970   DOCjFlg=CODE(INKEY$(#6,-1))
+1980   SELect ON DOCjFlg
+1990   =0:RTFleftAlign
+2000   =1:RTFcentreAlign
+2010   =2:RTFjustify
+2020   END SELect 
+2021   K=CODE(INKEY$(#6,-1))
+2022   IF K<>DOCrulID THEN 
+2023    DOCrulID=K
+2024    SET_POSITION#7,RulOffs
+2025    REPeat loop
+2026     K=CODE(INKEY$(#7,-1))
+2027     L=CODE(INKEY$(#7,-1))-2
+2028     IF K=DOCrulID THEN EXIT loop
+2029     IF L>0 THEN K$=INPUT$(#7,L)
+2030    END REPeat loop
+2031    RTFnTbs%=0
+2032    FOR i=1 TO L/2
+2033     K=CODE(INKEY$(#7,-1))
+2035     Kk=CODE(INKEY$(#7,-1))
+2036     SELect ON Kk
+2037     =0:RTFtab INT((K+1)*cWdth+.5),"L"
+2038     =1:RTFtab INT((K+1)*cWdth+.5),"C"
+2039     =2:RTFtab INT((K+1)*cWdth+.5),"R"
+2040     =3:RTFtab INT((K+1)*cWdth+.5),"D"
+2041     END SELect 
+2044    END FOR i
+2045    RTFleftIndent RTFli
+2047   END IF 
+2049   extra$=INPUT$(#6,2)
+2050   RTFbeginParagraph
+2055   SET_POSITION#7,txtOffs
+2060   REPeat txtLoop
+2070    IF EOF(#7) THEN EXIT txtLoop
+2080    K$=INKEY$(#7,-1)
+2090    K=CODE(K$)
+2100    IF K=0 THEN EXIT txtLoop
+2110    SELect ON K
+2115    =9:RTFtabout
+2120    =15:DOCbold
+2130    =18:DOCsuperscript
+2140    =17:DOCsubscript
+2150    =16:DOCunderline
+2160    =30:RTFoutChar "-"
+2165    =12:DOCpagFlg%=1
+2170    =REMAINDER : RTFoutChar K$
+2180    END SELect 
+2190   END REPeat txtLoop
+2200   RTFendParagraph
+2210  END IF 
+2220 END DEFine 
+2221 :
+2222 DEFine PROCedure DOCclearEnhance
+2223  DOCbldFlg%=0
+2224  DOCitaFlg%=0
+2225  DOCundFlg%=0
+2226  DOCcndFlg%=0
+2227  DOCsupFlg%=0
+2228  DOCsubFlg%=0
+2229 END DEFine 
+2230 :
+2240 DEFine PROCedure DOCbold
+2250  DOCbldFlg%=1-DOCbldFlg%
+2260  IF DOCbldFlg% THEN 
+2270   RTFboldON
+2280  ELSE 
+2290   RTFboldOFF
+2300  END IF 
+2310 END DEFine 
+2320 :
+2330 DEFine PROCedure DOCsuperscript
+2340  DOCsupFlg%=1-DOCsupFlg%
+2350  IF DOCsupFlg% THEN 
+2360   RTFsuperscriptON
+2370  ELSE 
+2380   RTFsuperscriptOFF
+2390  END IF 
+2400 END DEFine 
+2410 :
+2420 DEFine PROCedure DOCsubscript
+2430  DOCsubFlg%=1-DOCsubFlg%
+2440  IF DOCsubFlg% THEN 
+2450   RTFsubscriptON
+2460  ELSE 
+2470   RTFsubscriptOFF
+2480  END IF 
+2490 END DEFine 
+2500 :
+2510 DEFine PROCedure DOCunderline
+2520  DOCundFlg%=1-DOCundFlg%
+2530  IF DOCundFlg% THEN 
+2540   RTFunderlineON
+2550  ELSE 
+2560   RTFunderlineOFF
+2570  END IF 
+2580 END DEFine 
+2590 :
+2600 DEFine PROCedure RTFbeginDocument(OutFile$)
+2610 :
+2620  RTFclearEnhance
+2690  RTFclearStyle
+2790 :
+2800  rtfparFlg%=0
+2830 :
+2835  DELETE OutFile$
+2840  OPEN_NEW#9,OutFile$
+2850  PRINT#9,"{\rtf0 \ansi"
+2860  PRINT#9,""
+2870  PRINT#9,"{\fonttbl"
+2880  PRINT#9,"{\f22 \fmodern Courier;}"
+2890  PRINT#9,"}"
+2900  PRINT#9,""
+2910  PRINT#9,"{\stylesheet"
+2920  PRINT#9,"{\s243 \qc \f22 \fs20 \sbasedon0 \snext243 footer;}"
+2930  PRINT#9,"{\s244 \qc \f22 \fs20 \sbasedon0 \snext244 header;}"
+2940  PRINT#9,"{\f22 \fs20 \sbasedon222 \snext0 Normal;}"
+2950  PRINT#9,"}"
+2960  PRINT#9,""
+2961  RTFmargl=1080
+2962  RTFmargr=11880-RTFpwid-RTFmargl
+2970  PRINT#9,"\paperw11880 \paperh16800 \deftab";INT(cWdth*5)
+2975  PRINT#9,"\margl";RTFmargl;" \margr";RTFmargr;" \margt";-RTFmargt;" \margb";-RTFmargb
+2980  PRINT#9,"\widowctrl \ftnbj \pgnstart";RTFstartPag;" \fracwidth "
+2985  PRINT#9,"\sectd \linemod0 \linex0 \headery";RTFheadery;" \footery";RTFfootery;" \cols1 \endnhere"
+2990  PRINT#9,"\plain \f22 \fs20 "
+3000  PRINT#9,""
+3010  RTFo$=""
+3020 END DEFine 
+3030 :
+3040 DEFine PROCedure RTFendDocument
+3050 :
+3060  IF rtfparFlg% THEN 
+3070    RTFendParagraph
+3080  END IF 
+3090 :
+3100  PRINT#9,"}"
+3110  CLOSE#9
+3120 END DEFine 
+3121 :
+3122 DEFine PROCedure RTFbeginHeader
+3123  PRINT#9;"{\header ":RTFbeginParagraph:RTFo$=RTFo$&"\s244 \f22 \fs20 "
+3124 END DEFine 
+3125 :
+3126 DEFine PROCedure RTFendHeader
+3128  RTFendParagraph:PRINT#9;"}":RTFclearStyle
+3129 END DEFine 
+3130 :
+3132 DEFine PROCedure RTFbeginFooter
+3133  PRINT#9;"{\footer ":RTFbeginParagraph:RTFo$=RTFo$&"\s243 \f22 \fs20 "
+3134 END DEFine 
+3135 :
+3136 DEFine PROCedure RTFendFooter
+3137  RTFendParagraph :PRINT#9;"}":RTFclearStyle
+3138 END DEFine 
+3139 :
+3140 DEFine PROCedure RTFbeginParagraph
+3150  IF rtfparFlg% THEN 
+3160   RTFendParagraph
+3200  END IF 
+3220  rtfparFlg%=1
+3225  RTFclearEnhance
+3227  DOCpagFlg%=0
+3230 END DEFine 
+3240 :
+3250 DEFine PROCedure RTFendParagraph
+3260  IF rtfparFlg% THEN 
+3270    RTFendEnhance
+3280    RTFo$=RTFo$&"\par "
+3285    RTFflushStyle
+3290    PRINT#9,RTFo$
+3295    RTFclearEnhance
+3300    RTFo$=""
+3310    rtfparFlg%=0
+3315    IF DOCpagFlg%<>0 THEN 
+3316     RTFpagebreak
+3317     DOCpagFlg%=0
+3318    END IF 
+3320  END IF 
+3330 END DEFine 
+3331 :
+3332 DEFine PROCedure RTFclearStyle
+3333  RTFdefli=0
+3334  RTFdeffi=0
+3335  RTFdefri=0
+3336  RTFli=RTFdefli
+3337  RTFfi=RTFdeffi
+3338  RTFri=RTFdefri
+3339 :
+3340  RTFalignFlg%=0
+3341 :
+3342  RTFnTbs%=0
+3344 :
+3345  RTFstyleFlg%=0
+3348 END DEFine 
+3349 :
+3350 DEFine PROCedure RTFleftAlign
+3360  IF RTFalignFlg%<>0 THEN 
+3370   RTFalignFlg%=0
+3380   RTFstyleFlg%=1
+3390  END IF 
+3400 END DEFine 
+3410 :
+3420 DEFine PROCedure RTFrightAlign
+3430  IF RTFalignFlg%<>1 THEN 
+3440   RTFalignFlg%=1
+3450   RTFstyleFlg%=1
+3460  END IF 
+3470 END DEFine 
+3480 :
+3490 DEFine PROCedure RTFcentreAlign
+3500  IF RTFalignFlg%<>2 THEN 
+3510   RTFalignFlg%=2
+3520   RTFstyleFlg%=1
+3530  END IF 
+3540 END DEFine 
+3550 :
+3560 DEFine PROCedure RTFjustify
+3570  IF RTFalignFlg%<>3 THEN 
+3580   RTFalignFlg%=3
+3590   RTFstyleFlg%=1
+3600  END IF 
+3610 END DEFine 
+3620 :
+3630 DEFine PROCedure RTFleftIndent(N)
+3640  REMark n - units of pts/20 as measured from the left margin
+3650  IF N<>RTFli THEN 
+3660    RTFli=N
+3670    RTFstyleFlg%=1
+3680  END IF 
+3682  IF RTFstyleFlg%<>0 THEN 
+3685   RTFclearSoftTabs
+3690   RTFtab N,"S"
+3695  END IF 
+3700 END DEFine 
+3710 :
+3720 DEFine PROCedure RTFfirstIndent(N)
+3730  REMark n - units of pts/20 as measured from the left indent
+3740  IF N<>RTFfi THEN 
+3750    RTFfi=N
+3760    RTFstyleFlg%=1
+3770  END IF 
+3780 END DEFine 
+3790 :
+3800 DEFine PROCedure RTFrightIndent(N)
+3810  REMark n - units of pts/20 as measured from the right margin
+3820  IF N<>RTFri THEN 
+3830    RTFri=N
+3840    RTFstyleFlg%=1
+3850  END IF 
+3860 END DEFine 
+3861 :
+3862 DEFine PROCedure RTFclearSoftTabs
+3863  i=1
+3864  REPeat loop
+3865   IF i>RTFnTbs% THEN EXIT loop
+3866   IF RTFtbs$(i)=="S" THEN 
+3867    FOR j=i TO RTFnTbs%-1
+3868     RTFtbs%(j)=RTFtbs%(j+1)
+3869     RTFtbs$(j)=RTFtbs$(j+1)
+3870    END FOR j
+3871    RTFnTbs%=RTFnTbs%-1
+3872    RTFstyleFlg%=1
+3873   END IF 
+3874   i=i+1
+3875   END REPeat loop
+3878  END DEFine 
+3879 :
+3880 DEFine PROCedure RTFtab(N,t$)
+3890  LOCal i,j,loop
+3900  REMark n  - units of pts/20 as measured from the left margin
+3910  REMark t$ - L=left tab, C=centre tab, R=right tab, D=decimal tab, X=remove tab
+3920 :
+3930  i=1
+3940  REPeat loop
+3950    IF ((i>RTFnTbs%) OR (RTFtbs%(i)>=N)) THEN EXIT loop
+3960    i=i+1
+3970  END REPeat loop
+3980 :
+3981  IF t$=="X" THEN 
+3982   IF i<=RTFnTbs% THEN 
+3983    REMark remove old tab
+3984    FOR j=i TO RTFnTbs%-1
+3985     RTFtbs%(j)=RTFtbs%(j+1)
+3986     RTFtbs$(j)=RTFtbs$(j+1)
+3987    END FOR j
+3988    RTFnTbs%=RTFnTbs%-1
+3989    RTFstyleFlg%=1
+3990   END IF 
+3991  ELSE 
+3992   IF i>RTFnTbs% THEN 
+3995    REMark add new tab to end of Q
+4000    RTFnTbs%=RTFnTbs%+1
+4010    RTFtbs%(RTFnTbs%)=N
+4020    RTFtbs$(RTFnTbs%)=t$
+4030    RTFstyleFlg%=1
+4040   ELSE 
+4050    IF N=RTFtbs%(i) THEN 
+4055     REMark replace old tab with new
+4059     IF NOT(t$=="S") THEN 
+4060      IF RTFtbs$(i)<>t$ THEN 
+4070       RTFtbs$(i)=t$
+4080       RTFstyleFlg%=1
+4090      END IF 
+4095     END IF 
+4100    ELSE 
+4105     REMark insert new tab
+4110     RTFnTbs%=RTFnTbs%+1
+4120     FOR j=RTFnTbs%-1 TO i STEP -1
+4130      RTFtbs%(j+1)=RTFtbs%(j)
+4140      RTFtbs$(j+1)=RTFtbs$(j)
+4150     NEXT j
+4160     RTFtbs%(i)=N
+4170     RTFtbs$(i)=t$
+4180     RTFstyleFlg%=1
+4190    END IF 
+4195   END IF 
+4200  END IF 
+4210 :
+4220 END DEFine 
+4230 :
+4240 DEFine PROCedure RTFflushStyle
+4250  LOCal i,t
+4260 :
+4270  IF RTFstyleFlg% THEN 
+4280    t=RTFalignFlg%
+4290    SELect ON t
+4300    =0:t$="\pard "
+4310    =1:t$="\pard \qr "
+4320    =2:t$="\pard \qc "
+4330    =3:t$="\pard \qj "
+4340    END SELect 
+4350 :
+4355    t$=t$&"\sl"&RTFleading&" "
+4357 :
+4360    IF RTFli<>RTFdefli THEN 
+4370     t$=t$&"\li"&RTFli&" "
+4380    END IF 
+4390 :
+4400    IF RTFfi<>RTFdeffi THEN 
+4410     t$=t$&"\fi"&RTFfi&" "
+4420    END IF 
+4430 :
+4440    IF RTFri<>RTFdefri THEN 
+4450     t$=t$&"\ri"&RTFri&" "
+4460    END IF 
+4470 :
+4480    IF RTFnTbs%<>0 THEN 
+4490      FOR i=1 TO RTFnTbs%
+4500        t=CODE(RTFtbs$(i))
+4510        SELect ON t
+4520        =CODE("L"),CODE("S")
+4530          REMark left or soft tab
+4540          t$=t$&"\tx"&RTFtbs%(i)&" "
+4550        =CODE("C")
+4560          REMark centre tab
+4570          t$=t$&"\tqc\tx"&RTFtbs%(i)&"  "
+4580        =CODE("R")
+4590          REMark right tab
+4600          t$=t$&"\tqr\tx"&RTFtbs%(i)&" "
+4610        =CODE("D")
+4620          REMark decimal tab
+4630          t$=t$&"\tqdec\tx"&RTFtbs%(i)&" "
+4640        END SELect 
+4650      NEXT i
+4660    END IF 
+4670 :
+4680    RTFo$=t$&RTFo$
+4690 :
+4700    RTFstyleFlg%=0
+4710  END IF 
+4720 END DEFine 
+4730 :
+4740 DEFine PROCedure RTFboldON
+4750  IF RTFbldFlg%=0 THEN 
+4760   RTFendEnhance
+4770   RTFbldFlg%=1
+4775   RTFenhFlg%=1
+4780  END IF 
+4790 END DEFine 
+4800 :
+4810 DEFine PROCedure RTFboldOFF
+4820  IF RTFbldFlg%<>0 THEN 
+4830   RTFendEnhance
+4840   RTFbldFlg%=0
+4845   RTFenhFlg%=RTFbldFlg%||RTFitaFlg%||RTFundFlg%||RTFcndFlg%||RTFsupFlg%||RTFsubFlg%
+4850  END IF 
+4860 END DEFine 
+4870 :
+4880 DEFine PROCedure RTFitalicON
+4890  IF RTFitaFlg%=0 THEN 
+4900   RTFendEnhance
+4910   RTFitaFlg%=1
+4915   RTFenhFlg%=1
+4920  END IF 
+4930 END DEFine 
+4940 :
+4950 DEFine PROCedure RTFitalicOFF
+4960  IF RTFitaFlg%<>0 THEN 
+4970   RTFendEnhance
+4980   RTFitaFlg%=0
+4985   RTFenhFlg%=RTFbldFlg%||RTFitaFlg%||RTFundFlg%||RTFcndFlg%||RTFsupFlg%||RTFsubFlg%
+4990  END IF 
+5000 END DEFine 
+5010 :
+5020 DEFine PROCedure RTFunderlineON
+5030  IF RTFundFlg%=0 THEN 
+5040   RTFendEnhance
+5050   RTFundFlg%=1
+5055   RTFenhFlg%=1
+5060  END IF 
+5070 END DEFine 
+5080 :
+5090 DEFine PROCedure RTFunderlineOFF
+5100  IF RTFundFlg%<>0 THEN 
+5110   RTFendEnhance
+5120   RTFundFlg%=0
+5125   RTFenhFlg%=RTFbldFlg%||RTFitaFlg%||RTFundFlg%||RTFcndFlg%||RTFsupFlg%||RTFsubFlg%
+5130  END IF 
+5140 END DEFine 
+5150 :
+5160 DEFine PROCedure RTFcondensedON
+5170  IF RTFcndFlg%=0 THEN 
+5180   RTFendEnhance
+5190   RTFcndFlg%=1
+5195   RTFenhFlg%=1
+5200  END IF 
+5210 END DEFine 
+5220 :
+5230 DEFine PROCedure RTFcondensedOFF
+5240  IF RTFcndFlg%<>0 THEN 
+5250   RTFendEnhance
+5260   RTFcndFlg%=0
+5265   RTFenhFlg%=RTFbldFlg%||RTFitaFlg%||RTFundFlg%||RTFcndFlg%||RTFsupFlg%||RTFsubFlg%
+5270  END IF 
+5280 END DEFine 
+5290 :
+5300 DEFine PROCedure RTFsuperscriptON
+5310  IF RTFsupFlg%=0 THEN 
+5320   RTFendEnhance
+5330   RTFsupFlg%=1
+5335   RTFenhFlg%=1
+5340  END IF 
+5350 END DEFine 
+5360 :
+5370 DEFine PROCedure RTFsuperscriptOFF
+5380  IF RTFsupFlg%<>0 THEN 
+5390   RTFendEnhance
+5400   RTFsupFlg%=0
+5405   RTFenhFlg%=RTFbldFlg%||RTFitaFlg%||RTFundFlg%||RTFcndFlg%||RTFsupFlg%||RTFsubFlg%
+5410  END IF 
+5420 END DEFine 
+5430 :
+5440 DEFine PROCedure RTFsubscriptON
+5450  IF RTFsubFlg%=0 THEN 
+5460   RTFendEnhance
+5470   RTFsubFlg%=1
+5475   RTFenhFlg%=1
+5480  END IF 
+5490 END DEFine 
+5500 :
+5510 DEFine PROCedure RTFsubscriptOFF
+5520  IF RTFsubFlg%<>0 THEN 
+5530   RTFendEnhance
+5540   RTFsubFlg%=0
+5545   RTFenhFlg%=RTFbldFlg%||RTFitaFlg%||RTFundFlg%||RTFcndFlg%||RTFsupFlg%||RTFsubFlg%
+5550  END IF 
+5560 END DEFine 
+5570 :
+5580 DEFine PROCedure RTFendEnhance
+5590  IF RTFenhFlg%=0 THEN 
+5595   IF (RTFbldFlg%||RTFitaFlg%||RTFundFlg%||RTFcndFlg%||RTFsupFlg%||RTFsubFlg%) THEN 
+5600    RTFo$=RTFo$&"}"
+5605   END IF 
+5606  END IF 
+5607 END DEFine 
+5608 :
+5609 DEFine PROCedure RTFclearEnhance
+5610  RTFbldFlg%=0
+5620  RTFitaFlg%=0
+5630  RTFundFlg%=0
+5640  RTFcndFlg%=0
+5650  RTFsupFlg%=0
+5660  RTFsubFlg%=0
+5670  RTFenhFlg%=0
+5690 END DEFine 
+5700 :
+5710 DEFine PROCedure RTFflushEnhance
+5720  IF RTFenhFlg% THEN 
+5730   RTFo$=RTFo$&"{"
+5740   IF RTFbldFlg% THEN 
+5750    RTFo$=RTFo$&"\b "
+5760   END IF 
+5770   IF RTFitaFlg% THEN 
+5780    RTFo$=RTFo$&"\i "
+5790   END IF 
+5800   IF RTFundFlg% THEN 
+5810    RTFo$=RTFo$&"\ul "
+5820   END IF 
+5830   IF RTFcndFlg% THEN 
+5840    RTFo$=RTFo$&"\expnd58 "
+5850   END IF 
+5860   IF RTFsupFlg% THEN 
+5870    RTFo$=RTFo$&"\up6 "
+5880   END IF 
+5890   IF RTFsubFlg% THEN 
+5900    RTFo$=RTFo$&"\dn4 "
+5910   END IF 
+5920  END IF 
+5930  RTFenhFlg%=0
+5940 END DEFine 
+5950 :
+5951 DEFine PROCedure RTFtabout
+5952  IF RTFenhFlg% THEN RTFflushEnhance
+5953  RTFo$=RTFo$&"\tab "
+5954 END DEFine 
+5955 :
+5956 DEFine PROCedure RTFpagebreak
+5957  PRINT#9;"\page "
+5958 END DEFine 
+5959 :
+5960 DEFine PROCedure RTFoutChar(t$)
+5965  LOCal K
+5970  IF RTFenhFlg% THEN RTFflushEnhance
+5992  K=CODE(t$)
+5993  SELect ON K
+5995  =CODE("{"),CODE("}"),CODE("\"):RTFo$=RTFo$&"\"&t$
+5996  =32 TO 126:RTFo$=RTFo$&t$
+5997  =127 TO 255
+5998   c%=ANSI%(K)
+5999   IF c%<128 THEN 
+6000    RTFo$=RTFo$&CHR$(c%)
+6001   ELSE 
+6002    RTFo$=RTFo$&"\'"&HEX8$(c%)
+6003   END IF 
+6004  =REMAINDER :PRINT#5;"<";K;"> ";
+6005  END SELect 
+6010 END DEFine 
+6020 :
+6030 REMark QL ASCII TO ANSI CODE CONVERSION TABLE, ENTERED BY SIMON N GOODWIN.
+6040 DATA 169, 228, 227                                    : REMark 127 .. 129
+6050 DATA 229, 233, 246, 245, 248, 252, 231, 241, 230,  69 : REMark 130 .. 139
+6060 DATA 225, 224, 226, 235, 232, 234, 239, 237, 236, 238 : REMark 140 .. 149
+6070 DATA 243, 242, 244, 250, 249, 251, 223, 162, 165,  96 : REMark 150 .. 159
+6080 DATA 196, 195, 197, 201, 214, 213, 216, 220, 199, 209 : REMark 160 .. 169
+6090 DATA 198,  63,  63, 240,  63,  63, 181,  63,  63, 161 : REMark 170 .. 179
+6100 DATA 191,  63, 167, 164, 171, 187, 176, 247,  63,  63 : REMark 180 .. 189
+6110 DATA  63,  63,  63,  63,  63,  63,  63,  63,  63,  63 : REMark 190 .. 199
+6120 DATA  63,  63,  63,  63,  63,  63,  63,  63,  63,  63 : REMark 200 .. 209
+6130 DATA  63,  63,  63,  63,  63,  63,  63,  63,  63,  63 : REMark 210 .. 219
+6140 DATA  63,  63,  63,  63,  63,  63,  63,  63,  63,  63 : REMark 220 .. 229
+6150 DATA  63,  63,  63,  63,  63,  63,  63,  63,  63,  63 : REMark 230 .. 239
+6160 DATA  63,  63,  63,  63,  63,  63,  63,  63,  63,  63 : REMark 240 .. 249
+6170 DATA  63,  63,  63,  63,  63,  63                     : REMark 250 .. 255
+6180 REMark MISSING: oe/OE ellipsis (139, 171), Alpha, Theta, Lambda, Pi, Phi (172,
+6190 REMark 174, 175, 177, 178), Backward S (181), arrowheads (188, 189, 190, 191).
+6200 REMark This SuperBASIC show Qdos codes: FOR I=127 TO 191 : PRINT I!!CHR$(I)!!!
+6210 REMark This table translates QL & Thor Quill accents and other non 7 bit ASCII
+6220 REMark codes into the ANSI character codes used by Amiga AND Windoze programs.

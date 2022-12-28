@@ -1,0 +1,315 @@
+*/beginfile PROCESSOR_asm
+; --------------------------------------------------------------
+; PROCESSOR_asm - QDOS processor specific routines
+;	       - last modified 22/02/98
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...latest changes by Mark J Swift
+;    ...68040/68060 changes by SNG, 16/8/94
+; --------------------------------------------------------------
+;*/beginoverlay
+; -------------------------------------------------------------
+;    create attention flags (check processor type)
+
+;    bit 0 - at least 68010
+;    bit 1 - at least 68020
+;    bit 2 - at least 68030
+;    bit 3 - at least 68040
+;    bit 4 - at least 68881 (possibly 68882)
+;    bit 5 - 68882 present (or emulation)
+;    bit 6 - 68040 or 68060 on-chip FPU enabled
+;    bit 7 - at least 68060
+;
+; Note: If the MC68060 FPU has been turned off in software since
+; the last reset (which enables it) bit 6 is zero, as if the FPU
+; was not present and we were using an EC or LC processor.
+;
+ATTN_FLGS:
+	movem.l	a0-a4/d0-d3,-(a7)
+
+	moveq	#$0,d4		; initialise attn flags
+	moveq	#$0,d5		; ditto for QDOS
+
+	dc.l	$48e70001	; = movem.l a7,-(a7)
+	cmpa.l	(a7)+,a7
+	beq	ATTNX		; branch if < 68020
+
+; --------------------------------------------------------------
+;  allocate memory and set vector base register (010+)
+
+ATTN_VBR:
+	dc.w	$4E7A,$8801	; movec vbr,a0
+	move.l	a0,d0
+	bne.s	ATTN_STOV
+
+	move.l	#1024,d1
+	moveq	#MT.ALCHP,d0
+	moveq	#0,d2
+	trap	#1
+
+	moveq	#47,d0
+	suba.l	a1,a1
+
+MOVVCTRS:
+	move.l	(a1)+,(a0)+
+	dbra	d0,MOVVCTRS
+
+	move.w	#207,d0
+	suba.l	a1,a1
+
+CLRVCTRS:
+	move.l	12*4(a1),(a0)+
+	dbra	d0,CLRVCTRS
+
+	lea	-1024(a0),a0
+
+	move.l	4*4(a0),61*4(a0)	; new illegal instruction?
+
+	dc.w	$4E7B,$8801	; movec a0,vbr
+
+; --------------------------------------------------------------
+
+ATTN_STOV:
+	bset	#$0,d4		; vbr present - 68010 at least
+	move.b	#$10,d5		; store for QDOS
+
+	move.l	$10(a0),a2
+	move.l	$2C(a0),a3
+
+	lea	LF80C18(pc),a4
+	move.l	a4,$10(a0)	; (ILLEGAL INSTRUCTION vector)
+	move.l	a4,$2C(a0)	; (F-LINE EMULATION vector)
+
+	move.l	a7,a1
+
+;		      Clear Data cache
+;		      | Freeze Data cache
+;		      | |Enable Data cache (off)
+;		      | ||    Clear Instruction cache
+;		      | ||    |  Enable Instruction cache
+;		      | ||    |  |
+	move.l	#%0000101000001001,d1
+
+	dc.w	$4E7B,$1002	; movec	d1,cacr
+	dc.w	$4E7A,$1002	; movec	cacr,d1
+	bset	#$1,d4		; cacr present - 68020 at least
+	move.b	#$20,d5		; store for QDOS
+
+	btst	#$9,d1
+	beq.s	LF80BB4		; no data cache - not a 68030
+
+	bset	#$2,d4		; definitely a 68030
+	move.b	#$30,d5		; store for QDOS
+
+LF80BB4:
+	btst	#$0,d1
+	bne.s	LF80BDC		; cacr present and (EI) bit
+				; operative - not a 68040
+
+	or.w	#$C,d4		; 68040 at least!
+	move.b	#$40,d5		; store for QDOS
+
+	dc.w	$F4D8		; CINVA ic/dc - invalidate caches
+
+	moveq	#0,d1		; MMU off
+	dc.w	$4E7B,$1003	; movec d1,TCR
+
+	move.l	#$00FFC000,d1	; ACU/TTU off
+
+; This code set up the TTR/ACU registers to stop data
+; cacheing of areas of memory that contain h/w registers
+
+;	 move.l	 #$007FC000,d1	 ; 0-32Mb = cachable, writethrough (q40)
+;	 move.l	 #$007FC020,d1	 ; 0-32Mb 0 = cachable, copyback (q40)
+	move.l	#$007FC040,d1	; 0-32Mb = non-cachable, serialized (*q40)
+
+;	 move.l	 #$0000C000,d1	 ; 0-16Mb = cachable, writethrough (amiga)
+;	 move.l	 #$0000C020,d1	 ; 0-16Mb = cachable, copyback (amiga)
+;	 move.l	 #$0000C040,d1	 ; 0-16Mb = non-cachable, serialized (*amiga)
+
+	dc.w	$4E7B,$1006	; movec d1,DTT0
+
+;	 move.l	 #$007FC000,d1	 ; 0-32Mb = cachable, writethrough (q40)
+	move.l	#$007FC020,d1	; 0-32Mb 0 = cachable, copyback (*q40)
+;	 move.l	 #$007FC040,d1	 ; 0-32Mb = non-cachable, serialized (q40)
+
+;	 move.l	 #$0000C000,d1	 ; 0-16Mb = cachable, writethrough (amiga)
+;	 move.l	 #$0000C020,d1	 ; 0-16Mb = cachable, copyback (*amiga)
+;	 move.l	 #$0000C040,d1	 ; 0-16Mb = non-cachable, serialized (amiga)
+
+	dc.w	$4E7B,$1004	; movec d1,ITT0
+
+;	 move.l	 #$00FFC000,d1	 ; other memory = cachable, writethrough (amiga)
+;	 move.l	 #$00FFC020,d1	 ; other memory = cachable, copyback (*amiga)
+;	 move.l	 #$00FFC040,d1	 ; other memory = non-cachable, serialized (amiga)
+
+;	 move.l	 #$FE01C000,d1	 ; base FE000000 = cachable, writethrough (q40)
+;	 move.l	 #$FE01C020,d1	 ; base FE000000 = cachable, copyback (q40)
+	move.l	#$FE01C040,d1	; base FE000000 = non-cachable, serialized (*q40)
+
+	dc.w	$4E7B,$1007	; movec d1,DTT1
+	dc.w	$4E7B,$1005	; movec d1,ITT1
+
+	move.l	#$80008000,d1	; Both caches on, for 040+
+
+	bra.s	SetCACR
+
+LF80BDC:
+;		  Enable Instruction cache >=040 (1=ON)
+;		  | Write Allocation (1=ON)
+;		  | |Data Burst enable (0=OFF)
+;		  | | Clear Data cache
+;		  | | |	Enable Data cache (1=ON)
+;		  | | |	|   Instruction Burst enable (1=ON)
+;		  | | |	|    Clear Instruction cache
+;		  | | |	|    |  Enable Instruction cache
+;		  | | |	|    |  |
+	move.l	#%1010100100011001,d1
+
+SetCACR	dc.w	$4E7B,$1002	; movec	   d1,cacr
+
+	btst	#$3,d4
+	beq.s	LF80BF6		; skip if not a 68040 or later
+;
+; 68060 initialisation added here
+;
+; Note this tests the new PCR register to find out if we're on
+; an 060. If this fails, the routine returns after checking for
+; a 68040 FPU. Otherwise it turns on the 060 accelerators and
+; reports the presence of an enabled FPU, if it finds one.
+;
+	lea	NoPCR(pc),a4	; Continuation if PCR absent
+	move.l	a4,$10(a0)	; (ILLEGAL INSTRUCTION vector)
+
+	dc.w	$4E7A,$1808	; 68060 PCR to D1 or illegal
+	swap	d1
+	cmp.w	#$0431,d1
+	beq.s	No60FPU		; No FPU!
+;	cmp.w	#$0430,d1	; The only other possibility
+;	bne.s	Unknown		; at the time of writing...
+	btst	#17,d1		; Test swapped DFP flag bit
+	bne.s	No60FPU		; If FPU is disabled, leave off
+
+	bset	#6,d4		; Note 68060 FPU is available
+
+	dc.w	$F37A,NULL-*	; FRESTORE NULL
+
+No60FPU	bset	#7,d4		; Set 060 bit in ATTN flags
+	move.b	#$60,d5		; Tell Qdos we're on an 060
+	swap	d1
+	bset	#0,d1		; Ensure SOEP is on
+	dc.w	$4E7B,$1808	; Store updated PCR
+;
+; Enable store buffer, code, data and (cleared) branch cache
+;
+	move.l	#$A0C08000,d1	; EDC+ESB+EBC+CABC+EIC
+	dc.w	$4E7B,$1002	; movec	   d1,cacr
+	bra.s	LF80C18
+;
+; The old code to check for the 040 FPU always failed because the
+; 68040 does not support cpSAVE and cpRESTORE! Substitute FNOP
+;
+;	dc.w	$F327		; cpSAVE
+;	dc.w	$F35F		; cpRESTORE
+
+TryFPU:
+
+	dc.w	$F37A,NULL-*	; FRESTORE NULL
+	dc.w	$F280,0		; FNOP sifts out ECs and LCs
+	bset	#$6,d4		; 68040 FPU present
+	bra.s	LF80C18
+
+NoPCR	movea.l	a1,a7		; Tidy stacked exception frame
+	bra.s	TryFPU
+;
+; Test for an off-CPU co-processor
+;
+LF80BF6:
+	dc.w	$F37A,NULL-*	; FRESTORE NULL
+
+	moveq	#$0,d1
+
+	dc.w	$F201,$9000	; FMOVE D1 to FPU
+	dc.w	$F201,$B000	; FMOVE FPU to D1
+
+	tst.l	d1		; A most unlikely case
+	bne.s	LF80C18		; Something strange has happened
+
+	bset	#$4,d4		; 68881 at least
+
+	dc.w	$F327		; cpSAVE -(A7)
+
+	cmpi.b	#$18,$1(a7)	; Check for 68882 frame
+	beq.s	LF80C16
+
+	bset	#$5,d4		; 68882 at least
+
+LF80C16:
+	dc.w	$F35F		; cpRESTORE (A7)+
+
+LF80C18:
+	move.l	a1,a7		; clean-up stack
+
+	move.l	a2,$10(a0)
+	move.l	a3,$2C(a0)
+
+ATTNX:
+	movem.l	(a7)+,a0-a4/d0-d3
+	rts
+
+NULL:
+	DC.L	0,0,0,0
+
+; --------------------------------------------------------------
+* routine to clear/flush caches on all processors
+* callable from user or supervisor modes
+; --------------------------------------------------------------
+
+CLRALL:
+	movem.l	d0/a0/a6,-(a7)
+	movea.l	a7,a0
+	trap	#0
+	move.w	sr,-(a7)
+	ori.w	#$0700,sr	interrupts off
+
+	subq.l	#2,a0
+	cmpa.l	a0,a7
+	beq.s	DOCACHSV 	entered routine as supervisor
+
+	bclr	#5,0(a7) 	otherwise sr on exit = user mode
+
+DOCACHSV:
+	move.l	a7,d0		Calculate start of
+	andi.w	#-$8000,d0	system variables
+	move.l	d0,a6
+
+	cmpi.b	#$10,$A1(a6)
+	bls.s	DOCACHX		exit if 010 or less
+
+	dc.w	$4E7A,$0002	movec	cacr,d0
+	ori.w	#$0808,d0	always clear 020/030 caches if available
+
+	tst.w	d0		check 040 bits
+	bpl.s	DOCACHDCHK	branch if instruction cache off
+	dc.w	$F4B8		cpusha	ic
+				; otherwise update memory from cache
+	dc.w	$F498		cinva	ic
+				; invalidate cache
+
+DOCACHDCHK:
+	tst.l	d0		check 040 bits
+	bpl.s	DOCACHSET	branch if data cache off
+	dc.w	$F478		cpusha	dc
+				; otherwise update memory from cache
+
+DOCACHSET:
+	dc.w	$4E7B,$0002	movec	d0,cacr
+				; set the cache
+
+DOCACHX:
+	move.w	(a7)+,sr
+	movem.l	(a7)+,d0/a0/a6
+	rts
+
+;*/endoverlay
+; --------------------------------------------------------------
+;*/endfile

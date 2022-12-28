@@ -1,0 +1,79 @@
+Short:    CACHE handling routines compatible with ALL processors
+Author:   Mark J Swift
+Version:  1.00
+Uploader: msw@blackpool.ac.uk
+Type:     util/ptch
+
+
+SAFE cache routines to enable/disable/clear and flush the caches on
+all processors. Callable from supervisor or user mode.
+
+ALSO included are patches for PD XCHANGE and recent versions of C68.
+
+
+ARCHIVE CONTENTS
+
+ CACHE_asm        - cache routines in assembly
+ CACHE_readme     - this file.
+
+ PLUS...
+
+ XCHPATCH_bas     - patch PD XCHANGE to be COPYBACK friendly
+ XCHPATCH_readme  - accompanying readme
+ C68PATCH_bas     - patch C68 programs to be COPYBACK friendly
+ C68PATCH_readme  - accompanying readme
+
+
+FEATURES
+
+* enable/disable/clear & flush data & instruction caches individually
+* compatible with all processors 68008 up to 68060
+* assembly routines callable from supervisor OR user mode
+* FREEWARE
+
+
+WHAT ARE THE ROUTINES FOR?
+
+Running QDOS on machines with big processors - 68030/68040 & 68060 for
+example can cause problems if the INSTRUCTION & DATA caches are enabled
+or (on the 040/060) if COPYBACK is enabled on memory accesses.
+
+Amiga-QDOS for example, uses a standard JS ROM with routines patched in
+to flush the caches before FS.HEADS and FS.SAVE, after FS.HEADR and
+FS.LOAD, before MT.ACTIV, and before MT.LXINT & MT.LPOLL & MT.LSCHD
+& MT.LIOD & MT.LDD.
+
+This fairly simple modification to the ROM allows allows QDOS to run
+with both data & instruction caches enabled and with copyback enabled on
+system memory - giving HUGE speed benefits.
+
+However, this alone is not enough. Errors can occur if you run a program
+that modifies itself in some way - which is more common that you might
+think. With such code, and especially on the 040/060 with COPYBACK
+enabled, it is ESSENTIAL to flush the caches out to memory before
+executing the modified code. This usually involves patching the program
+in some way.
+
+Then there are programs that clear the caches but fail to flush them
+beforehand. C68 is one example, XCHANGE is another.
+
+On an 040/060 with COPYBACK enabled a write by the processor will be
+written to the relevant cache but will not written through to physical
+memory until absolutely necessary.
+
+On an 040/060 if you want to clear the caches you should first FLUSH
+them to memory with a CPUSHA and then invalidate them with a CINVA.
+Also you should only flush the caches if the caches are actually on
+(makes sense don't you think).
+
+Please use the supplied assembly source freely.
+For fixes to C68 and XCHANGE see XCHPATCH_bas and C68PATCH_bas.
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

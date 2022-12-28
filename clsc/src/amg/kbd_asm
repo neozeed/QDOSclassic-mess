@@ -1,0 +1,341 @@
+	INCLUDE	'DEV/ASM/QDOS/DEFINES_inc'
+	INCLUDE	'CLSC/SRC/CORE/KBD_inc'
+	INCLUDE	'DEV/ASM/AMG/HW_inc'
+	INCLUDE	'CLSC/SRC/AMG/CLSC_inc'
+
+	SECTION	KBD
+
+	XDEF	HW_RESET,HW_ENABLE
+	XDEF	HW_DO_LEDS,HW_KEY_read
+	XDEF	XINT_SERver
+
+	XDEF	LNG_KTAB
+	XDEF	KTB_OFFS_CT,KTB_OFFS_SH,KTB_OFFS_GR
+	XDEF	AWKCOD,AWKASC
+
+	XDEF	HW_VCTR_BEG
+	XDEF	HW_VCTR.LEN
+
+	XDEF	HARDTAG
+
+	XREF	RDKEYB,DO_CAPS
+
+*******************************************************************
+*
+* KBD_asm - Keyboard routines
+*	 - originated July 98 - Mark Swift
+*	 - last modified 13/08/99 (MSW)
+
+AWKCOD	EQU	0		; there are no NUM-LOCKED
+AWKASC	EQU	0		; awkward keys on Amiga...
+
+BASE:
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+HW_VCTR_BEG:
+
+*******************************************************************
+*
+*  HARDWARE RESET : initialise keyboard for use
+
+HW_RESET:
+	move.b	CIAA_ICR,d0	; read & clear CIA-A ICR
+	or.b	AV.CIAA_ICR,d0
+	bclr	#3,d0		; clear SP bit
+	move.b	d0,AV.CIAA_ICR	; store for another program
+
+	move.w	#%0000000000001000,INTREQ ; clear and enable
+	move.w	#%1000000000001000,INTENA ; CIA-A interrupts
+
+	move.b	#%10001000,CIAA_ICR ; enable SP interrupt
+
+	ori.b	#%00001000,AV.CIAA_MSK ; take note
+
+	rts
+
+*******************************************************************
+*
+* End custom vector routines
+
+NOPpad3:
+	DCB.w ((0-(NOPpad3-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+HW_VCTR_END:
+
+HW_VCTR.LEN	EQU	(HW_VCTR_END-HW_VCTR_BEG)
+
+*******************************************************************
+*
+*  HARDWARE ENABLE : enable hardware
+
+HW_ENABLE:
+	move.w	#2,SV_ARFRQ(A6)	; enable software autorepeat
+	rts
+
+*******************************************************************
+*
+*  HARDWARE DISABLE : disable hardware
+
+HW_DISABLE:
+	rts
+
+*******************************************************************
+*
+*  Set the keyboard LEDs
+*
+
+HW_DO_LEDS:
+	rts
+
+*******************************************************************
+*
+*  external interrupt server
+*  enters with a6=sys vars, a3=our (keyboard) vars
+
+XINT_SERver:
+	movem.l	d7/a0,-(a7)
+
+XINT_TST:
+	move.w	INTENAR,d7	; read interrupt enable reg
+	btst	#3,d7		; branch if ints not on
+	beq.s	XINT_OTHer
+
+	move.w	INTREQR,d7	; read interrupt request reg
+	btst	#3,d7		; branch if not from CIA-A or
+	beq.s	XINT_OTHer	; expansion ports
+
+	move.b	CIAA_ICR,d7	; read CIA-A ICR
+	or.b	AV.CIAA_ICR,d7
+	move.b	d7,AV.CIAA_ICR	; store for another program
+
+	bclr	#3,d7		; keyboard? (SP bit=1)
+	beq.s	XINT_OTHer	; no
+
+	move.b	d7,AV.CIAA_ICR
+
+	and.b	AV.CIAA_MSK,d7	; don't clear intreq if
+	bne.s	XINT_S1		; other CIAA ints occured
+
+	move.w	#%0000000000001000,INTREQ ; clear interrupts
+
+XINT_S1:
+	bsr	RDKEYB
+
+; --------------------------------------------------------------
+;  otherwise let another external interrupt server handle it
+
+XINT_OTHer:
+	movem.l	(a7)+,d7/a0
+	rts
+
+*******************************************************************
+*
+*  Subroutine to read keyboard value from hardware
+
+HW_KEY_read:
+	movem.l	d0-d2/a0,-(a7)
+
+	lea	CIAA,a0		; now implement Keyboard
+	moveq	#0,d0		; handshake according to
+	move.b	d0,CRA(a0)	; ROM listing ($FE5478)
+	move.b	d0,CRA(a0)
+	move.b	#$40,CRA(a0)	; switch off keyboard
+
+	move.b	CIAA_SP,d0	; read raw key code
+
+	move.l	#$40,d2
+WTKEYB0:
+	nop
+	dbra	d2,WTKEYB0
+
+	move.b	#$0,CIAA_CRA	; switch on keyboard again
+
+	not.b	d0
+	move.b	d0,d1
+	andi.b	#1,d1		; 0 = press, 1 = release
+	lsr.b	#1,d0		; key-code
+
+; --------------------------------------------------------------
+; first test for SHIFT, CTRL, ALT, etc...
+
+KEY_rTST:
+	tst.b	d1	        ; key release?
+	beq.s	KEY_lTST
+
+	move.b	d1,VAR.RLSflg(a3)
+
+KEY_lTST:
+	cmp.b	#$62,d0		; CAPS lock?
+	bne.s	KEY_sTST
+
+	bsr	DO_CAPS
+	bra	KEY_done
+
+KEY_sTST:
+	cmp.b	#$60,d0		; left shift?
+	beq.s	KEY_sDO
+
+	cmp.b	#$61,d0		; right shift?
+	bne.s	KEY_cTST
+
+KEY_sDO:
+	tst.b	VAR.RLSflg(a3)
+	beq.s	KEY_sSTO
+
+	moveq	#0,d0
+
+KEY_sSTO
+	move.b	d0,VAR.SHFflg(a3)
+	bra.s	KEY_done
+
+KEY_cTST:
+	cmp.b	#$63,d0		; control?
+	bne.s	KEY_aTST
+
+	tst.b	VAR.RLSflg(a3)
+	beq.s	KEY_cSTO
+
+	clr.b	VAR.MODflg(a3)	; clear the weird flag
+	moveq	#0,d0
+
+KEY_cSTO
+	move.b	d0,VAR.CTLflg(a3)
+	bra.s	KEY_done
+
+KEY_aTST:
+	cmp.b	#$64,d0		; left-alt?
+	bne.s	KEY_gTST
+
+	tst.b	VAR.RLSflg(a3)
+	beq.s	KEY_aSTO
+
+KEY_aCLR
+	clr.b	VAR.GFXflg(a3)	; clear ALT-Gr flag
+	clr.b	VAR.MODflg(a3)	; clear the weird flag
+	moveq	#0,d0
+
+KEY_aSTO
+	move.b	d0,VAR.ALTflg(a3)
+	bra.s	KEY_done
+
+KEY_gTST:
+	cmp.b	#$65,d0		 ; right-alt?
+	bne.s	KEY_nTST
+
+	tst.b	VAR.RLSflg(a3)
+	beq.s	KEY_gSTO
+
+KEY_gCLR
+	clr.b	VAR.GFXflg(a3)	; clear ALT-Gr flag
+	clr.b	VAR.MODflg(a3)	; clear the weird flag
+	moveq	#0,d0
+
+KEY_gSTO
+	move.b	d0,VAR.GFXflg(a3) ; possible Alt-Gr character
+	move.b	d0,VAR.ALTflg(a3)
+	bra.s	KEY_done
+
+KEY_nTST:
+	cmp.b	#$5F,d0		; NUMLOCK? (help key)
+	bne.s	KEY_doKEY
+
+	tst.b	VAR.RLSflg(a3)
+	bne.s	KEY_done
+
+	not.b	VAR.NLKflg(a3)	; set NUMLOCK flag
+	bsr	HW_DO_LEDS
+	bra.s	KEY_done
+
+KEY_doKEY:
+	move.b	d0,VAR.ACTkey(a3) ; store keycode
+	bra.s	KEY_exit
+
+KEY_done:
+	clr.b	VAR.MODflg(a3)	; clear the weird flag
+	clr.b	VAR.RLSflg(a3)	; and the release flag
+
+KEY_none:
+	clr.b	VAR.ACTkey(a3)	; clear the ACTUAL keycode
+	clr.b	VAR.ASCkey(a3)	; clear the ASCII keycode
+
+KEY_exit:
+	movem.l	(a7)+,d0-d2/a0
+	rts
+
+*******************************************************************
+*
+*  conversion tables for translating keycode to ASCII
+
+LNG_MODULE:
+
+ DC.W 1		; keyboard table
+ DC.W 0		; no group
+ DC.W 44 	; language number (german)
+ DC.W 0		; relative ptr to next module or 0
+ DC.W LNG_KBD-*	  ; relative ptr to keyboard table
+
+LNG_KBD:
+
+ DC.W 44 	; language (german)
+ DC.W LNG_KTAB-*	  ; relative ptr to key table
+ DC.W 0		; relative ptr to non-spacing char table
+
+LNG_KTAB:
+ DC.B '`','1','2','3','4','5','6','7','8','9','0',156,39,'\',0,'0'
+ DC.B 'q','w','e','r','t','z','u','i','o','p',135,'+',0,'1','2','3'
+ DC.B 'a','s','d','f','g','h','j','k','l',132,128,'#',0,'4','5','6'
+ DC.B '<','y','x','c','v','b','n','m',44,'.','-',0,'.','7','8','9'
+ DC.B ' ',194,9,10,10,27,202,0,0,0,'-',0,208,216,200,192
+ DC.B 232,236,240,244,248,234,238,242,246,250,91,93,'/','*','+',0
+
+LNG_KTAB_CT:
+ DC.B 0,145,146,147,148,149,150,151,152,153,144,0,0,188,0,'0'
+ DC.B 17,23,5,18,20,26,21,9,15,16,0,0,0,'1','2','3'
+ DC.B 1,19,4,6,7,8,10,11,12,0,0,0,0,'4','5','6'
+ DC.B 0,25,24,3,22,2,14,13,140,142,141,0,0,'7','8','9'
+ DC.B ' ',194,9,10,10,128,202,0,0,0,'-',0,210,218,202,194
+ DC.B 233,237,241,245,249,235,239,243,247,251,91,93,'/','*','+',0
+
+LNG_KTAB_SH:
+ DC.B '~','!','"',182,'$','%','&','/','(',')','=','?','^','|',0,'0'
+ DC.B 'Q','W','E','R','T','Z','U','I','O','P',167,'*',0,'1','2','3'
+ DC.B 'A','S','D','F','G','H','J','K','L',164,160,'^',0,'4','5','6'
+ DC.B '>','Y','X','C','V','B','N','M',';',':','_',0,0,'7','8','9'
+ DC.B 252,194,253,254,254,127,202,0,0,0,'-',0,212,220,204,196
+ DC.B 234,238,242,246,250,232,236,240,244,248,'{','}','/','*','+',0
+
+LNG_KTAB_SC:
+ DC.B '`',129,160,131,132,133,0,0,138,136,137,0,0,28,0,'0'
+ DC.B 177,183,165,178,180,186,181,169,175,176,0,0,0,'1','2','3'
+ DC.B 161,179,164,166,167,168,170,171,172,0,0,0,0,'4','5','6'
+ DC.B 0,185,184,163,182,162,174,173,156,158,0,0,'.','7','8','9'
+ DC.B ' ',194,9,10,10,27,202,0,0,0,'-',0,214,222,206,198
+ DC.B 235,239,243,247,251,233,237,241,245,249,91,93,'/','*','+',0
+
+LNG_KTAB_GR:
+ DC.B 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+ DC.B 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+ DC.B 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+ DC.B 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+ DC.B 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+ DC.B 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+LNG_NSTAB:
+
+KTB_OFFS_CT EQU	(LNG_KTAB_CT-LNG_KTAB)
+KTB_OFFS_SH EQU	(LNG_KTAB_SH-LNG_KTAB)
+KTB_OFFS_GR EQU	(LNG_KTAB_GR-LNG_KTAB)
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad5:
+	DCB.w ((0-(NOPpad5-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+*******************************************************************
+
+	END

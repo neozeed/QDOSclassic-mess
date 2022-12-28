@@ -1,0 +1,320 @@
+	INCLUDE	'DEV/ASM/QDOS/DEFINES_inc'
+	INCLUDE	'CLSC/SRC/CORE/SER_inc'
+	INCLUDE	'DEV/ASM/AMG/HW_inc'
+	INCLUDE	'CLSC/SRC/AMG/CLSC_inc'
+
+	SECTION	SER
+
+	XDEF	HW_RESET,HW_ENABLE,HW_DISABLE
+	XDEF	HW_BAUD
+	XDEF	POLL_SERver,XINT_SERver
+
+	XDEF	HW_VCTR_BEG
+	XDEF	HW_VCTR.LEN
+
+	XDEF	HARDTAG
+
+*******************************************************************
+*
+* SER_asm - Amiga specific routines for serial device driver
+*	 - originated July 98 - Mark Swift
+*	 - last modified 13/08/99 (MSW)
+
+BASE:
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+HW_VCTR_BEG:
+
+*******************************************************************
+*
+*  SET BAUD RATE IN HARDWARE
+
+HW_BAUD:
+	movem.l	d0/d1,-(a7)
+
+	MOVE.L	D1,D0		; D0=baudrate
+	MOVE.L	#3579546,D1	; D1=1/2.79365E-7
+
+	btst	#0,d0
+	bne.s	MT_BAUD1
+
+	lsr.l	#1,d0
+	lsr.l	#1,d1
+
+MT_BAUD1:
+	DIVU	D0,D1		; D1=D1/baudrate
+	AND.L	#$FFFF,D1	; mask out remainder
+	SUBQ.W	#1,D1		; to be exact
+;	ORI.W	#$8000		; we may receive two stop bits
+	move.w	d1,SERPER	; write to SERPER
+
+	movem.l	(a7)+,d0/d1
+	rts
+
+*******************************************************************
+*
+*  HARDWARE RESET : initialise hardware to factory defaults
+
+HW_RESET:
+	movem.l	d0/d7,-(a7)
+
+	move.b	CIAB_DDRA,d7
+	andi.b	#%00000111,d7
+	ori.b	#%11000000,d7	; DTR(7),RTS(6) as outputs &
+	move.b	d7,CIAB_DDRA	; CD(5),CTS(4),DSR(3) inputs
+
+	MOVE.B	#%11000000,CIAB_PRA ; DTR(7) low (1) not ready to receive
+				  ; RTS(6) low (1) nothing to send
+
+	MOVE.W	#B_9600,D0
+	BSET	#15,D0		; 9 bit receive data
+	MOVE.W	D0,SERPER	; Set baudrate
+
+	move.w	#%0000100000000001,INTREQ ; clear interrupts
+	move.w	#%0000100000000001,INTENA ; disable RBF & TBE
+				        ; interrupts
+	movem.l	(a7)+,d0/d7
+	rts
+
+*******************************************************************
+*
+* End custom vector routines
+
+NOPpad3:
+	DCB.w ((0-(NOPpad3-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+HW_VCTR_END:
+
+HW_VCTR.LEN	EQU	(HW_VCTR_END-HW_VCTR_BEG)
+
+*******************************************************************
+*
+*  HARDWARE ENABLE : enable hardware
+
+HW_ENABLE:
+	move.w	#%0000100000000001,INTREQ ; clear interrupts
+	move.w	#%1000100000000001,INTENA ; enable RBF & TBE
+				        ; interrupts
+
+	move.b	#%00000000,CIAB_PRA ; DTR(7) high (0) ready to receive
+				  ; RTS(6) high (0) I may want to send
+	rts
+
+*******************************************************************
+*
+*  HARDWARE DISABLE : disable hardware
+
+HW_DISABLE:
+	MOVE.B	#%01000000,CIAB_PRA ; DTR(7) high (0) ready to receive
+				  ; RTS(6) low (1) nothing to send
+
+	move.w	#%0000100000000001,INTREQ ; clear interrupts
+	move.w	#%0000100000000001,INTENA ; disable RBF & TBE
+				        ; interrupts
+	rts
+
+*******************************************************************
+*
+*  poll interrupt server for serial port. If interrupts are off,
+*  restarts interrupts by sending a byte.
+
+POLL_SERver:
+	btst	#6,CIAB_PRA	; test RTS bit
+	bne.s	POLL_X		; exit (SER not open)
+
+	bsr	SER_SEND 	; if transmit buffer is
+				; empty, and CTS bit is
+				; clear, then send a byte
+
+	bsr.s	SER_RECV 	; if there's room in input
+				; buffer, fetch byte.
+POLL_X:
+	rts
+
+*******************************************************************
+*
+*  external interrupt server for serial port
+*  enters with a6=sys vars, a3=our (serial) vars
+
+XINT_SERver:
+	movem.l	d7/a0,-(a7)
+
+	move.w	INTENAR,d7	; read interrupt enable reg
+	btst	#0,d7		; branch if ints not on
+	beq.s	XINT_1
+
+	move.w	INTREQR,d7	; read interrupt request reg
+	btst	#0,d7		; branch if from output
+	bne.s	TBE_XINT 	; buffer empty
+	bra.s	XINT_OTHer
+
+XINT_1:
+	btst	#11,d7		; branch if ints not on
+	beq.s	XINT_OTHer
+
+	move.w	INTREQR,d7	; read interrupt request reg
+	btst	#11,d7		; branch if from input
+	bne.s	RBF_XINT 	; buffer full
+
+; --------------------------------------------------------------
+;  otherwise let another external interrupt server handle it
+
+XINT_OTHer:
+	movem.l	(a7)+,d7/a0
+	rts
+
+*******************************************************************
+*
+*  RBF Interrupt. Reads a byte into the queue when serial data
+*  is ready (read buffer is full).
+
+RBF_XINT:
+	bsr.s	SER_RECV 	; send next byte
+
+;	 move.w	 #%0000100000000000,INTREQ ; reset RBF int.
+
+RBF_XINT_X:
+	bra.s	XINT_EXIt
+
+*******************************************************************
+*
+*  TBE Interrupt. Tries to send another byte from queue when
+*  transmit buffer becomes empty.
+
+TBE_XINT:
+	move.w	#%0000000000000001,INTREQ ; reset TBE int.
+
+	bsr	SER_SEND 	; send next byte
+
+TBE_XINT_X:
+
+; -------------------------------------------------------------
+XINT_EXIt:
+	bra.s	XINT_OTHer
+
+*******************************************************************
+*
+
+SER_RECV:
+	movem.l	d0-d3/a0-a4,-(a7)
+
+	MOVE.L	SV_SER1C(a6),a2	; Receive queue channel 1
+	MOVE.L	A2,D0		; channel open ?
+	BEQ.S	SER_RECVX	; nope, so quit
+
+	move.w	IO.QTEST,a4
+	jsr	(a4)		; check free space in queue
+
+	move.b	1+SER_TXHS-SER_RXQ(a2),d1
+	ble.s	SER_RECV1	; branch if no handshakes
+
+; disable serial handshakes
+
+	move.b	CIAB_PRA,d1
+	ori.b	#%10000000,d1
+	MOVE.B	d1,CIAB_PRA	; force DTR(7) low (1)
+
+	bra.s	SER_RECV1
+
+SER_RECV0:
+	move.w	#%0000100000000000,INTREQ ; reset RBF int.
+
+	tst.l	d2
+	beq.s	SER_RECV4	; branch if no room in receiv Q
+
+	MOVE.W	SERDATR,D1	; get data
+
+	move.w	#%1000100000000000,INTENA ; enable RBF int.
+
+	move.w	IO.QIN,a4
+	jsr	(a4)		; put byte d1 into queue a2
+
+	subq.l	#1,d2
+
+SER_RECV1:
+	btst	#(14-8),SERDATR	; receive buffer full?
+	bne.s	SER_RECV0	; yes, loop again
+
+	move.b	1+SER_TXHS-SER_RXQ(a2),d1
+	ble.s	SER_RECV3	; branch if no handshake
+
+SER_RECV2:
+	cmp.l	#15,d2
+	blt.s	SER_RECV3
+
+; enable serial handshakes
+
+	move.b	CIAB_PRA,d1
+	and.b	#%01111111,d1
+	move.b	d1,CIAB_PRA	; enable receive (DTR(7) high)
+
+SER_RECV3:
+	tst.l	d2
+	bne.s	SER_RECVX
+
+SER_RECV4:
+	move.w	#%0000100000000000,INTENA ; disable RBF int.
+
+SER_RECVX:
+	movem.l	(a7)+,d0-d3/a0-a4
+	rts
+
+*******************************************************************
+*
+*  Write next byte from queue to serial port
+
+SER_SEND:
+	movem.l	d0-d1/d7/a2-a4,-(a7)
+
+	move.l	SV_SER1C(a6),d1	; address of receive Q
+	beq.s	SER_S2		; exit if Q doesn't exist
+
+	move.w	#(SER_TXQ-SER_RXQ),a2
+	adda.l	d1,a2		; address of transmit Q
+
+SER_S0:
+	btst	#(13-8),SERDATR	; transmit buffer empty?
+	beq.s	SER_S_X		; nope, quit now
+
+	move.b	1+SER_TXHS-SER_TXQ(a2),d1
+	ble.s	SER_S1
+
+	btst	#4,CIAB_PRA	; test CTS bit
+	bne.s	SER_S_X		; exit if not ready
+
+SER_S1:
+	moveq	#0,d1
+	move.w	IO.QOUT,a4
+	jsr	(a4)		; get byte d1 from queue a2
+	tst.l	d0
+	bne.s	SER_S2		; exit if error
+
+SER_S_DO:
+	move.w	#%0000000000000001,INTREQ ; reset TBE int.
+
+	move.w	#%1000000000000001,INTENA ; enable TBE int.
+	or.w	#$300,d1 	; set two stop bits
+	move.w	D1,SERDAT	; write data to serial port
+
+	bra.s	SER_S0
+
+SER_S2:
+	move.w	#%0000000000000001,INTENA ; disable TBE int.
+
+SER_S_X:
+	movem.l	(a7)+,d0-d1/d7/a2-a4
+	RTS
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad5:
+	DCB.w ((0-(NOPpad5-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+*******************************************************************
+
+	END

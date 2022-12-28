@@ -1,0 +1,35 @@
+*******************************************************************
+*
+*  BEEP variables
+
+;SV_LXINT	EQU	$00	; (long) ptr to next link
+				; (long) address of EXT INT routine
+
+;SV_LPOLL	EQU	$08	; (long) ptr to next link
+				; (long) address of POLLed int routine
+
+VAR.DURVAL  EQU	$44	; (long)
+VAR.PITCH1  EQU	$48	; (long)
+VAR.PITCH2  EQU	$4C	; (long)
+VAR.GRDVAL  EQU	$50	; (long)
+VAR.PITINC  EQU	$54	; (long)
+VAR.REPVAL  EQU	$58	; (word)
+VAR.FUZVAL  EQU	$5A	; (word)
+VAR.RNDVAL  EQU	$5C	; (word)
+
+VAR.DURCNT  EQU	$60	; (long)
+VAR.GRDCNT  EQU	$64	; (long)
+VAR.REPCNT  EQU	$68	; (word)
+VAR.FUZCNT  EQU	$6A	; (word)
+VAR.RNDCNT  EQU	$6C	; (word)
+
+VAR.BEEP    EQU	$70	; (long)
+VAR.BEEPLEN EQU	$74	; (long)
+VAR.BEEPACC EQU	$78	; (long)
+
+VAR.SAMPLVL EQU	$7C	; (word)
+
+VAR.LEN	   EQU	$80	; length of vars
+
+*******************************************************************
+

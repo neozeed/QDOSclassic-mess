@@ -1,0 +1,28 @@
+FailAt 21
+
+Assign QLrun: ""
+
+IF EXISTS ///CLSC
+ Assign CLASSIC: ///CLSC
+Else
+ Assign CLASSIC: QLrun:
+EndIF
+
+If EXISTS ////QZ
+ Assign QZ: ////QZ
+Else
+ Assign QZ: QLrun:
+EndIf
+
+If EXISTS QLrun:WELCOME
+ Type QLrun:WELCOME
+EndIf
+
+If EXISTS QZ:UTIL/ROM/TK2_rom
+ IF EXISTS QLrun:FRIENDS
+  Type QLrun:FRIENDS
+ EndIf
+EndIf
+
+Status >ram:ttt COMMAND=WAIT
+Break <ram:ttt >NIL: ?

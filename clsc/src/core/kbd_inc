@@ -1,0 +1,36 @@
+*******************************************************************
+*
+*  KEYBOARD variables
+
+;SV_LXINT	EQU	$00	; (long) ptr to next link
+				; (long) address of EXT INT routine
+
+;SV_LPOLL	EQU	$08	; (long) ptr to next link
+				; (long) address of POLLed int routine
+
+VAR.KEYtab   EQU	$44	; (long) ptr to ASCII table
+
+VAR.KEYraw   EQU	$48	; (8xbyte) used to emulate KEYROW
+
+VAR.CTLflg   EQU	$50	; (byte) CTRL key is down
+VAR.SHFflg   EQU	$51	; (byte) SHIFT key is down
+VAR.ALTflg   EQU	$52	; (byte) ALT key is down
+VAR.NLKflg   EQU	$53	; (byte) status of NUMLOCK
+
+VAR.RLSflg   EQU	$54	; (byte) next key is to be released
+VAR.MODflg   EQU	$55	; (byte) next key is 'special'
+
+VAR.LEDflg   EQU	$56	; (byte) status of LEDs
+
+VAR.ACTkey   EQU	$58	; (byte) value gotten from keyboard
+VAR.ASCkey   EQU	$59	; (byte) value converted to ASCII
+
+VAR.GFXflg   EQU	$5A	; (byte) status ALT-Gr key
+
+VAR.KEYdwc   EQU	$5C	; (byte) count of keys held down
+VAR.KEYdwk   EQU	$5E	; (16 x byte) ACTUAL key-down list
+VAR.KEYdwa   EQU	$6E	; (16 x byte) ASCII key-down list
+
+VAR.LEN	    EQU	$7E	; length of vars
+
+*******************************************************************

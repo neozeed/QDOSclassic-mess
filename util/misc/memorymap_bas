@@ -1,0 +1,43 @@
+160 CLS#1:PRINT#1;FILL$("*",40):CSIZE#1;2,1:PRINT#1;" MEMORY MAP - V1.04":CSIZE#1;0,0
+170 MEMORY_MAP 1
+180 STOP
+190 DEFine PROCedure MEMORY_MAP(Ch%)
+200 PRINT#Ch%;FILL$("-",40)\"COMMON HEAP"
+210 f=SYS_VARS+4
+220 GO SUB 380
+230 PRINT#Ch%;\FILL$("-",40)\"FREE SPACE"
+240 PRINT#Ch%;\"  [";HEX$(PEEK_L(SYS_VARS+12),32);"-";HEX$(PEEK_L(SYS_VARS+16),32);"]"
+250 PRINT#Ch%;\FILL$("-",40)\"SUPERBASIC AREA"
+260 PRINT#Ch%;\"  [";HEX$(PEEK_L(SYS_VARS+16),32);"-";HEX$(PEEK_L(SYS_VARS+20),32);"]"
+270 PRINT#Ch%;\FILL$("-",40)\"TRANSIENT PROGRAM AREA"
+280 f=SYS_VARS+20
+290 GO SUB 380
+300 PRINT#Ch%;\FILL$("-",40)\"RESIDENT PROCEDURE AREA"
+310 PRINT#Ch%;\"  [";HEX$(PEEK_L(SYS_VARS+28),32);"-";HEX$(PEEK_L(SYS_VARS+32),32);"]"
+320 PRINT#Ch%;\FILL$("*",40)
+330 END DEFine 
+340 :
+350 REMark list allocations in a heap
+380 a=PEEK_L(f)
+390 l=PEEK_L(f+8)
+400 IF a<l THEN GO TO 430
+410 PRINT#Ch%;\"   ...empty"
+420 GO TO 600
+430 PRINT#Ch%;\"   range              length    owner"\\
+440 GO TO 510
+450 IF a<=f THEN GO TO 540
+460  IF fp<>0 THEN GO TO 490
+470  IF a>=l THEN GO TO 600
+480   GO TO 540
+490   fl=PEEK_L(f)
+500   PRINT#Ch%;"  [";HEX$(f,32);"-";HEX$((f+fl),32);"] ";HEX$(fl,32);"  ";PEEK_W(f+8);",";PEEK_W(f+10);" free"
+510   fp=PEEK_L(f+4)
+520   f=f+fp
+530   GO TO 450
+540  al=PEEK_L(a)
+550  IF a<>f THEN 
+560   PRINT#Ch%;"  [";HEX$(a,32);"-";HEX$((a+al),32);"] ";HEX$(al,32);"  ";PEEK_W(a+8);",";PEEK_W(a+10)
+570  END IF 
+580  a=a+al
+590  GO TO 450
+600 RETurn 

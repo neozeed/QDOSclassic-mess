@@ -1,0 +1,122 @@
+120 REMark  transfer a whole disk between
+130 REMark      two QDOS machines
+140 :
+150 REMark Uses FLEN, FTYP, FDAT, SET_FTYP
+160 REMark      SET_FDAT, INPUT$
+170 :
+180 REMark DATA_AREA 1
+190 REMark WHEN ERRor
+200 REMark  PRINT #3\\"Error: "
+210 REMark  REPORT #3,ERNUM
+220 REMark INPUT #3;\" Press ENTER to re-start.";Rplc$
+230 REMark  RETRY
+240 REMark END WHEN
+250 :
+260 DIM Qry$(1)
+270 OPEN#3;"Con_456x234a28x12"
+280 OPEN#4;"Scr_104x12a362x20"
+290 OPEN#5;"Scr_436x142a38x99"
+300 REMark RETRY_HERE
+310 REPeat main_loop
+320  WINDOW#3;456,234,28,12:PAPER#3;0:INK#3;7:CLS#3:BORDER#3;3,2:BORDER#3;2,0:BORDER#3;1,2:WINDOW#3;438,220,36,19:BORDER#5;1,4:INK#5;4:PAPER#5;0
+330  CSIZE#3;2,1:PRINT#3;"SER_TRANSFER V1.02":CSIZE#3;0,0
+340  PRINT#3;"Transfers a complete volume between two QDOS machines via SER";
+350  CLS#4:BORDER#4;1,7:INK#4;4
+360  WINDOW#3;438,40,36,59
+370  REPeat in_loop
+380   INPUT#3;"Direction ('>' send files, '<' receive files ) ?";Qry$
+390   IF Qry$="<" THEN remote_to_local : EXIT in_loop
+400   IF Qry$=">" THEN local_to_remote : EXIT in_loop
+410   IF Qry$="" THEN EXIT main_loop
+420  END REPeat in_loop
+430 END REPeat main_loop
+440 CLOSE#3
+450 CLOSE#4
+460 CLOSE#5
+470 STOP
+480 :
+490 DEFine PROCedure remote_to_local
+500  LOCal sn%,fl,typ,dat
+510  LOCal Name$(64),Dst$(40),cm$(3)
+520  INPUT#3;"Target drive ?",Dst$
+530  INPUT#3;"Serial port number ?",sn%
+540  OPEN#7,"SER"&sn%&"hr"
+550  REPeat loop
+560   INPUT#7,cm$
+570   IF cm$="fin" THEN EXIT loop
+580   IF cm$="dup" THEN 
+590    INPUT#7;fl
+600    INPUT#7;typ
+610    INPUT#7;dat
+620    INPUT#7;Name$
+630    DELETE Dst$&Name$
+640    OPEN_NEW#6;Dst$&Name$
+650    CLS#4
+660    PRINT#5;"receiving :";Name$
+670    h=INT(fl/512):L=fl-512*h
+680    FOR i=1 TO h
+690     PRINT#6;INPUT$(#7,512);
+700     BLOCK#4;INT((i*512/fl)*100),10,0,0,4
+710    END FOR i
+720    IF L<>0 THEN 
+730    PRINT#6;INPUT$(#7,L);
+740    SET_FTYP #6;typ
+750    SET_FDAT #6;dat
+760    CLOSE#6
+770    BLOCK#4;100,10,0,0,4
+780   END IF 
+790  END REPeat loop
+800  CLOSE#7
+810 END DEFine remote_to_local
+820 DEFine PROCedure local_to_remote
+830  LOCal TOTlen,ACClen,sn%,fl,L,typ,dat
+840  LOCal Name$(64),Src$(40),Tmp$(5)
+850  INPUT#3;"source drive ?",Src$
+860  INPUT#3;"Serial port number ?",sn%
+870  Tmp$="ram1_"
+880  PRINT#5;"Setting up -- please Wait."
+890  TOTlen=0
+900  DELETE Tmp$&"TEMP..dir"
+910  OPEN_NEW#6;Tmp$&"TEMP..dir"
+920  DIR#6;Src$
+930  CLOSE#6
+940  OPEN_IN#6;Tmp$&"TEMP..dir"
+950  INPUT#6;Name$,Space$
+960  REPeat loop
+970   IF EOF(#6) THEN EXIT loop
+980   INPUT#6;Name$
+990   IF Name$=="TEMP..dir" THEN NEXT loop
+1000   L=FLEN(\Src$&Name$)
+1010   TOTlen=TOTlen+L
+1020  END REPeat loop
+1030  CLOSE#6
+1040  ACClen=0
+1050  OPEN_IN#6;Tmp$&"TEMP..dir"
+1060  INPUT#6;Name$,Space$
+1070  REPeat loop
+1080   IF EOF(#6) THEN EXIT loop
+1090   INPUT#6;Name$
+1100   IF Name$=="TEMP..dir" THEN NEXT loop
+1110   fl=FLEN(\Src$&Name$)
+1120   PRINT#5;"sending :",Name$
+1130   OPEN#7;"ser"&sn%&"hr"
+1140   PRINT#7;"dup"
+1150   PRINT#7;fl
+1160   PRINT#7;FTYP(\Src$&Name$)
+1170   PRINT#7;FDAT(\Src$&Name$)
+1180   PRINT#7;Name$
+1190   CLOSE#7
+1200   COPY_N Src$ & Name$,"SER"&sn%&"hr"
+1210   ACClen=ACClen+fl
+1220   IF ACClen>TOTlen THEN 
+1230    BLOCK#4;100,10,0,0,4
+1240   ELSE 
+1250    BLOCK#4;INT((ACClen/TOTlen)*100),10,0,0,4
+1260   END IF 
+1270  END REPeat loop
+1280  OPEN#7;"ser"&sn%&"hr"
+1290  PRINT#7;"fin"
+1300  CLOSE#7
+1310  CLOSE#6
+1320  DELETE Tmp$&"TEMP..dir"
+1330 END DEFine local_to_remote

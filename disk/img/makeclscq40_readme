@@ -1,0 +1,29 @@
+Short:    Make your own QDOS Classic for Q40
+Author:   Mark J Swift
+Version:  1.02
+Uploader: msw@blackpool.ac.uk
+Type:     clsc/run/q40
+
+This BASIC program re-assembles the QDOS Classic for Q40
+peripheral ROM sources using the GST assembler, then builds
+a new QDOS Classic ROM.
+
+
+ARCHIVE CONTENTS
+
+ MAKECLSCQ40_readme  - this file
+ MAKECLSCQ40_bas     - Make your own QDOS Classic for Q40
+
+
+REQUIRES
+
+ GST assembler package (QMAC & QLINK).
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

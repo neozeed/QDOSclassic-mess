@@ -1,0 +1,38 @@
+*******************************************************************
+*
+*  PARALLEL variables
+
+;SV_LXINT	EQU	$00	; (long) ptr to next link
+				; (long) address of EXT INT routine
+
+;SV_LPOLL	EQU	$08	; (long) ptr to next link
+				; (long) address of POLLed int routine
+
+; (necessary for IO.SERIO)
+
+VAR.PEND     EQU	$28	; (long) pending test
+VAR.FBYTE    EQU	$2C	; (long) fetch byte
+VAR.SBYTE    EQU	$30	; (long) send byte
+VAR.RTS	    EQU	$34	; (word) RTS (4E75)
+
+VAR.PARTQ    EQU	$44	; (long) address of output queue
+
+VAR.LEN	    EQU	$48	; length of vars
+
+; --------------------------------------------------------------
+;  Channel definition block
+; --------------------------------------------------------------
+PAR_PROT EQU	$18		; EOL Protocol, -ve RAW
+				; 0 CR/LF, 1 CR, 2 LF
+PAR_EOF	EQU	$1A		; EOF (CLOSE) protocol
+				; -ve none, 0 FormFeed
+PAR_TXD	EQU	$1C		; last transmitted character
+PAR_FLGS EQU	$1E		; Bit 0	0 = busy
+				;	1 = ready
+PAR_TXQ	EQU	$20		; Transmit queue header
+PAR.TXQL EQU	81		; Transmit buffer len - odd!
+
+PAR.LEN	EQU	PAR_TXQ+Q_QUEUE+(PAR.TXQL+1)&$FFFE
+
+*******************************************************************
+

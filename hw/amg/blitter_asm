@@ -1,0 +1,76 @@
+* BLITTER_ASM - it works ... oh, joy, QDOS with a BLITTER too!
+* Assembler Demo by Simon N Goodwin, December 1992-July 1993, V 0.9
+* Now works in FAST RAM as well as CHIP memory.
+*
+* Please note that this depends on 68000 timings and will give up
+* with a 'not complete' error on AGA machines and faster processors
+* unless you increase the loop count in D1 to make the CPU wait longer.
+* Real programs should get on with something else while the blitter
+* does its stuff, but this is just a simple demo. SNG 11-1-94
+*
+screen      equ     131072              Qdos screen start
+*
+* Chip Label names conform to "Mapping the Amiga" (Compute! Books).
+*
+hw          equ     $dff000             Base of Amiga register set
+sw          equ     0                   Offset for 'new' Amigas?
+*
+* Commodore may change the base address $dff000 in new hardware.
+*
+dmaconr     equ     sw+$002             DMA enable read (word)
+bbusy       equ     6                   Blitter busy bit in HIGH byte
+*
+start       movea.l #hw,a0              Point at custom chips
+            trap    #0                  Supervisor mode
+            or.w    #$700,sr            Disable interrupts
+            moveq   #127,d1             ** 0.8 ** Previously 100
+            moveq   #-1,d0              Count down 65536 times
+wait        btst    #bbusy,dmaconr(a0)
+            dbne    d0,wait             Loop till D0=-1 or BBUSY=0
+            beq.s   gotcha              Free at last, BBUSY=0
+            subq.b  #1,d1               Wait a while longer
+            beq.s   user_mode           Blitter is not free, D0=ERR.NC
+            bra.s   wait                Try again
+
+* Blitter control bit assignments here refer to MOVE not DRAW mode.
+*
+bltcon0     equ     sw+$040             Blitter Control Register 0
+*
+* Minterm {0..7}, DMA on D-C-B-A {8..11} Preshift on A {12..15}
+*
+bltcon1     equ     sw+$042             Blitter Control Register 1
+*
+* Move/Draw (0/1), Up/Down (0/2), Fill {2..4}  Pre-shift on B {12..15}
+*
+gotcha      move.w  #$90F,bltcon0(a0)   Copy inverted A to DMA channel D
+            moveq   #0,d0               Constant Zero for later use
+            moveq   #-1,d7              Constant mask - all bits set
+            move.w  d0,bltcon1(a0)      Move progressively up memory
+*
+bltafwm     equ     sw+$044       Left mask for first word fetched
+bltalwm     equ     sw+$046       Right mask for last word fetched on A
+bltcpt      equ     sw+$048       Blitter channel C source pointer (LONG)
+bltbpt      equ     sw+$04C       Blitter channel B source pointer (LONG)
+bltapt      equ     sw+$050       Blitter channel A source pointer (LONG)
+bltdpt      equ     sw+$054       Blitter channel D destination pointer (LONG)
+bltsize     equ     sw+$058       Blit size; word width {0..5} height {6..15}
+*
+            move.l  d7,bltafwm(a0)      Use all bits at left and right edges
+            move.l  #screen,bltapt(a0)
+            move.l  #screen,bltdpt(a0)
+*
+bltcmod     equ     sw+$060             Blitter source C modulo
+bltbmod     equ     sw+$062             Blitter source B modulo
+bltamod     equ     sw+$064             Blitter source A modulo
+bltdmod     equ     sw+$066             Blitter destination D modulo
+bltcdat     equ     sw+$070             Blitter source C data
+bltbdat     equ     sw+$072             Blitter source B data
+bltadat     equ     sw+$074             Blitter source A data
+*
+            move.l  d0,bltamod(a0)      Clear modulo on A and D
+            move.l  d0,bltcdat(a0)      Clear data on B and C 
+            move.w  #128*64,bltsize(a0) 128x128 bytes=16K, do it
+user_mode   andi.w  #$d8ff,sr
+            rts                         Return D0 error code in User Mode
+            end
+

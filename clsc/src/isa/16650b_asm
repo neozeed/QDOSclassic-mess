@@ -1,0 +1,174 @@
+*******************************************************************
+*
+* SER_asm - serial device driver routines
+*	 - for hardware that is compatible with the 16650 UART
+*	 - originated July 98 - Mark Swift
+*	 - last modified 22/09/99 (MSW)
+
+*******************************************************************
+*
+*  poll interrupt server for serial port. If interrupts are off,
+*  restarts interrupts by sending a byte.
+
+POLL_SERver:
+	MOVE.L	SV_SER1C(a6),a2		; Receive queue channel 1
+	lea	SER1_BASE+IO_8BIT,a1
+	btst	#3,SER_MCR(a1)		; test OUT2 bit
+	beq.s	POLL_2			; skip (SER1 not open)
+
+	bsr	SER_SEND 		; if transmit buffer is
+					; empty, and CTS bit is
+					; clear, then send a byte
+
+	bsr.s	SER_RECV 		; if there's room in input
+					; buffer, fetch byte.
+POLL_2:
+	MOVE.L	SV_SER2C(a6),a2		; Receive queue channel 1
+	lea	SER2_BASE+IO_8BIT,a1
+	btst	#3,SER_MCR(a1)		; test OUT2 bit
+	beq.s	POLL_X			; exit (SER2 not open)
+
+	bsr.s	SER_SEND 		; if transmit buffer is
+					; empty, and CTS bit is
+					; clear, then send a byte
+
+	bsr.s	SER_RECV 		; if there's room in input
+					; buffer, fetch byte.
+POLL_X:
+	rts
+
+*******************************************************************
+*
+
+SER_XINT:
+	move.b	SER_IIR(a1),d7		; identify the interrupt
+	andi.b	#%00000110,d7
+
+	cmpi.b	#%00000010,d7		; transmit holding register empty?
+	beq.s	TBE_XINT 		; yup, handle it
+
+	cmpi.b	#%00000100,d7		; received data available?
+	bne.s	XINT_OTHer		; nope, let someone else handle it
+
+*******************************************************************
+*
+*  RBF Interrupt. Reads a byte into the queue when serial data
+*  is ready (read buffer is full).
+
+RBF_XINT:
+	bsr.s	SER_RECV 		; get next byte
+
+	bra.s	XINT_EXIt
+
+*******************************************************************
+*
+*  TBE Interrupt. Tries to send another byte from queue when
+*  transmit buffer becomes empty.
+
+TBE_XINT:
+	bsr.s	SER_SEND 		; send next byte
+
+; -------------------------------------------------------------
+XINT_EXIt:
+	bra.s	XINT_OTHer
+
+*******************************************************************
+*
+
+SER_RECV:
+	movem.l	d0-d3/a0-a4,-(a7)
+
+	move.l	a2,d1			; address of receive Q
+	beq.s	SER_RECV3		; exit if Q doesn't exist
+
+	move.w	IO.QTEST,a4
+	jsr	(a4)			; check free space in queue
+
+	cmp.l	#21,d2
+	ble.s	SER_RECV1
+
+	ori.b	#%00000001,SER_MCR(a1)	; enable receive (DTR high)
+	bra.s	SER_RECV1
+
+SER_RECV0:
+	tst.l	d2
+	beq.s	SER_RECV2		; branch if no room in receiv Q
+
+	move.b	SER_RB(a1),d1		; get data
+	ori.b	#%00000001,SER_IER(a1)	; enable received
+					; data interrupt
+
+	move.w	IO.QIN,a4
+	jsr	(a4)			; put byte d1 into queue a2
+
+	subq.l	#1,d2
+
+SER_RECV1:
+	btst	#0,SER_LSR(a1)		; data ready?
+	bne.s	SER_RECV0		; yup, loop again
+
+	cmp.l	#15,d2
+	bgt.s	SER_RECVX		; exit if plenty room in queue
+
+; otherwise disable serial handshakes/interrupts
+
+SER_RECV2:
+	move.b	1+SER_TXHS-SER_RXQ(a2),d1
+	ble.s	SER_RECV3		; branch if no handshake
+
+	andi.b	#%11111110,SER_MCR(a1)	; force DTR low
+
+SER_RECV3:
+	tst.l	d2
+	bne.s	SER_RECVX
+
+	andi.b	#%11111110,SER_IER(a1)	; disable received
+					; data interrupt
+
+SER_RECVX:
+	movem.l	(a7)+,d0-d3/a0-a4
+	rts
+
+*******************************************************************
+*
+*  Write next byte from queue to serial port
+
+SER_SEND:
+	movem.l	d0-d1/d7/a2-a4,-(a7)
+
+	move.l	a2,d1			; address of receive Q
+	beq.s	SER_S2			; exit if Q doesn't exist
+
+	move.w	#(SER_TXQ-SER_RXQ),a2
+	adda.l	d1,a2			; address of transmit Q
+
+SER_S0:
+	btst	#5,SER_LSR(a1)		; transmit holding registerg empty?
+	beq.s	SER_S_X			; nope, quit now
+
+	move.b	1+SER_TXHS-SER_TXQ(a2),d1
+	ble.s	SER_S1
+
+	btst	#4,SER_MSR(a1)		; test CTS bit
+	beq.s	SER_S_X			; exit if not ready
+
+SER_S1:
+	moveq	#0,d1
+	move.w	IO.QOUT,a4
+	jsr	(a4)			; get byte d1 from queue a2
+	tst.l	d0
+	bne.s	SER_S2			; exit if error
+
+SER_S_DO:
+	ori.b	#%00000010,SER_IER(a1)	; enable THR empty int
+	move.b	d1,SER_THB(a1)		; write data
+	bra.s	SER_S0
+
+SER_S2:
+	andi.b	#%11111101,SER_IER(a1)	; disable THR empty int
+
+SER_S_X:
+	movem.l	(a7)+,d0-d1/d7/a2-a4
+	RTS
+
+*******************************************************************

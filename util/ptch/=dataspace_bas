@@ -1,0 +1,8 @@
+100 src$="WIN1_QZ_UTIL_PTCH_"
+110 :
+120 SET_FTYP\src$&"SYSREF_task",1
+130 SET_FDAT\src$&"SYSREF_task",10240
+150 SET_FTYP\src$&"TASremove_task",1
+160 SET_FDAT\src$&"TASremove_task",10240
+170 SET_FTYP\src$&"TASrestore_task",1
+180 SET_FDAT\src$&"TASrestore_task",10240

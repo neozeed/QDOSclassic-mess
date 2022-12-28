@@ -1,0 +1,45 @@
+*/beginfile PROCS3_asm
+; --------------------------------------------------------------
+; PROCS3_asm - BASIC bits
+;	    - last modified 06/08/92
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...some changes by Mark J Swift
+; --------------------------------------------------------------
+L066A2:
+BAS_CSIZe:
+	JSR	L08038(PC)	;*/undomodify BSR L08038
+	BNE.S	L066C4
+	SUBQ.W	#1,D3
+	JSR	L08028(PC)	;*/undomodify BSR L08028
+	BNE.S	L066C4
+	MOVE.W	-$02(A6,A1.L),D2
+	EXG	D1,D2
+	CMPI.W	#$0003,D1
+	BHI.S	L066C2
+	MOVEQ	#$2D,D4
+	JMP	L07FC4(PC)	;*/undomodify BRA L07FC4
+L066C2	MOVEQ	#-15,D0		; bad parameter
+L066C4	RTS
+BAS_CURSor:
+	MOVEQ	#-$20,D0
+	ADD.L	A5,D0
+	SUB.L	A3,D0
+	BEQ	L06BE0
+	MOVEQ	#$17,D4
+	BRA.S	L066D6
+BAS_AT:
+	MOVEQ	#$10,D4
+L066D6	JSR	L08038(PC)	;*/undomodify BSR L08038
+	BNE.S	L066F8
+	CMPI.W	#$0002,D3
+	BNE.S	L066F6
+	MOVE.W	0(A6,A1.L),D2
+	MOVE.W	-$02(A6,A1.L),D1
+	CMPI.B	#$10,D4
+	BNE.S	L066F2
+	EXG	D1,D2
+L066F2	JMP	L07FC4(PC)	;*/undomodify BRA L07FC4
+L066F6	MOVEQ	#-15,D0		; bad parameter error
+L066F8	RTS
+; --------------------------------------------------------------
+;*/endfile

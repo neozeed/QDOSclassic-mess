@@ -1,0 +1,43 @@
+Short:    QDOS Classic - complete source & binaries
+Author:   Mark J Swift
+Version:  3.25
+Uploader: msw@blackpool.ac.uk
+
+
+QDOS CLASSIC aims to provide a JS-like QL O/S that will run on
+any 680X0 hardware. The release includes full assembler source.
+
+
+QDOSCLASSIC v3.25 FEATURES
+
+*  LOADS/SAVES to QL floppy disks
+*  Hard disk support via QubIDE ROM
+*  SCREEN modes 4 and 8 BOTH supported
+*  SER driver up to 57600 baud
+*  KEYBOARD history from standard <ALT><ENTER> combination
+*  SOUND supported in full (all possible convolutions of BEEP)
+*  FOR COMPATIBILITY, data and instruction caches can be enabled/disabled
+*  BASED ON a JS ROM with many JS ROM bug fixes.
+*  SOURCE included
+
+
+AMIGA ONLY FEATURES
+
+*  2ND-SCREEN fully usable (like MINERVA ROM)
+*  ALL known amigas supported A500, A500+, A600, A1200, A4000 etc
+*  QDOS ROM relocatable into FAST RAM
+*  PAR driver
+
+
+WHAT'S MISSING FROM THE Q40 IMPLEMENTATION ?
+
+*  2ND-SCREEN
+*  PAR driver
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

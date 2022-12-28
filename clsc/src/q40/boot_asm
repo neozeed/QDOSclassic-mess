@@ -1,0 +1,488 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_BOOT_inc'
+	INCLUDE	'DEV_ASM_Q40_HW_inc'
+	INCLUDE	'DEV_ASM_ISA_HW_inc'
+
+	SECTION BOOT
+
+	XDEF	HW_RESET,HW_ENABLE
+	XDEF	HW_MEMCHEK
+	XDEF	HW_SERIALIZED,HW_WRITETHROUGH,HW_COPYBACK
+	XDEF	HW_SERINIT,HW_SERJUNK,HW_SER1GETC
+
+	XDEF	HW_VCTR_BEG
+	XDEF	HW_VCTR.LVL2_NEW,HW_VCTR.LVL2_OLD
+	XDEF	HW_VCTR.ILLG_NEW,HW_VCTR.ILLG_OLD
+	XDEF	HW_VCTR.LEN
+
+	XDEF	HW_KICK_BEG
+	XDEF	HW_KICK
+	XDEF	HW_KICK.LEN
+
+	XDEF	HARDTAG
+
+	XREF	CACHOFF,SETCACH
+
+*******************************************************************
+*
+* BOOT_asm - Q40 specific routines for bootstrap ROM
+*	  - originated July 98 - Mark Swift
+*	  - last modified 22/09/99 (MSW)
+
+*******************************************************************
+
+BASE:
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+HW_VCTR_BEG:
+
+*******************************************************************
+*
+*  Custom interrupt server for main 50Hz & external.interrupts
+
+LVL2:
+
+HW_VCTR.LVL2_NEW	EQU	(LVL2-HW_VCTR_BEG)
+
+	ori.w	#$0700,sr	; disable further interrupts
+
+	move.l	d0,-(a7)
+
+	move.b	MASTER_CHIP+INT_REG,d0
+	btst	#3,d0		; 50Hz ints enabled?
+	beq.s	EXTRN_INT	; no, must be another.
+
+	move.b	#1,MASTER_CHIP+FRAME_INT_CLEAR
+
+;  server for 50 Hz vertical blank interrupt
+
+FRAME_INT:
+	btst	#MC..BLNK,MC_STAT ; don't emulate mode if
+	bne.s	FRAME_cont	; screen set NOT VISABLE
+				; (allows you to POKE the
+				; Q40 mode register)
+
+	btst	#MC..M256,MC_STAT ; check screen mode
+	bne.s	FRAME_8COl
+
+FRAME_4COl:
+	move.b	#1,MASTER_CHIP+VIDEOMODE ; switch to Mode 4
+	bra.s	FRAME_cont
+
+FRAME_8COl:
+	move.b	#0,MASTER_CHIP+VIDEOMODE ; switch to Mode 8
+
+FRAME_cont
+	move.b	#%00001000,PC_INTR ; signal 50Hz interrupt
+				 ; in QL hardware
+
+	bra.s	LVL2X
+
+;  Let external interrupt server handle it
+;  NOTE every driver MUST clear the relevant interrupt request!
+
+EXTRN_INT:
+	move.b	#%00010000,PC_INTR ; signal external interrupt
+				 ; in QL hardware
+
+LVL2X:
+	move.l	(a7)+,d0
+
+LVL2JMP:
+
+HW_VCTR.LVL2_OLD	EQU	(LVL2JMP-HW_VCTR_BEG)+2
+
+	DC.W	$4EF9,$0000,$0000  ; filled in later
+
+*******************************************************************
+*
+*  Custom interrupt server for illegal interrupts
+
+ILLG:
+
+HW_VCTR.ILLG_NEW	EQU	(ILLG-HW_VCTR_BEG)
+
+ILLGJMP:
+
+HW_VCTR.ILLG_OLD	EQU	(ILLGJMP-HW_VCTR_BEG)+2
+
+	DC.W	$4EF9,$0000,$0000  ; filled in later
+
+*******************************************************************
+*
+*  Start of routines required for ROM swapping
+
+NOPpad2:
+	DCB.w ((0-(NOPpad2-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+HW_KICK_BEG:
+
+*******************************************************************
+*
+*  HARDWARE RESET : initialise hardware to factory defaults
+
+HW_RESET:
+	move.b	#0,MASTER_CHIP+EXT_INT_REG
+	move.b	#0,MASTER_CHIP+KEY_INT_ENABLE
+	move.b	#0,MASTER_CHIP+SER_INT_ENABLE
+	move.b	#0,MASTER_CHIP+SAMPLE_INT_ENABLE
+	move.b	#0,MASTER_CHIP+VIDEOMODE
+	move.b	#0,MASTER_CHIP+SAMPLE_RATE
+	move.b	#0,MASTER_CHIP+LED
+	move.b	#0,MASTER_CHIP+ISARESET
+
+	rts
+
+*******************************************************************
+*
+* End custom vector routines
+
+NOPpad3:
+	DCB.w ((0-(NOPpad3-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+HW_VCTR_END:
+
+HW_VCTR.LEN	EQU	(HW_VCTR_END-HW_VCTR_BEG)
+
+*******************************************************************
+*
+*  KICK start a 'SOFT' ROM - reboots the machine with new ROM
+*
+*  Before entry: allocate some memory, load a ROM into the
+*  allocated space, followed by a longword for the length
+*  of the ROM, followed by a copy of this routine.
+*  Then run the routine from the RAM copy.
+
+KICK:
+
+HW_KICK	EQU	(KICK-HW_KICK_BEG)
+
+	lea	HW_KICK_BEG(pc),a1
+	move.l	-(a1),d0 	; restore ROM length
+	sub.l	d0,a1		; address of new ROM
+	sub.l	a0,a0		; copy to address $0
+
+	lsr.l	#2,d0
+	subq.l	#1,d0		; initialise count
+
+	move.b	#1,LOWROM	; switch in real ROM
+	nop
+	nop
+
+KICKLUP:
+	move.l	(a1)+,(a0)+	; store new ROM
+	dbra	d0,KICKLUP
+
+	moveq	#0,d0
+	dc.l	$4E7B0801	; movec d0,vbr
+	dc.l	$4E7B0002	; movec d0,cacr
+	dc.l	$4E7B0003	; movec d0,tc
+	dc.l	$4E7B0004	; movec d0,itt0
+	dc.l	$4E7B0005	; movec d0,itt1
+	dc.l	$4E7B0006	; movec d0,dtt0
+	dc.l	$4E7B0007	; movec d0,dtt1
+
+	bsr	HW_RESET
+
+	move.b	#1,LOWRAM	; use RAM as new ROM
+	nop
+	nop
+	move.l	(0),a7
+	move.l	a7,d0		; Calculate start of
+	andi.w	#-$8000,d0	; system variables
+	move.l	d0,a6
+	clr.l	(a6)		; remove SV.IDENT
+	move.l	(4),a0
+	jmp	(a0)		; reset
+
+*******************************************************************
+*
+*  End of routines required for ROM swapping
+
+NOPpad4:
+	DCB.w ((0-(NOPpad4-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+HW_KICK_END:
+
+HW_KICK.LEN EQU	(HW_KICK_END-HW_KICK_BEG)
+
+*******************************************************************
+*
+*  HARDWARE ENABLE : initialise hardware to for use,
+*		   enable relevant interrupts/DMA
+
+HW_ENABLE:
+	move.b	#$11,$a7(a6)	; machine type $11 == 'Q40'
+	rts
+
+*******************************************************************
+*
+*  MEMORY CHECK : check how much memory is installed. Doesn't
+*		validate memory, just checks if it's plugged in
+*
+*  If the calculated RAMTOP is greater than the value already
+*  stored in SV.RAMTOP then - store the new value into SV.RAMTOP
+*  and do a soft reset by following the vector at $4.
+*  (hence the double-boot when first switched on)
+
+HW_MEMCHEK:
+	move.l	$00028080,d0
+	move.l	$00428080,d1
+	move.l	$01028080,d2
+	move.l	$01428080,d3
+
+	move.l	#$01000000,$00028080
+	move.l	#$00400000,$00428080
+	move.l	#$02000000,$01028080
+	move.l	#$01400000,$01428080
+
+	sub.l	a2,a2
+
+	move.l	$00028080,d4
+	cmpi.l	#$00400000,d4
+	beq.s	CHEK_OK
+
+	cmpi.l	#$01000000,d4
+	bne.s	CHEK_FIN
+
+	move.l	d4,a2
+
+	move.l	$01028080,d4
+	cmpi.l	#$01400000,d4
+	beq.s	CHEK_OK
+
+	cmpi.l	#$02000000,d4
+	bne.s	CHEK_FIN
+
+CHEK_OK:
+	move.l	d4,a2
+
+CHEK_FIN:
+	move.l	d3,$01428080
+	move.l	d2,$01028080
+	move.l	d1,$00428080
+	move.l	d0,$00028080
+
+	move.l	SV_RAMT(a6),d4	; Get ramtop.
+	cmp.l	#$80000,d4
+	ble.s	CHEK_SET 	; set now, mem never checked before
+
+	cmpa.l	d4,a2
+	bge.s	CHEK_X		; skip if memory already checked
+
+CHEK_SET:
+	move.l	a2,SV_RAMT(a6)	; Set ramtop.
+
+	move.l	$04(a0),-(a7)	; push address of RESET vector
+				; and DO A WARM RESET
+CHEK_X:
+	rts
+
+*******************************************************************
+*
+*  TTR/ACU OPTIONS : set cache options for memory map
+
+HW_COPYBACK:
+	movem.l	d0-d2/d7,-(a7)
+	bsr.s	BASEFE82
+	move.l	#$007FC020,d1	; 0-32Mb 0 = cachable, copyback (q40)
+	bra.s	TTRACU
+
+HW_WRITETHROUGH:
+	movem.l	d0-d2/d7,-(a7)
+	bsr	BASE0002
+	move.l	#$007FC000,d1	; 0-32Mb = cachable, writethrough (*q40)
+	bra.s	TTRACU
+
+HW_SERIALIZED:
+	movem.l	d0-d2/d7,-(a7)
+	bsr	BASE0002
+	move.l	#$007FC040,d1	; 0-32Mb = non-cachable, serialized (q40)
+
+TTRACU:
+	bsr	CACHOFF		; disable caches
+	move.l	d0,d7		; save cacr value
+
+	dc.w	$4E7B,$1006	; movec d1,DTT0
+	dc.w	$4E7B,$1004	; movec d1,ITT0
+
+	move.l	#$FE01C040,d1	; base FE000000 = non-cachable, serialized (*q40)
+	dc.w	$4E7B,$1007	; movec d1,DTT1
+	dc.w	$4E7B,$1005	; movec d1,ITT1
+
+	move.l	d7,d0
+	bsr	SETCACH
+
+	movem.l	(a7)+,d0-d2/d7
+	rts
+
+*******************************************************************
+*
+*  Set base address on all screen channels to address $FE820000
+*  which is a non-cachable mirror of $20000.
+*  Necessary on Q40 if COPYBACK is enabled.
+
+BASEFE82:
+	movem.l	d0-d2/a0-a2/a4,-(a7)
+
+	moveq	#0,d0		; MT.INF
+	trap	#1
+
+	movea.l	SV_CHBAS(a0),a4	; Ptr to base of channel
+				; table
+LOOPFE82:
+	MOVE.L	(A4)+,D0
+	BLT.S	SKIPFE82 	; channel closed ?
+
+	movea.l	d0,a1
+
+	move.l	4(a1),a2 	; Ptr to linkage block
+	move.l	4(a2),a2 	; io address
+	cmpi.l	#$D0FC0030,(a2)	; PTR_GEN loaded?
+	beq.s	PGENFE82 	; ...yup
+
+	cmpi.l	#$20000,SD_SCRB(a1)
+	bne.s	SKIPFE82 	; not a screen channel
+
+	move.l	#$FE820000,SD_SCRB(a1)
+	bra.s	SKIPFE82
+
+PGENFE82:
+	cmpi.l	#$20000,$30+SD_SCRB(a1)
+	bne.s	SKIPFE82 	; not a screen channel
+
+	move.l	#$FE820000,$30+SD_SCRB(a1)
+
+SKIPFE82:
+	cmpa.l	SV_CHTOP(a0),a4	; Ptr to top of channel
+				; table
+	BLT.S	LOOPFE82 	; continue for all channels
+
+	movem.l	(a7)+,d0-d2/a0-a2/a4
+	rts
+
+*******************************************************************
+*
+*  set base address on all screen channels to $20000
+
+BASE0002:
+	movem.l	d0-d2/a0-a2/a4,-(a7)
+
+	moveq	#0,d0		; MT.INF
+	trap	#1
+
+	movea.l	SV_CHBAS(a0),a4	; Ptr to base of channel
+				; table
+LOOP0002:
+	MOVE.L	(A4)+,D0
+	BLT.S	SKIP0002 	; channel closed ?
+
+	movea.l	d0,a1
+
+	move.l	4(a1),a2 	; Ptr to linkage block
+	move.l	4(a2),a2 	; io address
+	cmpi.l	#$D0FC0030,(a2)	; PTR_GEN loaded?
+	beq.s	PGEN0002 	; ...yup
+
+	cmpi.l	#$FE820000,SD_SCRB(a1)
+	bne.s	SKIP0002 	; not a screen channel
+
+	move.l	#$20000,SD_SCRB(a1)
+	bra.s	SKIP0002
+
+PGEN0002:
+	cmpi.l	#$FE820000,$30+SD_SCRB(a1)
+	bne.s	SKIP0002 	; not a screen channel
+
+	move.l	#$20000,$30+SD_SCRB(a1)
+
+SKIP0002:
+	cmpa.l	SV_CHTOP(a0),a4	; Ptr to top of channel
+				; table
+	BLT.S	LOOP0002 	; continue for all channels
+
+	movem.l	(a7)+,d0-d2/a0-a2/a4
+	rts
+
+*******************************************************************
+*
+*  SERIAL INIT : initialise serial hardware for use
+
+HW_SERINIT:
+	move.l	a1,-(a7)
+
+	move.b	#0,MASTER_CHIP+SER_INT_ENABLE ; disable SER ints
+
+	lea	IO_BASE+IO_8BIT+(SER1_BASE<<IO_PORT),a1
+
+	move.b	#$00,(SER_IER<<IO_REG)(a1) 	; no interrupts yet
+	move.b	#$83,(SER_LCR<<IO_REG)(a1) 	; set DLAB on
+	move.b	#12,(SER_DLLB<<IO_REG)(a1) 	; baud rate divisor low (9600)
+	move.b	#0,(SER_DLHB<<IO_REG)(a1)		; baud rate divisor high
+	move.b	#%00000111,(SER_LCR<<IO_REG)(a1)	; 8 bits NO parity 2 stop DLAB OFF
+	move.b	#$C7,(SER_FCR<<IO_REG)(a1) 	; (bits 7,6) Int trigger = 14 bytes
+						; (bit 2) clear transmit FIFO
+						; (bit 1) clear receive FIFO
+						; (bit 0) enable FIFOs
+	move.b	#%00000011,(SER_MCR<<IO_REG)(a1)	; enable DTR, RTS
+
+	move.l	(a7)+,a1
+	rts
+
+*******************************************************************
+*
+*  SERIAL JUNK : junk data on serial lines
+
+HW_SERJUNK:
+	move.l	a1,-(a7)
+
+	lea	IO_BASE+IO_8BIT+(SER1_BASE<<IO_PORT),a1
+
+	moveq	#-1,d2			; value for LED
+
+HW_SERJUNKL:
+	btst	#0,(SER_LSR<<IO_REG)(a1)	; junk data on line?
+	beq.s	HW_SER1GETCX		; nope, quit
+
+	move.b	d2,MASTER_CHIP+LED
+
+	move.b	(SER_RB<<IO_REG)(a1),d0	; throw data
+	bra.s	HW_SERJUNKL
+
+*******************************************************************
+*
+*  SERIAL CHAR IN : get one char from serial hardware
+
+HW_SER1GETC:
+	move.l	a1,-(a7)
+
+	lea	IO_BASE+IO_8BIT+(SER1_BASE<<IO_PORT),a1
+
+HW_SER1GETCL:
+	btst	#0,(SER_LSR<<IO_REG)(a1)	; data ready?
+	beq.s	HW_SER1GETCL		; nope, lup
+
+	addq.w	#1,d2
+	rol.b	#1,d2
+	move.b	d2,MASTER_CHIP+LED
+	ror.b	#1,d2
+
+	move.b	(SER_RB<<IO_REG)(a1),d0	; get data
+
+HW_SER1GETCX:
+	move.l	(a7)+,a1
+	rts
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad5:
+	DCB.w ((0-(NOPpad5-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+*******************************************************************
+
+	END

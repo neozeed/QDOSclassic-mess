@@ -1,0 +1,1089 @@
+	INCLUDE 'DEV/ASM/QDOS/DEFINES_inc'
+	INCLUDE 'DEV/ASM/AMG/HW_inc'
+	INCLUDE 'CLSC/SRC/AMG/CLSC_inc'
+*
+* last modified 23/02/99
+*
+* AMIGA QDOS SCREEN ACCELERATOR for 32 bit AGA machines
+*
+* New version supports FLASH in MODE 8 - CPU-intensive!
+* Inner loop no longer fits the 68030 cache if flashing.
+*
+* By Simon N Goodwin, with thanks to Mark J Swift
+* for scanning a listing when I lost the source!
+* Listing assumes TABs set to 11 chars
+*
+VERSTAG	EQU	'3.27'
+THNGTAG	EQU	'aACE'
+*
+qdos	equr	a0	Qdos screen pointer
+Plane1	equr	a1	Least significant bitplane
+Plane2	equr	a2
+Plane3	equr	a3	MODE 8 only
+table	equr	a4	Byte translator
+*
+* Interrupt servers must preserve A5, A6 and A7 (!)
+* but all other registers are up for grabs.
+*
+* Bitplane accumulator registers, added in v3.11
+*
+rRED	 equr	d4
+rBLUE	 equr	d5
+rGREEN	 equr	d6
+*
+* QDOS hardware equates
+*
+FLASH_PERIOD equ	16	Fleids per flash change
+*
+* Default addresses for Qdos and Amiga screen images
+*
+qlsize	equ HW_SCRN2-HW_SCRN1 Size of each QL screen
+*
+* Offsets of variables in interrupt linkage
+*
+link	equ	0	Interrupt link comes first
+vector	equ	4	Offset of code address
+marker	equ	8	Offset of "ACE3" signature
+prefix	equ	12	Number of bytes so far
+*
+* These variables follow MARKER and are relative to PREFIX
+*
+limit	equ	0	Count fields down from this
+count	equ	1	Current field in sequence
+busy	equ	2	Set during interrupt handler
+missed	equ	3	(Counted interrupts ignored)
+chunks	equ	4	Number of 2K chunks at each pass
+soFar	equ	5	Number of 2K chunks already done
+smode	equ	6	current screen mode
+flash_now	equ	7	Non zero for flash fields
+flash_tick equ	8	Counts down between flashes
+flash_rate equ	9	Number of fields between flashes
+varSize equ	prefix+10	Total bytes of linkage
+*
+*  ROM header
+*
+BASE:
+	dc.l	$4AFB0001		ROM recognition code
+	dc.w	define-BASE		add BASIC procs here
+	dc.w	ROM_START-BASE
+*
+	dc.b	0,33
+	dc.l	HARDTAG
+	dc.b	'ACE screen accelerator  '
+	dc.l	VERSTAG
+	dc.b	$A,0
+*
+*  start of ROM code
+*
+ROM_START:
+	movem.l d0-d3/a0-a3,-(a7)
+
+	lea	BASE(pc),a0
+	cmp.l	#$1000000,a0	FAST RAM?
+	bmi	ROM_EXIT No, user decides
+
+	moveq	#0,d0
+	trap	#1
+
+	move.b	161(a0),d0 Check CPU version
+	cmp.b	#$30,d0		< 030, user decides
+	bcs.s	ROM_EXIT
+
+	bsr	mblit_on
+
+ROM_EXIT:
+	movem.l (a7)+,d0-d3/a0-a3
+	rts
+*
+* This is the routine that redraws the whole screen
+* On entry A3 -> Linkage-8; A6 -> Qdos variables
+*
+AceVars	equ	prefix+8 A3 offset to LIMIT
+*
+redraw:
+	btst	#7,AV.FLGS1
+	beq	mblit_off
+
+	tst.b	busy+AceVars(a3)	Prevent re-entrancy
+	beq.s	update
+*
+* Code to work out the number of interrupts MISSED (while ACE is
+* busy) commented out for version 3.16 as Qdos can't cope with
+* missed interrupts anyway, and I needed the variable to set the
+* proportion of the screen to be updated (1..16, as SCR_PRIORITY)
+*
+* ignore addq.b	#1,missed+AceVars(a3)
+skip:
+	rts
+*
+update:
+	move.b	flash_rate+AceVars(a3),d1
+	beq.s	limit_ok Not ever flashing!
+
+	subq.b	#1,flash_tick+AceVars(a3)
+	bne.s	limit_ok No change
+
+	move.b	d1,flash_tick+AceVars(a3)
+	not.b	flash_now+AceVars(a3) Toggle flash flag
+
+*	move.b	missed+AceVars(a3),d1
+*	beq.s	limit_ok No interrupts missed
+*
+*	addq.b	#1,d1		Count one that worked
+*	clr.b	missed+AceVars(a3)	Keep checking
+*	cmp.b	limit+AceVars(a3),d1	Can the CPU keep up?
+*	bls.s	limit_ok There is enough time
+*
+*	move.b	d1,limit+AceVars(a3)	Increase limit
+*
+limit_ok:
+	subq.b	#1,count+AceVars(a3)
+	bne.s	skip		The time is NOT nigh
+*
+	st	busy+AceVars(a3)	Flag critical region
+	move.b	limit+AceVars(a3),count+AceVars(a3)
+	lea.l	BPLANE1,Plane1
+	lea.l	BPLANE2,Plane2
+	lea.l	HW_SCRN1+qlsize,qdos	Point at screen 2
+	move.b	MC_STAT,d2 Check if it's in use
+	bmi.s	chkmod
+*
+	lea.l	-qlsize(qdos),qdos	Wind back to screen 1
+*
+* Check if mode has changed
+*
+chkmod:
+	cmp.b	smode+AceVars(a3),d2
+	beq.s	chksho
+*
+	bsr	ace_cop
+	move.b	d2,smode+AceVars(a3)
+*
+chksho:
+	btst	#1,d2		check blanking bit
+	bne	done		and exit if set
+*
+* Work out which chunk needs to be updated next, and adjust pointers
+*
+based:
+	move.w	#2048/8,d3 Iterations per 2K chunk
+	moveq	#0,d4
+	move.b	chunks+AceVars(a3),d4
+	moveq	#0,d5
+	move.b	soFar+AceVars(a3),d5
+*
+* Advance input and output pointers past data previously processed
+*
+	move.l	d5,d6
+	lsl.l	#8,d6
+	add.l	d6,d6		* 512 for output offsets
+	add.l	d6,Plane1
+	add.l	d6,qdos
+	add.l	d6,Plane2
+	add.l	d6,qdos		Qdos gets scanned fastest
+	add.l	d6,qdos
+	add.l	d6,qdos		We'll need D6 again later
+*
+* Work out where we're going to end up
+*
+	add.b	d4,d5
+	cmp.b	#16,d5		Up to end of screen?
+	bcs.s	nextChunk
+*
+	sub.b	#16,d5		Compute potential overrun
+	sub.b	d5,d4		Do that much less, then
+	clr.b	d5		Restart at the beginning
+*
+nextChunk:
+	move.b	d5,soFar+AceVars(a3)
+	mulu.w	d4,d3		D3 is loop count, D3.H=0
+	subq.w	#1,d3		Adjust for DBRA
+
+*	move.w	#6,$DFF180 Show beam position
+*
+* If we're running on a CPU with a data cache, we should disable cache
+* allocation while redrawing the screen to avoid swamping it with data
+* that we do not intend to re-use, and wiping out MODE 8 table data.
+*
+	move.b	161(a6),d0 Check CPU version
+	cmp.b	#$30,d0
+	bcs.s	decached No data cache before 68030
+*
+* If we're in MODE 8 we need to prime the data cache with our byteTable
+*
+	btst	#3,d2		MODE 8 ?
+	beq.s	noPrime
+*
+	lea.l	byteTable(pc),table
+	moveq	#256/4-1,d1
+primer:
+	tst.l	(table)+ Get it all into the cache
+	dbra	d1,primer
+*
+noPrime:
+	dc.w	$4E7A,$1002	MOVEC CACR,D1
+	cmp.b	#$30,d0		Is this a 68030?
+	bne.s	after030
+*
+* 68030 data cache disabling code
+*
+	btst	#8,d1
+	beq	mblit_off		disable if instr cache off
+
+	move.l	d1,d7		Save old setting
+*	 beq.s	 decached
+*
+	bset	#9,d1		Disable data allocation
+	dc.w	$4E7B,$1002	MOVEC D1,CACR
+	bra.s	decached
+*
+* 68040/060 data cache disabling code; leaves prior DTT0 in D7
+*
+after030:
+	btst	#15,d1
+	beq	mblit_off	disable if instr cache off
+
+	dc.w	$4E7A,$7006	MOVEC DTT0,D7
+	move.l	#$C060,d1		Don't cache 0..16 Mb
+	dc.w	$4E7B,$1006	MOVEC D1,DTT0
+*
+* Check the mode to determine the format of the Qdos screen
+*
+decached:
+	btst	#3,d2		Mode 8 ?
+	bne.s	mode8
+*
+* Algorithmic version, reads 8 bytes and unscrambles them to 2 bitplanes
+* Input read to D0 and D5 goes to D2 and D3; D4 scratch, D6 counts loops
+*
+mode4:
+	move.w	d3,d1
+	add.l	d6,Plane1		MODE 4 outputs 2 for 1
+	add.l	d6,Plane2
+*
+next8:
+	movem.l	(qdos)+,d0/d5	Scrambled long words: ABCD EFGH
+	move.l	d0,d2		Set A in high byte of result
+	lsl.l	#8,d0		Align BC in the high word
+	move.l	d2,d4		Save low byte in D for later
+	swap	d0		Low word is now BC
+	swap	d2		CDAB
+	move.l	d0,d3		Set up B, but in low word
+	move.b	d4,d3		Set up D, again low for now
+	move.b	d0,d2		AC set in low word
+*
+* So far we have set AC and BD in the low word of our output registers
+* Next step is to work out the other word, and get both words in order
+*
+	move.l	d5,d4		Save H for later
+	swap	d5		GHEF
+	swap	d2		AC??
+	move.w	d5,d2		Set E in place
+	move.l	d4,d5		EFGH
+	lsr.l	#8,d5		0EFG
+	move.b	d5,d2		Set G in place
+	move.l	d2,(Plane2)+	Store ACEG green bits
+	swap	d3		BD??
+	move.w	d5,d3		BDF?
+	move.b	d4,d3		BDFH
+	move.l	d3,(Plane1)+	Write out red bits
+	dbra	d1,next8
+*
+	bra	CacheIn
+*
+* MODE 8 support - added in version 3.11
+*
+mode8:
+	lea.l	byteTable(pc),table	Point to start of table
+	tst.b	flash_now+AceVars(a3)
+	bne	do_flash
+*
+mode8_nf:
+	moveq	#0,d0		Ensure byte values are unsigned longs
+	move.l	a3,-(a7)
+	lea.l	BPLANE3,Plane3	Extra plane pointer for eight colours
+	add.l	d6,Plane3
+*
+next2:
+	move.l	(qdos)+,d1
+*
+* Convert two Qdos screen bytes into three packed nybbles for the bitplanes
+*
+	rol.l	#8,d1		Move MSB (green byte) to LSB
+	move.b	d1,d0		Make it an unsigned long value
+	moveq	#15,d2		Mask for low nybble
+	and.b	0(table,d0.l),d2	Get four packed green bits
+	lsl.l	#4,rGREEN		Make room
+	or.b	d2,rGREEN
+	rol.l	#8,d1		Get blue and red byte to LSB
+	move.b	d1,d0
+	moveq	#15,d2		Mask for packed red bits
+	move.b	0(table,d0.l),d0
+	lsl.l	#4,rRED		Make room
+	and.b	d0,d2		Extract red bits
+	lsl.l	#4,rBLUE Make room
+	lsr.b	#4,d0		Move blue pack to low nybble
+	or.b	d2,rRED
+	or.b	d0,rBLUE
+*
+* Now do the next two Qdos bytes, from the other half of D1
+*
+	rol.l	#8,d1		Move MSB (green byte) to LSB
+	move.b	d1,d0		Make it an unsigned long value
+	moveq	#15,d2		Mask for low nybble
+	and.b	0(table,d0.l),d2	Get four packed green bits
+	lsl.l	#4,rGREEN		Make room
+	or.b	d2,rGREEN
+	rol.l	#8,d1		Get blue and red byte to LSB
+	move.b	d1,d0
+	moveq	#15,d2		Mask for packed red bits
+	move.b	0(table,d0.l),d0
+	lsl.l	#4,rRED		Make room
+	and.b	d0,d2		Extract red bits
+	lsl.l	#4,rBLUE Make room
+	lsr.b	#4,d0		Move blue pack to low nybble
+	or.b	d2,rRED
+	or.b	d0,rBLUE
+*
+* Pick up another Qdos long word and repeat to get a whole word for each bitplane
+*
+	move.l	(qdos)+,d1
+*
+* Optimisation to speed up black areas of the screen. Overhead is just this test
+*
+	beq.s	blackOut Skip prevarication
+*
+	rol.l	#8,d1		Move MSB (green byte) to LSB
+	move.b	d1,d0		Make it an unsigned long value
+	moveq	#15,d2		Mask for low nybble
+	and.b	0(table,d0.l),d2	Get four packed green bits
+	lsl.l	#4,rGREEN		Make room
+	or.b	d2,rGREEN
+	rol.l	#8,d1		Get blue and red byte to LSB
+	move.b	d1,d0
+	moveq	#15,d2		Mask for packed red bits
+	move.b	0(table,d0.l),d0
+	lsl.l	#4,rRED		Make room
+	and.b	d0,d2		Extract red bits
+	lsl.l	#4,rBLUE Make room
+	lsr.b	#4,d0		Move blue pack to low nybble
+	or.b	d2,rRED
+	or.b	d0,rBLUE
+*
+* Time to sort out the remaining Qdos word
+*
+	rol.l	#8,d1		Move MSB (green byte) to LSB
+	move.b	d1,d0		Make it an unsigned long value
+	moveq	#15,d2		Mask for low nybble
+	and.b	0(table,d0.l),d2	Get four packed green bits
+	lsl.l	#4,rGREEN		Make room
+	or.b	d2,rGREEN
+*
+* If D3 is even we've got long words to write out
+*
+	btst	#0,d3
+	bne.s	noWrite
+*
+* These three nybbles complete long bitplane values which must be stored
+*
+	move.l	rGREEN,(Plane3)+
+	rol.l	#8,d1		Get blue and red byte to LSB
+	move.b	d1,d0
+	moveq	#15,d2		Mask for packed red bits
+	move.b	0(table,d0.l),d0
+	lsl.l	#4,rRED		Make room
+	and.b	d0,d2		Extract red bits
+	or.b	d2,rRED
+	move.l	rRED,(Plane2)+
+	lsl.l	#4,rBLUE Make room
+	lsr.b	#4,d0		Move blue pack to low nybble
+	or.b	d0,rBLUE
+	move.l	rBLUE,(Plane1)+
+	bra.s	CarryOn
+*
+* A quick hack to save time if even input long words are zero (8 black pixels)
+*
+blackOut:
+	lsl.l	#8,rGREEN
+	lsl.l	#8,rRED
+	lsl.l	#8,rBLUE
+*
+* If D3 is even we've got long words to write out
+*
+	btst	#0,d3
+	bne.s	CarryOn		Go round again for the next word
+*
+	move.l	rBLUE,(Plane1)+
+	move.l	rRED,(Plane2)+
+	move.l	rGREEN,(Plane3)+
+	bra.s	CarryOn
+*
+* Continue to accumulate in registers as we have not yet got long values
+*
+noWrite:
+	rol.l	#8,d1		Get blue and red byte to LSB
+	move.b	d1,d0
+	moveq	#15,d2		Mask for packed red bits
+	move.b	0(table,d0.l),d0
+	lsl.l	#4,rRED		Make room
+	and.b	d0,d2		Extract red bits
+	lsl.l	#4,rBLUE Make room
+	lsr.b	#4,d0		Move blue pack to low nybble
+	or.b	d2,rRED
+	or.b	d0,rBLUE
+CarryOn:
+	dbra	d3,next2
+	move.l	(a7)+,a3 Restore -> AceVars
+*
+CacheIn:
+	move.b	161(a6),d1 Check for data cache
+	cmp.b	#$30,d1		68030?
+	bcs.s	done
+*
+	beq.s	enable030
+*
+* Revert to prior setting of DTT0 on 68040 or 68060
+*
+	dc.w	$4E7B,$7006	MOVEC D7,DTT0
+	bra.s	done
+*
+* Revert to prior setting of CACR on 68030
+*
+enable030:
+	dc.w	$4E7B,$7002	MOVEC D7,CACR
+
+done:
+	clr.b	busy+AceVars(a3)
+
+*	move.w	#0,$DFF180 Show beam position
+
+	rts
+*
+* New routine for v3.22 to render a (potentially) flashing field
+*
+do_flash:
+	moveq	#0,d0		Ensure byte values are unsigned longs
+	move.l	a3,-(a7)
+	lea.l	BPLANE3,Plane3	Extra plane pointer for eight colours
+	move.l	d7,-(a7) More scratch space needed
+	add.l	d6,Plane3
+*
+Fnext2:
+	move.l	(qdos)+,d1
+*
+* Check for flash bits and process them if necessary
+*
+* Optimisation for no change in this long word
+
+	move.l	#$55005500,d2	Mask for just the flash bits
+	and.l	d1,d2
+	beq.s	No_bits1 Skip if no flash bits set
+
+	moveq	#30,d0		First flast bit # to test
+	move.l	#$7F3FFFFF,d2	Mask excludes first pixel colour
+
+Flash1:
+	btst	d0,d1		New flash bit set?
+	bne.s	Toggle1
+	tst.l	d3		Same as what?
+	bpl.s	Pixel1
+
+Tweak1:
+	ror.l	#2,d7		Push colour mask along
+	and.l	d2,d1		Obscure old colour of pixel
+	or.l	d7,d1		Replace with flash colour
+
+Pixel1:
+	ror.l	#2,d2		Next pixel mask (?)
+	bpl.s	Done1		Back to the start!
+	subq.b	#2,d0		Next flash bit
+
+	cmp.b	#22,d0
+	bne.s	Flash1
+	ror.l	#8,d2		Move mask over odd RB byte
+	ror.l	#8,d7		Just in case flashing now
+	subq.b	#8,d0
+	bra.s	Flash1
+
+Toggle1:
+	bchg	#31,d3		Toggle flag in MS bit
+	bne.s	Tweak1		Once more with feeling
+	move.l	d2,d7
+	not.l	d7		Mask for pixel colour
+	and.l	d1,d7
+	bra.s	Pixel1
+
+No_bits1:
+	tst.l	d3		MS bit set if flashing NOW
+	bpl.s	Flashed1
+*
+* A whole line of eight flashing pixels - do these the quick way!
+*
+	lsl.l	#8,rRED
+	btst	#25,d7		Red bit set in background?
+	sne	rRED		If so, set eight red bits
+	lsl.l	#8,rGREEN
+	btst	#1,d7		Green bit
+	sne	rGREEN
+	lsl.l	#8,rBLUE Make room for 8 blue bits
+	btst	#24,d7
+	sne	rBLUE
+	bra.s	Byten1		Skip to next fetch
+
+Done1	ror.l	#8,d7		Colour back to top bits
+*
+* Convert two Qdos screen bytes into three packed nybbles for the bitplanes
+*
+Flashed1:
+	rol.l	#8,d1		Move MSB (green byte) to LSB
+	move.b	d1,d0		Make it an unsigned long value
+	moveq	#15,d2		Mask for low nybble
+	and.b	0(table,d0.l),d2	Get four packed green bits
+	lsl.l	#4,rGREEN	 Make room
+	or.b	d2,rGREEN
+	rol.l	#8,d1		Get blue and red byte to LSB
+	move.b	d1,d0
+	moveq	#15,d2		Mask for packed red bits
+	move.b	0(table,d0.l),d0
+	lsl.l	#4,rRED		Make room
+	and.b	d0,d2		Extract red bits
+	lsl.l	#4,rBLUE Make room
+	lsr.b	#4,d0		Move blue pack to low nybble
+	or.b	d2,rRED
+	or.b	d0,rBLUE
+*
+* Now do the next two Qdos bytes, from the other half of D1
+*
+	rol.l	#8,d1		Move MSB (green byte) to LSB
+	move.b	d1,d0		Make it an unsigned long value
+	moveq	#15,d2		Mask for low nybble
+	and.b	0(table,d0.l),d2	Get four packed green bits
+	lsl.l	#4,rGREEN	 Make room
+	or.b	d2,rGREEN
+	rol.l	#8,d1		Get blue and red byte to LSB
+	move.b	d1,d0
+	moveq	#15,d2		Mask for packed red bits
+	move.b	0(table,d0.l),d0
+	lsl.l	#4,rRED		Make room
+	and.b	d0,d2		Extract red bits
+	lsl.l	#4,rBLUE Make room
+	lsr.b	#4,d0		Move blue pack to low nybble
+	or.b	d2,rRED
+	or.b	d0,rBLUE
+*
+* Pick up another long word and repeat to get a whole word for each bitplane
+*
+Byten1:
+	move.l	(qdos)+,d1
+*
+* Check for flash bits and process them if necessary (v3.22 extension)
+*
+	move.l	#$55005500,d2	Mask for just the flash bits
+	and.l	d1,d2
+	beq.s	No_bits2 Skip if no flash bits set
+
+	moveq	#30,d0		First flast bit # to test
+	move.l	#$7F3FFFFF,d2	Mask excludes first pixel colour
+
+Flash2:
+	btst	d0,d1		New flash bit set?
+	bne.s	Toggle2
+	tst.l	d3		Same as what?
+	bpl.s	Pixel2
+
+Tweak2:
+	ror.l	#2,d7		Push colour mask along
+	and.l	d2,d1		Obscure old colour of pixel
+	or.l	d7,d1		Replace with flash colour
+
+Pixel2:
+	ror.l	#2,d2		Next pixel mask (?)
+	bpl.s	Done2		Back to the start!
+	subq.b	#2,d0		Next flash bit
+	cmp.b	#22,d0
+	bne.s	Flash2
+
+	ror.l	#8,d2		Move mask over odd RB byte
+	ror.l	#8,d7		Just in case flashing now
+	subq.b	#8,d0
+	bra.s	Flash2
+
+Toggle2:
+	bchg	#31,d3		Toggle flag in MS bit
+	bne.s	Tweak2		Last flash in this set
+	move.l	d2,d7
+	not.l	d7		Mask for pixel colour
+	and.l	d1,d7
+	bra.s	Pixel2
+
+No_bits2:
+	tst.l	d3		MS bit set if flashing NOW
+	bpl.s	Flashed2
+*
+* A whole line of eight flashing pixels - do these the quick way!
+*
+	lsl.l	#8,rRED
+	btst	#25,d7		Red bit set in background?
+	sne	rRED		If so, set eight red bits
+	lsl.l	#8,rGREEN
+	btst	#1,d7		Green bit before rotation
+	sne	rGREEN
+	lsl.l	#8,rBLUE Make room for 8 blue bits
+	btst	#24,d7
+	sne	rBLUE
+	bra.s	Byten2
+
+Done2:
+	ror.l	#8,d7		Colour back to top bits
+*
+* Convert two Qdos screen bytes into three packed nybbles for the bitplanes
+*
+Flashed2 tst.l	d1
+*
+* Optimisation to speed up black areas of the screen
+*
+	beq.s	FblackOut	Skip prevarication
+
+	rol.l	#8,d1		Move MSB (green byte) to LSB
+	move.b	d1,d0		Make it an unsigned long value
+	moveq	#15,d2		Mask for low nybble
+	and.b	0(table,d0.l),d2	Get four packed green bits
+	lsl.l	#4,rGREEN	 Make room
+	or.b	d2,rGREEN
+	rol.l	#8,d1		Get blue and red byte to LSB
+	move.b	d1,d0
+	moveq	#15,d2		Mask for packed red bits
+	move.b	0(table,d0.l),d0
+	lsl.l	#4,rRED		Make room
+	and.b	d0,d2		Extract red bits
+	lsl.l	#4,rBLUE Make room
+	lsr.b	#4,d0		Move blue pack to low nybble
+	or.b	d2,rRED
+	or.b	d0,rBLUE
+*
+* Time to sort out the remaining Qdos word
+*
+	rol.l	#8,d1		Move MSB (green byte) to LSB
+	move.b	d1,d0		Make it an unsigned long value
+	moveq	#15,d2		Mask for low nybble
+	and.b	0(table,d0.l),d2	Get four packed green bits
+	lsl.l	#4,rGREEN		Make room
+	or.b	d2,rGREEN
+*
+* If D3 is even we've got long words to write out
+*
+	btst	#0,d3
+	bne.s	FnoWrite
+*
+* These three nybbles complete long bitplane values which must be stored
+*
+	move.l	rGREEN,(Plane3)+
+	rol.l	#8,d1		Get blue and red byte to LSB
+	move.b	d1,d0
+	moveq	#15,d2		Mask for packed red bits
+	move.b	0(table,d0.l),d0
+	lsl.l	#4,rRED		Make room
+	and.b	d0,d2		Extract red bits
+	or.b	d2,rRED
+	move.l	rRED,(Plane2)+
+	lsl.l	#4,rBLUE Make room
+	lsr.b	#4,d0		Move blue pack to low nybble
+	or.b	d0,rBLUE
+*
+* Before posting the last write, see if the flash flag needs toggling
+*
+Fcheck:
+	moveq	#31,d0		Mask for 256 pixel wide plane
+	move.l	Plane3,d1
+	and.l	d1,d0		Test low bits for next write
+	bne.s	in_line
+	ext.l	d3		Reset flash flag, new line
+
+in_line:
+	move.l	rBLUE,(Plane1)+
+	bra.s	FCarryOn
+*
+* Quick tweak saves time if even input long words are zero (8 black pixels)
+*
+FblackOut:
+	lsl.l	#8,rGREEN
+	lsl.l	#8,rRED
+	lsl.l	#8,rBLUE
+
+Byten2:
+	btst	#0,d3		Have we got a whole long word yet?
+	bne.s	FCarryOn Go round again for the next word
+*
+	move.l	rRED,(Plane2)+
+	move.l	rGREEN,(Plane3)+
+	bra.s	Fcheck
+*
+* Continue to accumulate in registers as we have not yet got long values
+*
+FnoWrite:
+	rol.l	#8,d1		Get blue and red byte to LSB
+	move.b	d1,d0
+	moveq	#15,d2		Mask for packed red bits
+	move.b	0(table,d0.l),d0
+	lsl.l	#4,rRED		Make room
+	and.b	d0,d2		Extract red bits
+	lsl.l	#4,rBLUE Make room
+	lsr.b	#4,d0		Move blue pack to low nybble
+	or.b	d2,rRED
+	or.b	d0,rBLUE
+
+FCarryOn:
+	dbra	d3,Fnext2
+	move.l	(a7)+,d7
+	move.l	(a7)+,a3
+	bra.w	CacheIn
+*
+* Subroutine to change copper list to suit ACE
+*
+ace_cop:
+	bset	#7,AV.FLGS1	disable screen blitter
+	move.w	#$0000,COLOR00
+	move.b	MC_STAT,d2
+	btst	#3,d2
+	bne.s	ace_cop8
+*
+ace_cop4:
+	move.w	#76,COPLST+$86	DDFSTART
+	move.w	#204,COPLST+$8A	DDFSTOP
+	move.w	#-4,COPLST+$8E	Modulo
+	move.w	#-4,COPLST+$92	Modulo
+	move.w	#$A200,COPLST+$A2
+	btst	#1,d2
+	bne	blnkit
+	move.w	#$0F00,COLOR01
+	move.w	#$00F0,COLOR02
+	move.w	#$0FFF,COLOR03
+	rts
+*
+ace_cop8:
+	move.w	#72,COPLST+$86	DDFSTART
+	move.w	#200,COPLST+$8A	DDFSTOP
+	move.w	#-2,COPLST+$8E	Modulo
+	move.w	#-2,COPLST+$92	Modulo
+	move.w	#$3200,COPLST+$A2
+	btst	#1,d2
+	bne.s	blnkit
+	move.w	#$000F,COLOR01
+	move.w	#$0F00,COLOR02
+	move.w	#$0F0F,COLOR03
+	move.w	#$00F0,COLOR04
+	move.w	#$00FF,COLOR05
+	move.w	#$0FF0,COLOR06
+	move.w	#$0FFF,COLOR07
+	rts
+*
+blnkit:
+	move.w	#$0000,COLOR01
+	move.w	#$0000,COLOR02
+	move.w	#$0000,COLOR03
+	rts
+*
+* sub to change copper list to suit blitter
+*
+blt_cop:
+	bclr	#7,AV.FLGS1	enable screen blitter
+	move.w	#76,COPLST+$86	DDFSTART
+	move.w	#204,COPLST+$8A	DDFSTOP
+	move.w	#-4,COPLST+$8E	Modulo
+	move.w	#-4,COPLST+$92	Modulo
+	move.w	#$A200,COPLST+$A2
+	move.w	#$0000,COLOR00
+	move.w	#$0FFF,COLOR03
+*
+	move.b	MC_STAT,d2
+	btst	#1,d2
+	bne.s	blnkit
+	btst	#3,d2
+	bne.s	blt_cop8
+*
+blt_cop4:
+	move.w	#$0F00,COLOR01
+	move.w	#$00F0,COLOR02
+	rts
+*
+blt_cop8:
+	move.w	#$0B44,COLOR01
+	move.w	#$04B4,COLOR02
+	move.w	#$08FF,COLOR03
+	rts
+*
+* ACE_ON asks is it already on? if so, return no error
+*
+mblit_on:
+	bsr.s	find_pos2
+	beq.s	it_worked		Already on
+*
+* Otherwise, allocate linkage area in common heap
+*
+	moveq	#varSize,d1
+	moveq	#0,d2		Owned by SuperBASIC
+	moveq	#24,d0		MT.ALCHP trap key
+	trap	#1
+	tst.l	d0		Did we get it?
+	bne.s	oops
+*
+	bsr	ace_cop
+	move.b	d2,prefix+smode(a0)
+*
+	lea.l	redraw,a2
+	move.l	a2,vector(a0)	Provide code address
+	move.l	d7,marker(a0)	Add signature
+	move.b	#2,prefix+limit(a0)	Update every other field
+	move.b	#1,prefix+count(a0)
+	move.b	#0,prefix+missed(a0)	Not currently used...
+	move.b	#0,prefix+busy(a0)
+	move.b	#8,prefix+chunks(a0)	Scan 8 x 2K per update
+	move.b	#0,prefix+soFar(a0)
+
+	move.b	#0,prefix+flash_now(a0)
+	move.b	#FLASH_PERIOD,prefix+flash_tick(a0)
+*	move.b	#0,prefix+flash_rate(a0)
+
+* Only turn flash on by default if running a 68040 or better?
+
+	move.l	a0,a3		Save A0 for later
+*	moveq	#0,d0
+*	trap	#1		MT.INF
+*	move.b	161(a0),d0 Check CPU version
+*	cmp.b	#$40,d0		< 040
+*	bcs.s	too_old
+
+	move.b	#FLASH_PERIOD,prefix+flash_rate(a3)
+
+too_old:
+	move.l	a3,a0
+	moveq	#28,d0		Set up MT.LPOLL trap
+
+trap1_out:
+	trap	#1
+
+it_worked:
+	moveq	#0,d0
+	rts
+*
+find_pos2:
+	bsr	find_pos Extra call for trapping
+oops	rts
+*
+* ACE_OFF is pretty simple too
+*
+mblit_off:
+	bsr.s	find_pos2		Is our interrupt linked?
+	bmi.s	it_worked		If not, return at once
+*
+* Remove interrupt server and deallocate linkage memory
+*
+	bsr	blt_cop
+*
+not_opened:
+	lea.l	-prefix(a4),a0
+	moveq	#29,d0		MT.RPOLL trap key
+	trap	#1
+	moveq	#25,d0		MT.RECHP trap key
+	bra.s	trap1_out
+*
+* ACE_FLASH 0 turns flash off. Parameters >0 set rate in frames before
+* change, e.g. 25 to flash on and off once every second, 5 for 5 flashes
+* per second, etc. Maximum 250 (change every 5 seconds, flash every 10).
+*
+flashrate:
+	move.w	CA.GTINT,a2	Integer fetch vector
+	jsr	(a2)
+	bne.s	no_luck
+
+	subq.w	#1,d3
+	bne.s	bad_param
+	move.w	0(a1,a6.l),d5
+	cmp.w	#251,d5
+	bcc.s	bad_param
+
+	bsr.s	find_pos
+	move.b	d5,flash_rate(a4)
+
+	tst.b	d5
+	bne.s	it_worked
+
+	clr.b	flash_now(a4)
+	bra.s	it_worked
+*
+bad_param:
+	moveq	#-15,d0		ERR.BP code
+
+no_luck:
+	rts
+*
+setrate:
+	move.w	CA.GTINT,a2	Integer fetch vector
+	jsr	(a2)
+	bne.s	no_luck
+
+	subq.w	#2,d3
+	bne.s	bad_param
+*
+* Check first parameter, number of 2K chunks to update each time
+*
+	move.w	0(a1,a6.l),d4
+	ble.s	bad_param
+
+	cmp.w	#16,d4
+	bhi.s	bad_param
+*
+* Check second parameter, delay between updates in fields
+*
+	tst.b	2(a1,a6.l)
+	bne.s	bad_param		Reject if <0 or >255
+
+	move.b	3(a1,a6.l),d3
+	beq.s	bad_param		Trap zero (aka 256!)
+*
+	bsr.s	find_pos
+*
+	move.b	d3,limit(a4)
+	move.b	d4,chunks(a4)
+	move.b	#1,count(a4)	Respond next field
+	bra.s	it_worked
+*
+* ACE_STEP% returns the current setting of CHUNKS to SuperBASIC
+*
+step:
+	bsr.s	find_pos
+	moveq	#0,d4
+	move.b	chunks(a4),d4
+	bra.s	chk_integer
+*
+* ACE_FLASH% returns the current flash rate (default 16)
+*
+flash:
+	bsr.s	find_pos
+	moveq	#0,d4
+	move.b	flash_rate(a4),d4
+	bra.s	chk_integer
+*
+* ACE_RATE% returns the current setting of LIMIT to SuperBASIC
+*
+rate:
+	bsr.s	find_pos
+	moveq	#0,d4
+	move.b	limit(a4),d4
+*
+* Return the integer in D4.W to SuperBASIC via the RI stack
+*
+chk_integer:
+	moveq	#2,d1		Number of bytes needed
+	move.w	BV.CHRIX,a2	Find the BV.CHRIX vector
+	jsr	(a2)		Allocate RI space
+	subq.l	#2,$58(a6) Update BV.RIP
+
+ret_integer:
+	move.l	$58(a6),a1 Get BV.RIP
+	move.w	d4,0(a1,a6.l)	Stack the result
+	moveq	#3,d4		Type = 16 bit Integer
+
+no_error:
+	moveq	#0,d0		No run-time error
+	rts
+*
+* FIND_POS points A4 at ACE variables in the interrupt list
+*
+* LONG link address
+* LONG code address
+* LONG "ACE3" marker
+* BYTE count
+* BYTE limit
+*
+* Result in A4, "ACEn" marker in D7; job ID in D1, uses D0
+* Returns NOT FOUND to prior caller if the server is absent
+*
+find_pos:
+	moveq	#0,d0		MT.INF
+	trap	#1
+	move.l	#'ACE3',d7
+	lea.l	60(a0),a4		Locate polled list
+
+find_loop:
+	move.l	(a4),d0
+	beq.s	not_found		Report to prior caller
+*
+	movea.l	d0,a4
+	cmp.l	marker(a4),d7	Check signature
+	bne.s	find_loop
+*
+found_it:
+	lea.l	prefix(a4),a4	Point at the data
+	rts
+*
+not_found:
+	addq.l	#4,a7		Discard return address
+	moveq	#-7,d0		ERR.NF report code
+	rts
+*
+* Mode 8 byte conversion table, generated by ACE3_BAS
+*
+* Index:  0..255	A B C D E F G H
+* Result: 0..255	B D F H A C E G
+*
+byteTable:
+	dc.b	0,16,1,17,32,48,33,49
+	dc.b	2,18,3,19,34,50,35,51
+	dc.b	64,80,65,81,96,112,97,113
+	dc.b	66,82,67,83,98,114,99,115
+	dc.b	4,20,5,21,36,52,37,53
+	dc.b	6,22,7,23,38,54,39,55
+	dc.b	68,84,69,85,100,116,101,117
+	dc.b	70,86,71,87,102,118,103,119
+	dc.b	128,144,129,145,160,176,161,177
+	dc.b	130,146,131,147,162,178,163,179
+	dc.b	192,208,193,209,224,240,225,241
+	dc.b	194,210,195,211,226,242,227,243
+	dc.b	132,148,133,149,164,180,165,181
+	dc.b	134,150,135,151,166,182,167,183
+	dc.b	196,212,197,213,228,244,229,245
+	dc.b	198,214,199,215,230,246,231,247
+	dc.b	8,24,9,25,40,56,41,57
+	dc.b	10,26,11,27,42,58,43,59
+	dc.b	72,88,73,89,104,120,105,121
+	dc.b	74,90,75,91,106,122,107,123
+	dc.b	12,28,13,29,44,60,45,61
+	dc.b	14,30,15,31,46,62,47,63
+	dc.b	76,92,77,93,108,124,109,125
+	dc.b	78,94,79,95,110,126,111,127
+	dc.b	136,152,137,153,168,184,169,185
+	dc.b	138,154,139,155,170,186,171,187
+	dc.b	200,216,201,217,232,248,233,249
+	dc.b	202,218,203,219,234,250,235,251
+	dc.b	140,156,141,157,172,188,173,189
+	dc.b	142,158,143,159,174,190,175,191
+	dc.b	204,220,205,221,236,252,237,253
+	dc.b	206,222,207,223,238,254,239,255
+*
+* SuperBASIC extension details for the BP.INIT vector
+*
+define	dc.w	4+1		Four procedures
+	dc.w	mblit_off-*
+	dc.b	7,'ACE_OFF'
+	dc.w	mblit_on-*
+	dc.b	6,'ACE_ON'
+	dc.w	setrate-*
+	dc.b	12,'ACE_PRIORITY' Long name hence +1
+	dc.w	flashrate-*
+	dc.b	9,'ACE_FLASH'
+	dc.w	0
+*
+	dc.w	3+1		Two verbose functions
+	dc.w	rate-*
+	dc.b	9,'ACE_RATE%'
+	dc.w	flash-*
+	dc.b	10,'ACE_FLASH%'
+	dc.w	step-*
+	dc.b	9,'ACE_STEP%'
+	dc.w	0
+*
+NOPpadding:
+	DCB.w ((0-(NOPpadding-BASE))&$7F)/2,$4E71
+*
+	end

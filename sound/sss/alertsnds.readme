@@ -1,0 +1,32 @@
+Short:    Some standard alert sounds for SSSS
+Version:  1.00
+Uploader: msw@blackpool.ac.uk
+Type:     sound/ssss
+
+
+Some standard alert sounds saved in the raw format required for
+the SMSQ/E Sampled Sound System.
+
+SSSS samples have a sample rate of 20khz.
+SSSS samples are saved in pairs (left, right, left, right, etc...)
+SSSS samples are byte values between 0 and 255. The "zero" level is 128.
+
+
+ARCHIVE CONTENTS
+
+ Droplet_ub
+ Indigo_ub
+ Quack_ub
+ SimpleBEEP_ub
+ SoSumi_ub
+ WildEEP_ub
+ AlertSNDs_readme - This file.
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

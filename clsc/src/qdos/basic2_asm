@@ -1,0 +1,18 @@
+*/beginfile BASIC2_asm
+; --------------------------------------------------------------
+; BASIC2_asm - The BASIC bits
+;	    - last modified 10/12/91
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...some changes by Mark J Swift
+; --------------------------------------------------------------
+L069A4:
+TRAP_4_3:
+	TRAP	#4
+L069A6:
+BAS_TRAP3:
+	MOVEQ	#-1,D3
+	TRAP	#3
+	TST.L	D0
+	RTS
+; --------------------------------------------------------------
+;*/endfile

@@ -1,0 +1,4337 @@
+	INCLUDE	'DEV/ASM/QDOS/DEFINES_inc'
+	INCLUDE	'CLSC/SRC/CORE/FLP_inc'
+	INCLUDE	'DEV/ASM/AMG/HW_inc'
+	INCLUDE	'CLSC/SRC/AMG/CLSC_inc'
+
+	SECTION FLP
+
+	XDEF.L	HARDTAG
+	XDEF	user_ini
+	XDEF	fd_hwselect,fd_hwckrdy,fd_hwrestore,fd_hwraddr
+	XDEF	fd_hwside,fd_hwseek,fd_hwmtrsoff,fd_hwwpro
+	XDEF	fd_hwchng,fd_hwread,fd_hwwrite,fd_hwftrack
+
+	XREF	noints
+
+*******************************************************************
+*
+* FLP_asm - FLP Physical I/O - Amiga specific disk access
+*	 - originated by Rainer Kowallik
+*	 - last modified 23/02/99 (MSW)
+
+;debug	 equ	 1
+
+*******************************************************************
+*
+*  Hardware specific routines
+
+user_ini:
+	movem.l	d1-d3/a0-a5,-(a7)
+
+; link in additional BASIC commands
+
+	lea	PROC_DEF(pc),a1
+	suba.l	a2,a2
+	move.w	$110,a2
+	jsr	(a2)
+
+; allocate memory for disk variables
+
+	move.l	#FV_LEN,d1
+	moveq	#MT.ALCHP,d0
+	moveq	#0,d2
+	trap	#1
+	move.l	a0,AV.DSKV
+
+;  allow disk DMA.
+
+	move.w	#%1000000000010000,DMACON ; enable disk DMA
+
+; clear all the variables
+
+	move.l	AV.DSKV,a3	; address of disk vars ->a3
+	moveq	#((FV_LEN>>1)-1),d0
+
+CLRV_LUP1:
+	clr.w	(a3)+
+	dbra	d0,CLRV_LUP1
+
+	move.l	AV.DSKV,a3	; address of disk vars ->a3
+	move.b	#0,FV.PROFLag(a3) ; no drives write protected
+	move.b	#-1,FV.CNGFLag(a3) ; all drives changed
+	move.b	#0,FV.RDYFLag(a3)  ; all drives not ready
+
+;  set up disk flags for:
+;  Disable disk operation via index interrupt. Retry on read error.
+;  Index on write. No WORDSYNC on write.
+;  No index on read. WORDSYNC on read.
+
+	move.b	#%00101001,FV.FLAGS(a3)
+
+; link in polled routine to control switching off the motor
+
+	lea	POLSERV(pc),a1	; address of routine
+	move.l	AV.DSKV,a0
+	lea	FV.POLLLink(a0),a0
+	move.l	a1,4(a0)
+	moveq	#MT.LPOLL,d0
+	trap	#1
+
+; check availability of external drive(s)
+
+	move.l	AV.DSKV,a3	; address of disk vars ->a3
+	lea	FV.DRVVArs(a3),a4 ; address of drive vars->a4
+	lea	(DV_LEN*3)(a4),a4
+
+	moveq	#3,d3		; 4 drives to check
+
+AVAIL_LUP:
+	move.w	d3,FV.REQDRive(a3)
+	clr.w	DV.TIMEOut(a4)	; timeout
+	clr.w	DV.SIDE(a4)	; side
+	clr.w	DV.TRACK(a4)	; track
+	bsr	STATUS
+	tst.l	DV.TYPE(a4)
+	beq.s	AVAIL_NOT
+
+	move.w	d3,d0
+	bsr	hw_GO_TK0
+
+AVAIL_NOT:
+	lea	-DV_LEN(a4),a4
+	dbra	d3,AVAIL_LUP
+
+INI_RTS:
+	movem.l	(a7)+,d1-d3/a0-a5
+	moveq	#0,d0
+	rts
+
+; -------------------------------------------------------------
+; initialise and set the individual drive variables
+
+MOUNT:
+	movem.l	d3/a3-a5,-(a7)
+
+	move.w	d0,d3		; drive number to d3
+
+	move.l	AV.DSKV,a3	; address of disk vars ->a3
+	lea	FV.DRVVArs(a3),a4 ; address of drive vars->a4
+
+	mulu.w	#DV_LEN,d3
+	lea	0(a4,d3.w),a4	; relevant drive vars
+
+	move.w	d0,d3		; drive number to d3
+
+; initialise and set the individual drive variables
+
+	clr.w	DV.TIMEOut(a4)	; timeout
+	clr.w	DV.SIDE(a4)	; side
+	clr.w	DV.TRACK(a4)	; track
+
+; allocate some room for drives buffer variables
+
+ALOCBUF:
+	move.l	DV.SIDE0buff(a4),d0
+	bne.s	MOUNTOK		; already defined
+
+	movem.l	d1-d3/a1-a4,-(a7)
+	move.l	#(2*AB.BUFENd),d1
+	moveq	#MT.ALCHP,d0
+	moveq	#0,d2
+	trap	#1
+	movem.l	(a7)+,d1-d3/a1-a4
+
+	tst.l	d0
+	bne.s	MOUNTX		; exit on error
+
+	move.l	a0,a5
+
+	move.l	a5,DV.SIDE0buff(a4) ; addrs buffer vars, side 0
+	move.w	d3,AB.DRIVE(a5)	; set disk #
+	clr.w	AB.SIDE(a5)	; set first side
+	clr.w	AB.TRACK(a5)	; set first track
+	clr.l	AB.PENDWflag(a5)	; clear pending write
+	move.l	#$3FFFF,AB.BADFLag(a5) ; sectors all bad
+
+	lea	AB.BUFENd(a5),a5
+
+	move.l	a5,DV.SIDE1buff(a4) ; addrs buffer vars, side 1
+	move.w	d3,AB.DRIVE(a5)	; set disk #
+	move.w	#1,AB.SIDE(a5)	; set second side
+	clr.w	AB.TRACK(a5)	; set first track
+	clr.l	AB.PENDWflag(a5)	; clear pending write
+	move.l	#$3FFFF,AB.BADFLag(a5) ; sectors all bad
+
+; initialise drive status
+
+	move.w	d3,d0
+
+	bset.b	d0,FV.CNGFLag(a3) ; set disk changed
+	bclr.b	d0,FV.RDYFLag(a3) ; set drive not ready
+
+	bsr	hw_GO_TK0
+
+MOUNTOK:
+	moveq	#0,d0
+
+	cmp.w	FV.MAXDRive(a3),d3
+	ble.s	MOUNTX
+	move.w	d3,FV.MAXDRive(a3)
+
+MOUNTX:
+	movem.l	(a7)+,d3/a3-a5
+
+	rts
+
+; -------------------------------------------------------------
+;    interfacing to the CST floppy controller body
+
+fd_read:
+	movem.l	d0/d3-d4/a3,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'RD',d0
+	bsr	IOD0
+	move.l	#0,a0
+	move.l	d1,d0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+	endc
+
+	moveq	#0,d3
+	move.w	fdd_rbeg(a3),d3	; get no of bytes to skip
+	moveq	#0,d4
+	move.w	fdd_rend(a3),d4	; get no of bytes to leave
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_readl:
+	bsr	RQSEC
+
+	move.w	d0,d2		; error return in d2 !
+	movem.l	(a7)+,d0/d3-d4/a3
+	rts
+
+; -------------------------------------------------------------
+fd_ftrack:
+	movem.l	a3-a5,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'FT',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+	endc
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_ftrackl:
+	bsr	FTRACK
+
+	move.w	FV.REQDRive(a3),d2
+	and.w	#$3,d2		; only drives 0-3
+
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	move.w	DV.SIDE(a4),d2	; Address of buffer vars
+	lsl.w	#2,d2		; for required side in a5
+	move.l	DV.SIDE0buff(a4,d2.w),a5
+
+	move.w	AB.LSECTR(a5),d1
+	sub.w	AB.FSECTR(a5),d1
+	addq.w	#1,d1
+
+	tst.l	d0
+	movem.l	 (a7)+,a3-a5
+	rts
+
+; -------------------------------------------------------------
+fd_write:
+	movem.l	d0/a3,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'WR',d0
+	bsr	IOD0
+	move.l	#0,a0
+	move.l	d1,d0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+	endc
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_writel:
+	bsr	WQSEC
+
+	move.w	d0,d2		; error return in d2 !
+	movem.l	(a7)+,d0/a3
+	rts
+
+; -------------------------------------------------------------
+fd_side:
+	movem.l	d0-d1/a3,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'SD',d0
+	bsr	IOD0
+	move.l	#0,a0
+	move.l	d1,d0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+	endc
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_sidel:
+	moveq	#0,d0
+	move.b	d1,d0
+	bsr	SEL_SIDE
+
+	movem.l	(a7)+,d0-d1/a3
+	rts
+
+; -------------------------------------------------------------
+fd_select:
+	movem.l	d0-d1/a3,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'SL',d0
+	bsr	IOD0
+	move.l	#0,a0
+	move.l	d1,d0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+	endc
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_selctl:
+	cmp.b	#4,d1		; drive within range ?
+	bgt.s	fd_slctx
+
+	moveq	#0,d0
+	move.b	d1,d0
+	subq.b	#1,d0
+	ext.w	d0
+	bsr	SEL_DRV
+
+fd_slctx
+	movem.l	(a7)+,d0-d1/a3
+	rts
+
+; -------------------------------------------------------------
+fd_seek:
+	movem.l	d0-d1/a3,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'SK',d0
+	bsr	IOD0
+	move.l	#0,a0
+	move.l	d1,d0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+	endc
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_seekl:
+	moveq	#0,d0
+	move.b	d1,d0
+	bsr	GO_TRACK
+
+	movem.l	(a7)+,d0-d1/a3
+	rts
+
+; -------------------------------------------------------------
+fd_restore:
+	movem.l	a3,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'RS',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+	endc
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_restrl:
+	moveq	#0,d0
+	bsr	GO_TRACK
+
+	movem.l	(a7)+,a3
+	rts
+
+; -------------------------------------------------------------
+fd_wpro:
+	movem.l	a3,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'WP',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+	endc
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_wprol:
+	bsr	WPRO
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+	endc
+
+	movem.l	(a7)+,a3
+	rts
+
+; -------------------------------------------------------------
+fd_chng:
+	movem.l	a3,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'CG',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+	endc
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_chngl:
+	bsr	CHNG
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+	endc
+
+	movem.l	(a7)+,a3
+	rts
+
+; -------------------------------------------------------------
+fd_ckrdy:
+	movem.l	a3,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'CK',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+	endc
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_ckrdyl:
+	bsr	CKRDY
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+	endc
+
+	movem.l	(a7)+,a3
+	rts
+
+; -------------------------------------------------------------
+fd_raddr:
+	movem.l	d2/a0/a3-a5,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'RA',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+	endc
+
+	bsr	RQDISK
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_raddrl:
+	move.w	FV.REQDRive(a3),d0 ; Required drive in d0
+	and.w	#$3,d0		; Only drives 0-3.
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	move.w	DV.SIDE(a4),d2	; Address of buffer vars
+	lsl.w	#2,d2		; for required side in a5
+	move.l	DV.SIDE0buff(a4,d2.w),a5
+
+	clr.b	DV.TRK40(a4)
+	move.w	AB.TRACK(a5),d1
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'ra',d0
+	bsr	IOD0
+	move.w	d1,d0
+	move.l	#0,a0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+	endc
+
+	tst.w	d1
+	beq.s	fd_raddrx
+
+	lsl.w	#1,d1
+	cmp.w	DV.TRACK(a4),d1
+	bne.s	fd_raddrx
+
+	st.b	DV.TRK40(a4)	; must be a 40 track drive
+
+fd_raddrx:
+	lsr.w	#1,d1
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.w	d1,d0
+	move.l	#0,a0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+	endc
+
+	movem.l	(a7)+,d2/a0/a3-a5
+	moveq	#0,d0
+	rts
+
+; -------------------------------------------------------------
+fd_dskcng:
+	movem.l	d0/a3,-(a7)
+
+	ifd	debug
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'CD',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+	endc
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+fd_dscngl:
+	move.w	FV.REQDRive(a3),d0
+
+	bsr	DSKCNG
+
+	movem.l	(a7)+,d0/a3
+	rts
+
+; -------------------------------------------------------------
+;  Flush ASCII buffer for drive d0.w, only if it is truely
+;  owned by that drive. Called before motor is switched off
+;  Error returned in d0.
+; -------------------------------------------------------------
+FLUSH_BUFF:
+	movem.l	d1-d3,-(a7)
+
+	and.w	#$3,d0		; Only drives 0-3.
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	move.w	DV.SIDE(a4),d2	; save old side
+	move.w	FV.REQDRive(a3),d3 ; save old required drive
+
+	move.w	d0,FV.REQDRive(a3) ; select this drive
+	move.w	#0,DV.SIDE(a4)
+	bsr	WQDISK		; write the buffer out
+
+	move.w	#1,DV.SIDE(a4)
+	bsr	WQDISK		; write the buffer out
+
+	move.w	d2,DV.SIDE(a4)	; restore old side
+	move.w	d3,FV.REQDRive(a3) ; restore old drive
+
+FLUSH_BUFX:
+	tst.b	d0
+	movem.l	(a7)+,d1-d3
+	rts
+
+; -------------------------------------------------------------
+;  Free ASCII buffer for drive d0.w by flushing contents,
+;  irrespective of the owner. Called before new data is
+;  loaded into the buffer. Error returned in d0.
+; -------------------------------------------------------------
+FREE_BUFF:
+	movem.l	d2/a3-a5,-(a7)
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+	and.w	#$3,d0		; Only drives 0-3.
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	move.w	DV.SIDE(a4),d2	; Address of buffer vars
+	lsl.w	#2,d2		; for required side in a5
+	move.l	DV.SIDE0buff(a4,d2.w),a5
+
+	moveq	#0,d0
+	tst.l	AB.PENDWflag(a5)	; any pending writes ?
+	beq.s	FREE_BUFX	; no !
+
+	move.w	FV.REQDRive(a3),d2 ; save old required drive
+	move.w	AB.DRIVE(a5),FV.REQDRive(a3)
+	bsr	WQDISK		; write the buffer out
+	move.w	d2,FV.REQDRive(a3) ; restore old drive
+
+FREE_BUFX:
+	tst.b	d0
+	movem.l	(a7)+,d2/a3-a5
+	rts
+
+; -------------------------------------------------------------
+;  Format current track for drive FV.REQDRive then verify track.
+;  Error returned in d0.
+; -------------------------------------------------------------
+FTRACK:
+	movem.l	d2/a3-a5,-(a7)
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+	move.w	FV.REQDRive(a3),d0
+	and.w	#$3,d0		; only drives 0-3
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+;	 bsr	 SEL_DRV 	 ; check and switch on drive
+;	 bne	 FTRACK_NF	 ; drive not found
+
+;	 move.w	 FV.REQDRive(a3),d0
+
+	move.w	DV.SIDE(a4),d2	; Address of buffer vars
+	lsl.w	#2,d2		; for required side in a5
+	move.l	DV.SIDE0buff(a4,d2.w),a5
+
+	move.b	#2,AB.BSECTR(a5)	; bytes/sector, 2=512
+	move.w	#1,AB.FSECTR(a5)
+
+	cmp.l	#$AAAAAAAA,DV.TYPE(a4)
+	bne.s	FTRACK1
+
+	move.l	#$7FFFE,AB.PENDWflag(a5); indicate a write pending
+	move.l	#$7FFFE,AB.BADFLag(a5) ; and all sectors bad
+	move.w	#18,AB.LSECTR(a5)
+	bra.s	FTRACK2
+
+FTRACK1:
+	move.l	#$3FE,AB.PENDWflag(a5); indicate a write pending
+	move.l	#$3FE,AB.BADFLag(a5) ; and all sectors bad
+	move.w	#9,AB.LSECTR(a5)
+
+FTRACK2:
+	move.w	d0,AB.DRIVE(a5)
+	move.w	d0,d2		; save drive number
+	bsr	WQDISK		; write track to disk
+
+	move.l	#-1,AB.BADFLag(a5) ; all sectors bad (force read)
+	bra.s	FTRACKX
+
+FTRACK_NF:
+	moveq	#-7,d0		; signal drive not found
+
+FTRACKX:
+	tst.l	d0
+
+	movem.l	(a7)+,d2/a3-a5
+	rts
+
+; -------------------------------------------------------------
+;  Write one Track:
+;  If the writeflag is not set, then skip this operation
+;  Now prepare this Track and code it to MFM, write it to Disk,
+;  and reset the writeflag. Error returned in d0.
+; -------------------------------------------------------------
+WQDISK:
+	movem.l	d1-d6/a0-a1/a3-a5,-(a7)
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+	moveq	#-1,d0
+	roxr.b	#1,d0
+	roxr.b	FV.POLLActiv(a3)	; disable polled task
+
+	move.w	FV.REQDRive(a3),d0
+	and.w	#$3,d0		; only drives 0-3
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	move.w	DV.SIDE(a4),d2	; Address of buffer vars
+	lsl.w	#2,d2		; for required side in a5
+	move.l	DV.SIDE0buff(a4,d2.w),a5
+
+	tst.l	AB.PENDWflag(a5)	; any pending writes ?
+	beq	WQABORT_OK	; no !
+
+	cmp.w	AB.DRIVE(a5),d0 ; does buffer belong to me?
+	bne	WQABORT_OK	; no !
+
+; check write protect status before trying to write
+
+	bsr	WPRO
+
+	tst.b	d0
+	bne	WQABORT_WP
+
+; make sure drive is switched on
+
+WQDSK1:
+	move.w	FV.REQDRive(a3),d0
+	bsr	SEL_DRV		; check and switch on drive
+	bne	WQABORT_NF	; drive not found
+
+	move.w	FV.REQDRive(a3),d0
+	bclr.b	d0,FV.CNGFLag(a3) ; set disk not changed
+
+; Now write sectors in QDOS format
+
+	move.l	#MFMBUFFER,a1	; address of MFM buffer, a1
+
+	clr.w	FV.LASTBit(a3)	; new MFM calculation
+
+;--
+	moveq	#0,d3
+	move.b	AB.BSECTR(a5),d3	; 0=128, 1=256, 2=512
+	addq.w	#7,d3
+	moveq	#0,d1
+	bset	d3,d1
+	move.w	d1,d3		; sector length
+
+	add.w	#62,d3		; len of hedr+data
+
+	move.w	AB.LSECTR(a5),d1
+	sub.w	AB.FSECTR(a5),d1
+	addq.w	#1,d1
+	mulu.w	d1,d3		; tot len hedr+data
+
+	move.w	#(TLEN>>1),d6
+	cmp.w	d3,d6
+	bpl.s	WQDSK2
+
+	lsl.w	#1,d6
+
+WQDSK2:
+	sub.w	d3,d6		; what's left
+	sub.w	#8,d6
+	addq.w	#1,d1
+	divu	d1,d6		; inter-sector gap len
+	subq.w	#1,d6		; -1 (it's a counter)
+	move.w	d6,d1
+	swap	d6
+	add.w	d1,d6		; initial lead-in len
+
+;--
+	move.w	AB.FSECTR(a5),d5	; initialise sector count
+
+; make some room between index mark and first header
+
+; start by writing 8 zeros
+
+	moveq	#7,d1		; counter for 8 words
+	move.w	#$AAAA,d0	; ascii $00
+
+WQBEGLP:
+	move.w	d0,(a1)+
+	dbra	d1,WQBEGLP
+
+
+	move.w	d6,d1
+	move.w	#$9254,d0	; ascii $4E
+
+WQROOMLP:
+	move.w	d0,(a1)+
+	dbra	d1,WQROOMLP
+
+	swap	d6
+
+WQDSKLP:
+
+; syncron 1
+
+	moveq	#11,d1		; counter for 12 words
+	move.w	#$AAAA,d0	; ascii $00
+
+WQSYNLP1:
+	move.w	d0,(a1)+
+	dbra	d1,WQSYNLP1
+
+; header block
+
+	move.l	#$44894489,(a1)+	; write 3 MFM sync words
+	move.l	#$44895554,(a1)+	; and header block ID
+
+	move.w	#$A1FE,FV.LASTBit(a3) ; set last bit variable
+
+; create an ASCII header block for this sector
+
+	lea	6(a1),a0 	; a reasonably safe place
+
+	move.w	DV.TRACK(a4),d0
+	tst.b	DV.TRK40(a4)
+	beq.s	WQHED
+
+	lsl.w	#1,d0
+
+WQHED:
+	move.b	d0,(a0)+ 	; track 0-79
+	move.w	DV.SIDE(a4),d0
+	move.b	d0,(a0)+ 	; side 0/1
+	move.b	d5,(a0)+
+	move.b	AB.BSECTR(a5),(a0)+ ; bytes/sector, 2=512
+
+	lea	-4(a0),a0	; start of ASCII header
+	moveq	#4,d1		; bytes in CRC calculation
+	move.w	#$B230,d0	; initialise CRC
+	bsr	CALCCRC
+	move.w	d0,4(a0) 	; write ASCII CRC
+
+	moveq	#$5,d1		; count for 6 ASCII bytes
+
+WQHEDLP:
+	move.b	(a0)+,d0
+	bsr	ASCMFMD0
+	move.w	d0,(a1)+
+	dbra	d1,WQHEDLP
+
+; trailer 22 MFM words of ascii $4E
+
+	move.b	#$4E,d0		; write word following header
+	bsr	ASCMFMD0
+	move.w	d0,(a1)+
+
+	moveq	#20,d1		; count for 21 more MFM words
+	move.w	#$9254,d0	; ascii $4E as MFM
+
+WQTRLLP1:
+	move.w	d0,(a1)+
+	dbra	d1,WQTRLLP1
+
+; syncron 2
+
+	moveq	#11,d1		; count for 12 MFM words
+	move.w	#$AAAA,d0	; ascii $00
+
+WQSYNLP2:
+	move.w	d0,(a1)+
+	dbra	d1,WQSYNLP2
+
+; data block
+
+	move.l	#$44894489,(a1)+	; write 3 MFM sync words
+	move.l	#$44895545,(a1)+	; and data block ID
+
+	move.w	#$A1FB,FV.LASTBit(a3) ; set last bit variable
+
+;--
+	moveq	#0,d3
+	move.b	AB.BSECTR(a5),d3	; 0=128, 1=256, 2=512
+	addq.w	#7,d3
+
+	moveq	#0,d0
+	move.b	d5,d0		; sector no.
+	lsl.w	d3,d0
+
+	lea	AB.BUFdata(a5,d0.w),a0 ; address of ASCII data
+
+	moveq	#0,d1
+	bset	d3,d1
+	move.w	d1,d3
+	subq.w	#1,d1		; counter
+
+;--
+	move.l	AB.BADFLag(a5),d0
+	bclr	d5,d0		; check if sector is OK
+	beq.s	WQDATLP
+
+	move.l	d0,AB.BADFLag(a5)
+
+; sector is bad or undefined so create one from scratch
+
+	lsr.w	#2,d1
+
+WQINILP:
+	move.l	#$30303030,(a0)+	; clear sector
+	dbra	d1,WQINILP
+
+	suba.w	d3,a0
+	move.w	d3,d1
+	subq.w	#1,d1
+
+; sector is (now) OK so use proper ASCII buffer
+
+WQDATLP:
+	move.b	(a0)+,d0
+	bsr	ASCMFMD0
+	move.w	d0,(a1)+
+	dbra	d1,WQDATLP
+
+	suba.w	d3,a0		; back to start of ASCII data
+	move.w	d3,d1		; sector size
+
+; calculate CRC for DATA block
+
+	move.w	#$E295,d0	; initialise CRC
+	bsr	CALCCRC
+	ror.l	#8,d0
+	bsr	ASCMFMD0
+	move.w	d0,(a1)+ 	; write MFM CRC.hi for data
+	rol.l	#8,d0
+	bsr	ASCMFMD0
+	move.w	d0,(a1)+ 	; write MFM CRC.lo for data
+
+; postamble (or preamble to next hedr) of ascii $4E
+
+	move.b	#$4E,d0		; write word following data
+	bsr	ASCMFMD0
+	move.w	d0,(a1)+
+
+	move.w	d6,d1
+	subq.w	#1,d1
+	move.w	#$9254,d0	; ascii $4E in MFM
+
+WQPRELP:
+	move.w	d0,(a1)+
+	dbra	d1,WQPRELP
+
+	addq.w	#1,d5
+	cmp.w	AB.LSECTR(a5),d5
+	ble	WQDSKLP
+
+; write excess bytes
+
+	move.w	#39,d1		; 40 bytes should do
+	move.w	#$9254,d0	; ascii $4E
+
+WQXESLP:
+	move.w	d0,(a1)+
+	dbra	d1,WQXESLP
+
+; now write MFM track
+
+	move.w	AB.DRIVE(a5),d0
+	move.w	DV.SIDE(a4),d1
+	move.w	DV.TRACK(a4),d2
+	move.l	DV.TYPE(a4),d4
+	move.l	#MFMBUFFER,a0	; start of track image
+
+	ifd	debug
+
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	suba.l	a0,a0
+	move.w	AB.DRIVE(a5),d0
+	bsr	HEX08
+	move.w	DV.SIDE(a4),d0
+	bsr	HEX08
+	move.w	DV.TRACK(a4),d0
+	bsr	HEX08
+	move.l	DV.TYPE(a4),d0
+	bsr	HEX20
+
+	movem.l	(a7)+,d0/a0
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	suba.l	a0,a0
+	move.l	#$00020000+'=o',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+
+	endc
+
+	bsr	hw_WR_DSK	; write buffer to disk
+
+	move.w	#POLLT,DV.TIMEOut(a4)
+
+; make flags right
+
+	clr.l	AB.PENDWflag(a5)
+
+	bclr.b	d0,FV.CNGFLag(a3)
+
+; invalidate mfm buffer
+
+	move.l	#MFMBUFFER,a1	; address of MFM buffer, a1
+	move.w	#((MFMBUFEND-MFMBUFFER)>>2)-1,d0
+
+WQSCRUB:
+	clr.l	(a1)+
+	dbra	d0,WQSCRUB
+
+WQABORT_OK:
+	moveq	#0,d0
+	bra.s	WQDISKX
+
+WQABORT_WP:
+	moveq	#-20,d0		; signal writeprotect
+	bra.s	WQDISKX
+
+WQABORT_NF:
+	moveq	#-7,d0		; signal drive not found
+
+WQDISKX:
+	lsl.b	FV.POLLActiv(a3)	; set poll flag as it was
+
+	tst.b	d0
+	movem.l	(a7)+,d1-d6/a0-a1/a3-a5
+	rts
+
+; -------------------------------------------------------------
+; The following section uses a slightly different conventions
+; in order to adopt it to the CST floppy controller software.
+; The sector is passed in D1, the I/O buffer address in A1
+; -------------------------------------------------------------
+
+; -------------------------------------------------------------
+;  Read one Track:
+;  If the Track in the Buffer has the Writeflag set, then write
+;  this track !
+;  Now read a track, and decode it according to MFM conventions
+; -------------------------------------------------------------
+RQDISK:
+	movem.l	d1-d4/a0-a5,-(a7)
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+	moveq	#-1,d0
+	roxr.b	#1,d0
+	roxr.b	FV.POLLActiv(a3)	; disable polled task
+
+RQPACT:
+	move.w	FV.REQDRive(a3),d0
+	and.w	#$3,d0		; only drives 0-3
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	move.w	DV.SIDE(a4),d2	; Address of buffer vars
+	lsl.w	#2,d2		; for required side in a5
+	move.l	DV.SIDE0buff(a4,d2.w),a5
+
+; first check if buffer already contains correct info
+
+	cmp.w	AB.DRIVE(a5),d0
+	bne.s	RQDISK1
+
+	move.w	DV.SIDE(a4),d1
+	cmp.w	AB.SIDE(a5),d1
+	bne.s	RQDISK1
+
+	move.w	AB.TRACK(a4),d1
+	tst.b	DV.TRK40(a4)
+	beq.s	RQDISK0
+
+	lsl.w	#1,d1
+
+RQDISK0:
+	cmp.w	DV.TRACK(a5),d1
+	bne.s	RQDISK1
+
+; disk changed?
+
+	bsr	CHNG
+	tst.b	d0
+	beq	RQTRY		; not changed, try for more sectors?
+
+; now check for pending write operations
+
+RQDISK1:
+
+	bsr	FREE_BUFF
+	bne	RQDISKX		; cannot free buffer
+
+; indicate new owner of this buffer
+
+	move.w	FV.REQDRive(a3),AB.DRIVE(a5)
+	move.w	DV.SIDE(a4),AB.SIDE(a5)
+	move.w	DV.TRACK(a4),d1
+	tst.b	DV.TRK40(a4)
+	beq.s	RQDSK0
+
+	lsr.w	#1,d1
+
+RQDSK0:
+	move.w	d1,AB.TRACK(a5)
+
+; currently no changes to sectors
+
+	clr.l	AB.PENDWflag(a5)
+
+; currently no good sectors at all
+
+	move.l	#$FFFFFFFF,AB.BADFLag(a5) ; and all sectors bad
+	move.w	#$00FF,AB.FSECTR(a5)
+	move.w	#$0000,AB.LSECTR(a5)
+
+RQTRY:
+
+; make sure drive is switched on
+
+	move.w	FV.REQDRive(a3),d0
+	bsr	SEL_DRV		; check and switch on drive
+	bne	RQABORT_NF	; drive not found
+
+;  now read MFM track
+
+	move.w	FV.REQDRive(a3),d0
+	bclr.b	d0,FV.CNGFLag(a3) ; set disk not changed
+
+	ifd	debug
+
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	suba.l	a0,a0
+	move.w	AB.DRIVE(a5),d0
+	bsr	HEX08
+	move.w	DV.SIDE(a4),d0
+	bsr	HEX08
+	move.w	DV.TRACK(a4),d0
+	bsr	HEX08
+	move.l	DV.TYPE(a4),d0
+	bsr	HEX20
+	movem.l	(a7)+,d0/a0
+
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	suba.l	a0,a0
+	move.l	#$00020000+'=i',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+
+	endc
+
+	move.w	AB.DRIVE(a5),d0
+	move.w	DV.SIDE(a4),d1
+	move.w	DV.TRACK(a4),d2
+	move.l	DV.TYPE(a4),d4
+	move.l	#MFMBUFFER,a0	; start of track image
+
+	bsr	hw_RD_DSK
+	bne	RQABORT
+
+; signal disk has not changed
+
+	bclr.b	d0,FV.CNGFLag(a3)
+
+; begin MFM translation
+
+	move.l	#MFMBUFFER,a1	; track image -> a1
+
+	cmp.l	#$AAAAAAAA,DV.TYPE(a4)
+	bne.s	RQDISK2
+
+	lea	(MFMBUFEND-MFMBUFFER)(a1),a2 ; end of track image
+	bra.s	RQDSKLP2
+
+RQDISK2:
+	lea	((MFMBUFEND-MFMBUFFER)>>1)(a1),a2 ; end of track image
+
+RQDSKLP2:
+
+; first search for header block in track image
+
+	cmpi.w	#$4489,(a1)+	; find sync pattern
+	beq.s	RQDSK1
+	cmpa.l	a2,a1
+	blt.s	RQDSKLP2
+	bra	RQABORT
+
+RQDSK1:
+	cmpi.w	#$4489,(a1)	; skip over sync
+	bne.s	RQDSK2
+	addq.l	#2,a1
+	bra.s	RQDSK1
+
+RQDSK2:
+	cmp.w	#$5554,(a1)	; find header block marker
+	bne	RQDSKLP2
+
+; header block found OK
+
+	move.l	a1,d4
+	addq.l	#2,a1
+	lea	AB.BUFhead(a5),a0  ; address to put ASCII header
+	moveq	#0,d1		; counter for 6 ASCII bytes
+
+RQDSKLP3:
+	move.w	(a1)+,d0
+	cmp.w	#$4489,d0	; drop out if sync found
+	beq	RQDSK1
+	bsr	MFMASCD0
+	move.b	d0,0(a0,d1.w)	; store header as ASCII
+	addq.w	#1,d1
+	cmp.w	#6,d1
+	blt.s	RQDSKLP3
+
+	moveq	#4,d1
+	move.w	#$B230,d0	; initialise CRC
+	bsr	CALCCRC		; calculate CRC for header
+
+	move.w	4(a0),d1 	; get CRC read from disk
+	cmp.w	d0,d1		; compare with calculated
+	beq	RQDSK3		; continue if OK
+
+	ifd	debug
+
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'-h',d0
+	bsr	IOD0
+	move.l	#0,a0
+	move.l	#$00020000+'??',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+
+	endc
+
+	move.l	d4,a1		; otherwise search for
+	bra	RQDSKLP2 	; another header sync
+
+RQDSK3:
+	move.w	AB.DRIVE(a5),d0
+	moveq	#0,d2
+	move.b	(a0),d2
+	move.w	d2,AB.TRACK(a5)	; store track
+
+RQDSK3A:
+	move.w	DV.SIDE(a4),d1
+	cmp.b	1(a0),d1 	; check side
+	beq.s	RQDSK3B
+
+	bsr	hw_SEL_SIDE
+	bra	RQABORT
+
+RQDSK3B:
+	moveq	#0,d2
+	move.b	2(a0),d2 	; get sector number
+
+	ifd	debug
+
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'+h',d0
+	bsr	IOD0
+	move.l	#0,a0
+	move.l	d2,d0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+
+	endc
+
+	move.l	AB.BADFLag(a5),d0
+	btst	d2,d0
+	beq	RQDSKLP2 	; got sector already!
+
+; CRC for header block was OK, now search for data block
+
+	exg	a1,d4
+	clr.w	(a1)		; make sure hedr ID not re-used
+	exg	a1,d4
+
+	move.b	3(a0),AB.BSECTR(a5)
+
+;--
+	move.w	#0,d3
+	move.b	AB.BSECTR(a5),d3	; 0=128, 1=256, 2=512
+	addq.w	#7,d3
+
+	moveq	#0,d0
+	move.b	d2,d0		; sector no.
+	lsl.w	d3,d0
+
+	lea	AB.BUFdata(a5,d0.w),a0 ; address of ASCII data
+
+	moveq	#0,d1
+	bset	d3,d1
+	move.w	d1,d3
+	subq.w	#1,d3		; counter
+
+;--
+RQDSK4:
+	cmpi.w	#$4489,(a1)+	; find sync pattern
+	beq.s	RQDSK5
+	cmpa.l	a2,a1
+	blt.s	RQDSK4
+	bra	RQABORT
+
+RQDSK5:
+	cmpi.w	#$4489,(a1)	; skip over sync
+	bne.s	RQDSK6
+	addq.l	#2,a1
+	bra.s	RQDSK5
+
+RQDSK6:
+	cmp.w	#$5545,(a1)	; find data block marker
+	bne	RQDSK2		; data block was not found
+
+; data block found OK
+
+RQDSK7:
+	move.l	a1,d4
+	addq.l	#2,a1
+
+RQDSKLP4:
+	move.w	(a1)+,d0
+	cmp.w	#$4489,d0	; drop out if sync found
+	beq	RQDSK1
+	bsr	MFMASCD0
+	move.b	d0,(a0)+
+	dbra	d3,RQDSKLP4
+
+	suba.l	d1,a0
+
+	move.w	#$E295,d0	; initialise CRC
+	bsr	CALCCRC		; calculate CRC for data
+	move.w	d0,d3
+
+	move.w	(a1)+,d0
+	bsr	MFMASCD0
+	swap	d0
+	move.w	(a1)+,d0
+	bsr	MFMASCD0
+	lsl.w	#8,d0
+	lsr.l	#8,d0
+
+	cmp.w	d0,d3		; compare with calculated
+	beq	RQDSK8		; and continue if OK
+
+	ifd	debug
+
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'-d',d0
+	bsr	IOD0
+	move.l	#0,a0
+	move.l	d2,d0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+
+	endc
+
+	lea	-$4(a1),a1	; otherwise search for
+	bra	RQDSKLP2 	; another header sync
+
+; CRC for data block was OK
+
+RQDSK8:
+	exg	a1,d4
+	clr.w	(a1)		; make sure data ID not re-used
+	exg	a1,d4
+
+	cmp.w	AB.FSECTR(a5),d2
+	bge.s	RQDSK9
+
+	move.w	d2,AB.FSECTR(a5)	; find first sector number
+
+RQDSK9:
+	cmp.w	AB.LSECTR(a5),d2
+	ble.s	RQDSKA
+
+	move.w	d2,AB.LSECTR(a5)	; find last sector number
+RQDSKA:
+	ifd	debug
+
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'+d',d0
+	bsr	IOD0
+	move.l	#0,a0
+	move.l	d2,d0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+
+	endc
+
+	move.l	AB.BADFLag(a5),d0
+	bclr	d2,d0
+	move.l	d0,AB.BADFLag(a5)
+
+	bra	RQDSKLP2
+
+RQABORT:
+	move.l	#0,$1BF9C	; PTR_GEN expects h/w
+	move.l	#0,$1BFBC	; at these addresses!
+	move.l	#0,$1BFBE	; make zero for compatibility
+
+	ifd	debug
+
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'#=',d0
+	bsr	IOD0
+	move.l	#0,a0
+	move.w	AB.FSECTR(a5),d0
+	bsr	HEX08
+	move.w	AB.LSECTR(a5),d0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+
+	endc
+
+RQABORT_OK:
+	moveq	#ERR.OK,d0
+	bra.s	RQDISKX
+
+RQABORT_NF:
+	moveq	#ERR.NF,d0	; signal drive not found
+
+RQDISKX:
+	lsl.b	FV.POLLActiv(a3)	; set poll flag as it was
+
+	tst.b	d0
+	movem.l	(a7)+,d1-d4/a0-a5
+	rts
+
+; -------------------------------------------------------------
+;  Write one sector (D1) from buffer (A1)
+;  If the actual parameters are not the same as for the track in
+;  the track buffer, then call RQDISK.
+;  Copy (A1) to Track buffer
+;  set writeflag !
+; -------------------------------------------------------------
+WQSEC:
+	movem.l	d1-d2/a0-a5,-(a7)
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+	move.w	FV.REQDRive(a3),d0
+	and.w	#$3,d0		; only drives 0-3
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	move.w	DV.SIDE(a4),d2	; Address of buffer vars
+	lsl.w	#2,d2		; for required side in a5
+	move.l	DV.SIDE0buff(a4,d2.w),a5
+
+	tst.l	DV.TYPE(a4)
+	beq	WQSEC_BM
+
+; first check if buffers contain correct info
+
+	cmp.w	AB.DRIVE(a5),d0
+	bne.s	WQSEC1
+
+	move.w	DV.SIDE(a4),d2
+	cmp.w	AB.SIDE(a5),d2
+	bne.s	WQSEC1
+
+	move.w	AB.TRACK(a5),d2
+	tst.b	DV.TRK40(a4)
+	beq.s	WQDSK0
+
+	lsl.w	#1,d2
+
+WQDSK0:
+	cmp.w	DV.TRACK(a4),d2
+	bne.s	WQSEC1
+
+; disk changed?
+
+	bsr	CHNG
+	tst.b	d0
+	beq.s	WQSEC2
+
+; if so, read correct track into buffers
+
+WQSEC1:
+	move.b	FV.FLAGS(a3),d2
+	and.w	#%0000000000100000,d2 ; number of retries
+	lsr.w	#3,d2
+
+WQSECLUP:
+	swap	d2
+
+	move.w	FV.REQDRive(a3),d0
+	bsr	RQDISK
+	bne.s	WQSECX
+
+	move.w	AB.FSECTR(a5),d2
+	move.l	AB.BADFLag(a5),d0
+
+WQSECCKLUP:
+	btst.l	d2,d0
+	bne.s	WQSECTRY
+
+	addq.w	#1,d2
+	cmp.w	AB.LSECTR(a5),d2
+	bgt.s	WQSEC2
+
+	bra.s	WQSECCKLUP
+
+WQSECTRY:
+	swap	d2
+	dbra	d2,WQSECLUP
+
+	bra	WQSEC_BM
+
+; check if sector is outside range of first and last sectors
+
+WQSEC2:
+	cmp.w	AB.FSECTR(a5),d1
+	bge.s	WQSEC3
+
+	move.w	d1,AB.FSECTR(a5)	; set first sector number
+
+WQSEC3:
+	cmp.w	AB.LSECTR(a5),d1
+	ble.s	WQSEC4
+
+	move.w	d1,AB.LSECTR(a5)	; set last sector number
+
+; determine position of sector
+
+WQSEC4:
+	moveq	#0,d2
+	move.b	AB.BSECTR(a5),d2	; 0=128, 1=256, 2=512
+	addq.w	#7,d2
+
+	moveq	#0,d0
+	move.b	d1,d0
+	lsl.w	d2,d0
+
+	lea	AB.BUFdata(a5,d0.w),a0 ; address of ASCII data
+
+	moveq	#1,d0
+	lsl.w	d2,d0
+
+	bset.l	d1,AB.PENDWflag(a5) ; mark sector for write
+	bclr.l	d1,AB.BADFLag(a5) ; mark sector as OK
+
+	move.l	a1,d1
+	move.l	a0,d2
+	or.l	d2,d1
+	btst	#0,d1
+	bne.s	WQSEC6
+
+WQSEC5:
+	lsr.w	#2,d0
+	subq.w	#1,d0		; counter
+
+WQSEC5lup:
+	move.l	(a1)+,(a0)+	; copy bytes
+	dbra	d0,WQSEC5lup
+
+	bra.s	WQSEC7
+
+WQSEC6:
+	subq.w	#1,d0		; counter
+
+WQSEC6lup:
+	move.b	(a1)+,(a0)+	; copy bytes
+	dbra	d0,WQSEC6lup
+
+WQSEC7:
+	move.w	#POLLT,DV.TIMEOut(a4)
+
+	moveq	#0,d0
+	bra	WQSECX
+
+WQSEC_BM:
+	moveq	#ERR.FE,d0	; bad or changed medium
+
+WQSECX:
+	tst.b	d0
+	movem.l	(a7)+,d1-d2/a0-a5
+	rts
+
+; -------------------------------------------------------------
+;  Read one Sector (D1) to buffer (A1) , (A1 points to the end)
+;  skip (D3) bytes, and leave (D4) at the end
+;
+;  call RQDISK and copy sector from Track buffer to (A1)
+; -------------------------------------------------------------
+RQSEC:
+	movem.l	d1-d2/a0/a2-a5,-(a7)
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+	move.w	FV.REQDRive(a3),d0
+	and.w	#$3,d0		; only drives 0-3
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	move.w	DV.SIDE(a4),d2	; Address of buffer vars
+	lsl.w	#2,d2		; for required side in a5
+	move.l	DV.SIDE0buff(a4,d2.w),a5
+
+	tst.l	DV.TYPE(a4)
+	beq	WQSEC_BM
+
+; first check if buffer already contains correct info
+
+	cmp.w	AB.DRIVE(a5),d0
+	bne.s	RQSEC1
+
+	move.w	DV.SIDE(a4),d2
+	cmp.w	AB.SIDE(a5),d2
+	bne.s	RQSEC1
+
+	move.w	AB.TRACK(a5),d2
+	tst.b	DV.TRK40(a4)
+	beq.s	RQSEC0
+
+	lsl.w	#1,d2
+
+RQSEC0:
+	cmp.w	DV.TRACK(a4),d2
+	bne.s	RQSEC1
+
+; disk changed?
+
+	bsr	CHNG
+	tst.b	d0
+	bne.s	RQSEC1		; read again if changed
+
+; sector data bad?
+
+	move.l	AB.BADFLag(a5),d2
+	btst	d1,d2
+	beq.s	RQSEC3		; sector data OK
+
+RQSEC1:
+	move.b	FV.FLAGS(a3),d2
+	and.w	#%0000000000100000,d2 ; number of retries
+	lsr.w	#3,d2
+
+RQSECLUP:
+	bsr	RQDISK
+	bne.s	RQSECTRY
+
+	move.l	AB.BADFLag(a5),d0
+	btst	d1,d0
+	beq.s	RQSEC2
+
+RQSECTRY:
+	dbra	d2,RQSECLUP
+
+	bra	RQSEC_BM
+
+RQSEC2:
+	move.w	AB.TRACK(a5),d2
+	tst.w	d2
+	beq.s	RQSEC3
+
+	cmp.w	DV.TRACK(a4),d2
+	beq.s	RQSEC3
+
+	lsl.w	#1,d2
+	cmp.w	DV.TRACK(a4),d2
+	bne.s	RQSEC_BM
+
+	st.b	DV.TRK40(a4)	; must be a 40 track drive
+
+; determine position of sector
+
+RQSEC3:
+	moveq	#0,d2
+	move.b	AB.BSECTR(a5),d2 ; 0=128, 1=256, 2=512
+	addq.w	#7,d2
+
+	moveq	#0,d0
+	move.b	d1,d0
+	lsl.w	d2,d0
+
+	lea	AB.BUFdata(a5,d0.w),a0 ; address of ASCII data
+
+	moveq	#1,d0
+	lsl.w	d2,d0
+
+	add.l	d3,a0		; subtract bytes to skip
+	sub.w	d3,d0		; subtract bytes to skip
+	ble.s	RQSEC_OK
+
+	sub.w	d4,d0		; subtract bytes to leave
+	ble.s	RQSEC_OK
+
+	move.l	a1,d1
+	move.l	a0,d2
+	or.l	d2,d1
+	or.l	d0,d1
+	btst	#0,d1
+	bne.s	RQSEC6
+
+	lsr.w	#1,d0
+	btst	#0,d0
+	bne.s	RQSEC5
+
+	lsr.w	#1,d0
+
+RQSEC4:
+	subq.w	#1,d0		; counter
+RQSEC4lup:
+	move.l	(a0)+,(a1)+	; copy long words
+	dbra	d0,RQSEC4lup
+	bra.s	RQSEC_OK
+
+RQSEC5:
+	subq.w	#1,d0		; counter
+RQSEC5lup:
+	move.w	(a0)+,(a1)+	; copy words
+	dbra	d0,RQSEC5lup
+	bra.s	RQSEC_OK
+
+RQSEC6:
+	subq.w	#1,d0		; counter
+RQSEC6lup:
+	move.b	(a0)+,(a1)+	; copy bytes
+	dbra	d0,RQSEC6lup
+
+RQSEC_OK:
+	moveq	#0,d0
+	bra.s	RQSECX
+
+RQSEC_BM:
+	moveq	#-16,d0		; bad or changed medium
+
+RQSECX:
+	move.w	#POLLT,DV.TIMEOut(a4)
+	tst.b	d0
+	movem.l	(a7)+,d1-d2/a0/a2-a5
+	rts
+
+; -------------------------------------------------------------
+;  calculate the Cyclic Redundancy Check for d1 bytes at (a0)
+;  Initial CRC is passed in d0, modified CRC is returned in d0
+; -------------------------------------------------------------
+CALCCRC:
+	movem.l	d1-d3/a0,-(a7)
+	bra.s	CRCNEXT
+
+CRCLOOP:
+	move.b	(a0)+,d3
+	move.w	d0,d2
+	lsr.w	#8,d0
+	eor.b	d3,d0
+	move.w	d0,d3
+	lsr.w	#4,d0
+	eor.w	d3,d0
+	move.w	d0,d3
+	lsl.w	#4,d0
+	eor.w	d2,d0
+	lsl.w	#3,d0
+	eor.w	d3,d0
+	lsl.w	#5,d0
+	eor.w	d3,d0
+
+CRCNEXT:
+	dbra	d1,CRCLOOP
+	movem.l	(a7)+,d1-d3/a0
+	rts
+
+; --------------------------------------------------------------
+;  Convert d0.w from MFM to ASCII. Return value in d0.b
+; --------------------------------------------------------------
+MFMASCD0:
+	movem.l	d1/a0,-(a7)
+
+	andi.w	#%0101010101010101,d0
+	move.b	d0,d1
+	lsr.w	#7,d0
+	or.b	d1,d0
+	lea	MFMASCTB(pc),a0
+	move.b	0(a0,d0.w),d0
+
+	movem.l	(a7)+,d1/a0
+	rts
+
+; MFM to ASCII table
+
+MFMASCTB:
+   DC.B $00,$01,$10,$11,$02,$03,$12,$13,$20,$21,$30,$31,$22,$23,$32,$33
+   DC.B $04,$05,$14,$15,$06,$07,$16,$17,$24,$25,$34,$35,$26,$27,$36,$37
+   DC.B $40,$41,$50,$51,$42,$43,$52,$53,$60,$61,$70,$71,$62,$63,$72,$73
+   DC.B $44,$45,$54,$55,$46,$47,$56,$57,$64,$65,$74,$75,$66,$67,$76,$77
+   DC.B $08,$09,$18,$19,$0A,$0B,$1A,$1B,$28,$29,$38,$39,$2A,$2B,$3A,$3B
+   DC.B $0C,$0D,$1C,$1D,$0E,$0F,$1E,$1F,$2C,$2D,$3C,$3D,$2E,$2F,$3E,$3F
+   DC.B $48,$49,$58,$59,$4A,$4B,$5A,$5B,$68,$69,$78,$79,$6A,$6B,$7A,$7B
+   DC.B $4C,$4D,$5C,$5D,$4E,$4F,$5E,$5F,$6C,$6D,$7C,$7D,$6E,$6F,$7E,$7F
+   DC.B $80,$81,$90,$91,$82,$83,$92,$93,$A0,$A1,$B0,$B1,$A2,$A3,$B2,$B3
+   DC.B $84,$85,$94,$95,$86,$87,$96,$97,$A4,$A5,$B4,$B5,$A6,$A7,$B6,$B7
+   DC.B $C0,$C1,$D0,$D1,$C2,$C3,$D2,$D3,$E0,$E1,$F0,$F1,$E2,$E3,$F2,$F3
+   DC.B $C4,$C5,$D4,$D5,$C6,$C7,$D6,$D7,$E4,$E5,$F4,$F5,$E6,$E7,$F6,$F7
+   DC.B $88,$89,$98,$99,$8A,$8B,$9A,$9B,$A8,$A9,$B8,$B9,$AA,$AB,$BA,$BB
+   DC.B $8C,$8D,$9C,$9D,$8E,$8F,$9E,$9F,$AC,$AD,$BC,$BD,$AE,$AF,$BE,$BF
+   DC.B $C8,$C9,$D8,$D9,$CA,$CB,$DA,$DB,$E8,$E9,$F8,$F9,$EA,$EB,$FA,$FB
+   DC.B $CC,$CD,$DC,$DD,$CE,$CF,$DE,$DF,$EC,$ED,$FC,$FD,$EE,$EF,$FE,$FF
+
+; --------------------------------------------------------------
+;  Convert byte d0.b, from ASCII to MFM. Return value in d0.w
+; --------------------------------------------------------------
+ASCMFMD0:
+	movem.l	d1/a0,-(a7)
+
+	move.l	AV.DSKV,a0
+	move.w	FV.LASTBit(a0),d1
+	lsl.w	#8,d1
+	move.b	d0,d1
+	move.w	d1,FV.LASTBit(a0)
+
+	lea	ASCMFMTB(pc),a0
+	lsr.w	#4,d1
+	andi.w	#$1F,d1
+	move.b	0(a0,d1.w),d1
+	lsl.w	#8,d1
+	andi.w	#$1F,d0
+	move.b	0(a0,d0.w),d1
+	move.w	d1,d0
+
+	movem.l	(a7)+,d1/a0
+	rts
+
+; ASCII to MFM table
+
+ASCMFMTB:
+   DC.B $AA,$A9,$A4,$A5,$92,$91,$94,$95,$4A,$49,$44,$45,$52,$51,$54,$55
+   DC.B $2A,$29,$24,$25,$12,$11,$14,$15,$4A,$49,$44,$45,$52,$51,$54,$55
+
+; --------------------------------------------------------------
+;  Select drive d0.w and switch on motor
+;  eq = no errors, ne = drive error (held in d0)
+; --------------------------------------------------------------
+SEL_DRV:
+	movem.l	d2/a3-a4,-(a7)
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+	and.w	#$3,d0		; Only drives 0-3.
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+; switch to this drive
+
+	move.w	d0,FV.REQDRive(a3) ; switch drives
+
+	bsr	STATUS
+
+	moveq	#0,d0		; reset error number
+	tst.b	d0
+	movem.l	(a7)+,d2/a3-a4
+	rts
+
+; -------------------------------------------------------------
+;  Select side d0.w
+;  eq = no errors, ne = drive error (held in d0)
+; -------------------------------------------------------------
+SEL_SIDE:
+	movem.l	d1-d2/a3-a4,-(a7)
+
+	move.w	d0,d1		; save side to set
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+	move.w	FV.REQDRive(a3),d0
+	and.w	#$3,d0		; only drives 0-3
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	move.w	d1,DV.SIDE(a4)
+
+SELSIDE_OK:
+	bsr	STATUS
+
+	moveq	#0,d0
+
+SELSIDEX:
+	tst.b	d0
+	movem.l	(a7)+,d1-d2/a3-a4
+	rts
+
+; -------------------------------------------------------------
+;  Go to track d0.w
+;  eq = no errors, ne = drive error (held in d0)
+; -------------------------------------------------------------
+GO_TRACK:
+	movem.l	d1-d2/a3-a4,-(a7)
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+	move.w	d0,d1		; save track
+
+	moveq	#-1,d0
+	roxr.b	#1,d0
+	roxr.b	FV.POLLActiv(a3)	; disable polled task
+
+	move.w	FV.REQDRive(a3),d0
+	and.w	#$3,d0		; only drives 0-3
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	bsr	STATUS
+
+	cmp.w	DV.TRACK(a4),d1	; Same track?
+	beq.s	GO_TRACK_OK
+
+	bsr	FLUSH_BUFF	; flush buffer
+	bne.s	GO_TRACKX
+
+GO_TRACK1:
+	tst.b	d1		; Track 0 ?
+	bne.s	ANYTRACK
+
+	bsr	hw_GO_TK0
+	clr.w	DV.TRACK(a4)
+
+	bra.s	GO_TRACK_WAIT
+
+ANYTRACK:
+	move.w	DV.TRACK(a4),d2
+	cmp.b	d2,d1
+	bgt.s	SI_TRACK
+	blt.s	SO_TRACK
+
+GO_TRACK_WAIT:
+	move.w	#199,d1		 ; set count for 200ms
+
+GO_TRACK_LUP1:
+	bsr	hw_BEG_TIMING
+
+GO_TRACK_LUP2:
+	bsr	hw_IS_TIMING
+	beq.s	GO_TRACK_LUP2
+
+	dbra	d1,GO_TRACK_LUP1
+
+GO_TRACK_OK:
+	moveq	#0,d0
+
+GO_TRACKX:
+	lsl.b	FV.POLLActiv(a3)	; set poll flag as it was
+
+	tst.b	d0
+	movem.l	(a7)+,d1-d2/a3-a4
+	rts
+
+SI_TRACK:
+	bsr	hw_STEP_IN
+	addq.w	#1,DV.TRACK(a4)
+	bra.s	ANYTRACK
+
+SO_TRACK:
+	bsr	hw_STEP_OUT
+	subq.w	#1,DV.TRACK(a4)
+	bra.s	ANYTRACK
+
+; -------------------------------------------------------------
+;     Check if drive FV.REQDRive is ready. Return status in d0.l
+; -------------------------------------------------------------
+CKRDY:
+	movem.l	d1/a3,-(a7)
+
+	bsr	STATUS
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+	move.w	FV.REQDRive(a3),d0
+	btst.b	d0,FV.RDYFLag(a3)
+	bne.s	CKRDYOK
+
+CKRDYNOT:
+	moveq	#-1,d0
+	bra.s	CKRDYX
+
+CKRDYOK:
+	moveq	#0,d0
+
+CKRDYX:
+	movem.l	(a7)+,d1/a3
+	rts
+
+; -------------------------------------------------------------
+;  return status of writeprotect signal in d0.l for FV.REQDRive
+;  non-zero = change, zero = no change
+; -------------------------------------------------------------
+WPRO:
+	movem.l	a3,-(a7)
+
+	move.l	AV.DSKV,a3	; address of disk vars, a3
+
+	bsr	STATUS
+
+	move.w	FV.REQDRive(a3),d0
+	btst.b	d0,FV.PROFLag(a3)
+	bne.s	WPRO_YES
+
+WPRO_NO:
+	moveq	#0,d0
+	bra.s	WPRO_X
+
+WPRO_YES:
+	moveq	#1,d0
+
+WPRO_X:
+	movem.l	(a7)+,a3
+	rts
+
+; -------------------------------------------------------------
+;  return status of diskchange signal in d0.l for FV.REQDRive
+;  non-zero = change, zero = no change
+; -------------------------------------------------------------
+CHNG:
+	movem.l	a3,-(a7)
+
+	move.l	AV.DSKV,a3	; address of disk vars, a3
+
+	bsr	STATUS
+
+	move.w	FV.REQDRive(a3),d0
+	btst.b	d0,FV.CNGFLag(a3)
+	bne.s	CHNG_YES
+
+CHNG_NO:
+	moveq	#0,d0
+	bra.s	CHNG_X
+
+CHNG_YES:
+	moveq	#1,d0
+
+CHNG_X:
+	movem.l	(a7)+,a3
+	rts
+
+; -------------------------------------------------------------
+;  check status for drive FV.REQDRive
+; -------------------------------------------------------------
+STATUS:
+	movem.l	d0-d3/a3-a5,-(a7)
+
+	move.l	AV.DSKV,a3	; address of disk vars, a3
+
+	move.w	FV.REQDRive(a3),d0
+	and.w	#$3,d0		; only drives 0-3
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+START_MTR:
+	move.b	#%01111111,d3	; motor on (bit 7)
+
+; select correct side for this drive
+
+	move.w	DV.SIDE(a4),d1
+	btst.b	#0,d1
+	beq.s	START_SID0	; branch if side 0
+
+	bclr	#2,d3		; select side 1 (bit 2)
+
+START_SID0:
+	move.b	d3,CIAB_PRB	; set drive status
+
+	addq.b	#3,d0
+	bclr.b	d0,d3		; select drive (bits 3-6)
+	move.b	d3,CIAB_PRB	; change drive status
+	subq.b	#3,d0
+
+; if motor running & ready, status must be unchanged.
+
+	tst.w	DV.TIMEOut(a4)	; drive stopped?
+	beq.s	CHG_QUERY	; yup, must recheck status
+
+	btst.b	d0,FV.RDYFLag(a3) ; drive running and ready?
+	bne	CHG_NO		; yup, exit status unchanged
+
+CHG_QUERY:
+	move.b	CIAA_PRA,d1
+	andi.b	#4,d1
+	beq.s	PROT_QUERY	; branch on h/w disk change
+
+	btst.b	d0,FV.CNGFLag(a3) ; check for s/w disk change
+	bne.s	PROT_QUERY
+
+; drive unchanged but stopped, so wait for motor to reach speed
+
+	ifd	debug
+	move.w	#BLUE,COLOR00
+	endc
+
+	move.w	#500,d1		; set counter for 500ms
+
+DRVRDY1:
+	bsr	hw_BEG_TIMING
+
+DRVRDY2:
+;	 bsr	 hw_IS_RDY
+;	 beq.s	 DRVRDY3
+
+	bsr	hw_IS_TIMING
+	beq.s	DRVRDY2
+
+	dbra	d1,DRVRDY1
+
+;	 bsr	 hw_MTR_OFF
+
+;	 bclr.b	 d0,FV.RDYFLag(a3) ; drive not ready
+;	 bra.s	 DRVRDYX
+
+DRVRDY3:
+	bset.b	d0,FV.RDYFLag(a3) ; drive ready
+
+DRVRDYX:
+	ifd	debug
+	move.w	#BLACK,COLOR00
+	endc
+
+	bra	CHG_NO
+
+PROT_QUERY:
+	move.b	CIAA_PRA,d1
+	and.b	#8,d1
+	bne.s	PROT_NO
+
+	bset.b	d0,FV.PROFLag(a3)
+	bra.s	CHG_YES
+
+PROT_NO:
+	bclr.b	d0,FV.PROFLag(a3)
+
+CHG_YES:
+	bset.b	d0,FV.CNGFLag(a3) ; set disk changed
+	bclr.b	d0,FV.RDYFLag(a3) ; set drive not ready
+
+; clear disk change signal by stepping drive head
+
+; step in one track
+
+	bclr.b	#1,d3		; reset direction (bit 1)
+				; diskstep (bit 0) already set
+	move.b	d3,CIAB_PRB	; change bits on drive
+	bclr.b	#0,d3		; set diskstep (bit 0)
+	move.b	d3,CIAB_PRB	; change bits on drive
+	bset.b	#0,d3		; reset diskstep (bit 0)
+	move.b	d3,CIAB_PRB	; change bits on drive
+
+; wait for 5 milliseconds
+
+	moveq	#4,d1		; set count for 5ms
+
+STATUS_LUP1:
+	bsr	hw_BEG_TIMING
+
+STATUS_LUP2:
+	bsr	hw_IS_TIMING
+	beq.s	STATUS_LUP2
+
+	dbra	d1,STATUS_LUP1
+
+; step out one track
+
+	bset.b	#1,d3		; set direction (bit 1)
+				; diskstep (bit 0) already set
+	move.b	d3,CIAB_PRB	; change bits on drive
+	bclr.b	#0,d3		; set diskstep (bit 0)
+	move.b	d3,CIAB_PRB	; change bits on drive
+	bset.b	#0,d3		; reset diskstep (bit 0)
+	move.b	d3,CIAB_PRB	; change bits on drive
+
+	move.b	CIAA_PRA,d1
+	andi.b	#4,d1		; get diskchange bit
+	beq	DTYP		; change won't clear
+				; (no disk in drive)
+
+	move.w	FV.REQDRive(a3),d0
+	bset.b	d0,FV.RDYFLag(a3) ; set drive ready
+
+; get drive type from hardware
+
+DTYP:
+	tst.b	d0
+
+	bclr	#7,d3		; motor on
+	move.b	d3,CIAB_PRB	; change bits on drive
+	move.b	#$FF,CIAB_PRB	; deselect drive
+
+	bset	#7,d3		; motor off
+	move.b	d3,CIAB_PRB	; change bits on drive
+	move.b	#$FF,CIAB_PRB	; deselect drive
+
+	moveq	#$1F,d1
+	moveq	#$0,d0
+DTYP1:
+	lsl.l	#1,d0
+	move.b	d3,CIAB_PRB	; change bits on drive
+	btst	#$5,CIAA_PRA
+	bne.s	DTYP2
+	bset	#$0,d0
+DTYP2:
+	move.b	#$FF,CIAB_PRB	; deselect drive
+	dbra	d1,DTYP1
+
+	bclr	#7,d3		; motor on
+	move.b	d3,CIAB_PRB	; change bits on drive
+
+	tst.l	d0
+	bne.s	TIME_IDX 	; if drive exists, check idx timing
+
+NO_DRIVE:
+	move.w	FV.REQDRive(a3),d0
+	beq.s	TIME_IDX 	; can't get ID from internal
+
+	bclr.b	d0,FV.RDYFLag(a3) ; set drive not ready
+	moveq	#0,d2
+	bra	SET_TYPE 	; and exit
+
+TIME_IDX:
+	move.w	FV.REQDRive(a3),d0
+	moveq	#-1,d2		; assume DD drive
+	btst.b	d0,FV.RDYFLag(a3) ; set drive not ready
+	beq.s	CHK_BUFF0	; don't time idx if drive
+				; not ready (no disk in drv)
+
+	bsr	hw_WTIDX
+	bsr	hw_WTIDX 	; read disk index twice
+	cmp.w	#240,d1		; less than 240 ms apart?
+	blt.s	CHK_BUFF0	; ...yes, DD drive
+
+	move.l	#$AAAAAAAA,d2	; else, must be HD drive
+
+; check if drive motor can reach speed
+
+CHK_BUFF0:
+
+;	 bsr	 hw_IS_DRVRDY
+;	 bne	 SEL_DRV_NF	 ; drive no good
+
+	move.l	DV.SIDE0buff(a4),d0
+	bne.s	SET_BUFF0	; already defined
+
+	movem.l	d1-d3/a1-a4,-(a7)
+	move.l	#AB.BUFENd,d1
+	moveq	#MT.ALCHP,d0
+	moveq	#0,d2
+	trap	#1
+	movem.l	(a7)+,d1-d3/a1-a4
+
+	tst.l	d0
+	bne.s	NO_DRIVE 	; branch on error
+
+	move.l	a0,a5
+	move.l	a5,DV.SIDE0buff(a4) ; address of vars, side 0
+	bra.s	BAD_BUFF0
+
+SET_BUFF0:
+	move.w	FV.REQDRive(a3),d0
+	move.l	DV.SIDE0buff(a4),a5 ; address of vars, side 0
+	cmp.w	AB.DRIVE(a5),d0	; is buffer owned by drive?
+	bne.s	CHK_BUFF1	; no it isn't!
+
+BAD_BUFF0:
+	move.w	#-1,AB.DRIVE(a5)	; set impossible disk
+	move.w	#-1,AB.SIDE(a5)	; set impossible side
+	move.w	#-1,AB.TRACK(a5)	; set impossible track
+	clr.l	AB.PENDWflag(a5)	; clear pending write
+	move.l	#$3FFFF,AB.BADFLag(a5) ; sectors all bad
+
+CHK_BUFF1:
+	move.l	DV.SIDE1buff(a4),d0
+	bne.s	SET_BUFF1	; already defined
+
+	movem.l	d1-d3/a1-a4,-(a7)
+	move.l	#AB.BUFENd,d1
+	moveq	#MT.ALCHP,d0
+	moveq	#0,d2
+	trap	#1
+	movem.l	(a7)+,d1-d3/a1-a4
+
+	tst.l	d0
+	bne	NO_DRIVE 	; branch on error
+
+	move.l	a0,a5
+	move.l	a5,DV.SIDE1buff(a4) ; address of vars, side 1
+	bra.s	BAD_BUFF1
+
+SET_BUFF1:
+	move.w	FV.REQDRive(a3),d0
+	move.l	DV.SIDE1buff(a4),a5 ; address of vars, side 1
+	cmp.w	AB.DRIVE(a5),d0	; is buffer owned by drive?
+	bne.s	SET_TYPE 	; no it isn't!
+
+BAD_BUFF1:
+	move.w	#-1,AB.DRIVE(a5)	; set impossible disk
+	move.w	#-1,AB.SIDE(a5)	; set impossible side
+	move.w	#-1,AB.TRACK(a5)	; set impossible track
+	clr.l	AB.PENDWflag(a5)	; clear pending write
+	move.l	#$3FFFF,AB.BADFLag(a5) ; sectors all bad
+
+SET_TYPE:
+	move.l	d2,DV.TYPE(a4)
+	clr.b	DV.TRK40(a4)
+
+CHG_NO:
+	move.w	FV.REQDRive(a3),d0
+	addq.b	#3,d0
+	bset	d0,d3
+	move.b	d3,CIAB_PRB	; deselect drive
+	move.b	#%11111111,CIAB_PRB
+
+STATUS_OK:
+	move.w	#POLLT,DV.TIMEOut(a4)
+
+STATUS_X:
+	movem.l	(a7)+,d0-d3/a3-a5
+	rts
+
+; -------------------------------------------------------------
+;  provide Diskchange signal for non standard drive d0
+; -------------------------------------------------------------
+DSKCNG:
+	movem.l	d0/d2/a3-a5,-(a7)
+
+	move.l	AV.DSKV,a3	; address of disk vars, a3
+
+	and.w	#$3,d0		; Only drives 0-3.
+
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	move.w	d0,-(a7)
+	bsr	FLUSH_BUFF	; just in case
+	move.w	(a7)+,d0
+
+	bset.b	d0,FV.CNGFLag(a3) ; set disk changed
+	bclr.b	d0,FV.RDYFLag(a3) ; set drive not ready
+
+	movem.l	(a7)+,d0/d2/a3-a5
+	rts
+
+; -------------------------------------------------------------
+;  50 Hz interrupt server	       (now changed to polled task)
+;  switch off motor if requested
+;  Flush writebuffer before motor_off
+; -------------------------------------------------------------
+POLSERV:
+	movem.l	d0/d2/a3-a5,-(a7)
+
+	move.l	AV.DSKV,a3	; Address of disk vars, a3
+
+POLSERV1:
+	bset.b	#7,FV.POLLActiv(a3) ; scheduler already active?
+	bne.s	POLX		; if so, then ignore
+
+	move.w	#3,d0		; check timeout, all drives
+
+STPFLPLP:
+	bsr	TESTSTOP
+	dbra	d0,STPFLPLP
+
+	bclr.b	#7,FV.POLLActiv(a3) ; mark scheduler inactive
+
+POLX:
+	movem.l	(a7)+,d0/d2/a3-a5
+	rts
+
+TESTSTOP:
+	move.w	d0,d2		; Address of drive vars for
+	mulu.w	#DV_LEN,d2	; required drive in a4
+	lea	FV.DRVVArs(a3,d2.w),a4
+
+	move.w	DV.TIMEOut(a4),d2 ; anything to do?
+	beq.s	INTEX
+
+	subq.w	#1,d2
+	move.w	d2,DV.TIMEOut(a4)
+	tst.w	d2
+	bne	INTEX
+
+	tst.l	DV.TYPE(a4)
+	beq.s	INTEX
+
+	move.w	d0,d2
+	bsr	FLUSH_BUFF
+	move.w	d2,d0
+
+	bsr	hw_MTR_OFF
+	bclr.b	d0,FV.RDYFLag(a3) ; set not ready
+
+INTEX:
+	rts
+
+; -------------------------------------------------------------
+FLUSHALL:
+	movem.l	d0/d2,-(a7)
+
+	move.w	#3,d0
+
+FLSHALLLP:
+	move.w	d0,d2
+	bsr	FLUSH_BUFF
+	move.w	d2,d0
+	dbra	d0,FLSHALLLP
+
+	movem.l	(a7)+,d0/d2
+	rts
+
+; -------------------------------------------------------------
+;  wait for no blitter activity, or a maximum of 40ms.
+; -------------------------------------------------------------
+SCR_OFF:
+	movem.l	d0-d1,-(a7)
+;	 move.w	 #%0000000001000000,INTENA ; disable blit ints
+	move.l	#39,d1		; set count for 40 ms
+
+sof_LUP1:
+	bsr	hw_BEG_TIMING
+
+sof_LUP2:
+	btst.b	#6,DMACONR	; wait blitter not busy
+	beq.s	sof_X
+
+	bsr	hw_IS_TIMING
+	beq.s	sof_LUP2
+
+	dbra	d1,sof_LUP1
+
+sof_X:
+	movem.l	(a7)+,d0-d1
+	rts
+
+; -------------------------------------------------------------
+;  ROUTINES THAT HIT THE HARDWARE DIRECTLY
+; -------------------------------------------------------------
+
+DISKCOPY:
+	movem.l	d1-d4/d7/a0/a3,-(a7)
+
+	moveq	#1,d0		; drive 1
+	bsr	hw_IS_PRO
+	bne.s	DC_CONT
+
+	moveq	#ERR.RO,d3
+	bra	DC_EXIT
+
+DC_CONT:
+	trap	#0
+	or.w	#$0700,sr	; disable interrupts
+
+	bsr	SCR_OFF		; wait for blitter
+
+	move.l	AV.DSKV,a3
+	move.b	FV.FLAGS(a3),d7	; save FV.FLAGS
+	move.b	#%00001010,FV.FLAGS(a3) ; indx R&W, no SYNC
+
+	moveq	#0,d0		; drive 0
+	bsr	hw_GO_TK0
+
+	bsr	hw_MTR_ON
+	bsr	hw_IS_DRVRDY
+	beq.s	DC_CONT1
+
+	moveq	#ERR.NF,d3
+	bra.s	DC_X0
+
+DC_CONT1:
+	moveq	#1,d0		; drive 1
+	bsr	hw_GO_TK0
+
+	bsr	hw_MTR_ON
+	bsr	hw_IS_DRVRDY
+	beq.s	DC_CONT2
+
+	moveq	#ERR.NF,d3
+	bra.s	DC_X1
+
+DC_CONT2:
+	moveq	#-1,d4
+	lea	MFMBUFFER,a0	; buffer address
+
+; start in earnest
+
+	moveq	#0,d2		; track number
+
+DC_CPY_LUP:
+	moveq	#0,d0		; drive 0
+	moveq	#0,d1		; side number
+	bsr	hw_RD_DSK	; read track
+
+	moveq	#1,d0		; drive 1
+	bsr	hw_WR_DSK	; write track
+
+	moveq	#0,d0		; drive 0
+	moveq	#1,d1		; side number
+	bsr	hw_RD_DSK	; read track
+
+	bsr	hw_STEP_IN
+
+	moveq	#1,d0		; drive 1
+	bsr	hw_WR_DSK	; write track
+
+	bsr	hw_STEP_IN
+
+	addq	#1,d2
+	cmpi.b	#80,d2
+	bne.s	DC_CPY_LUP
+
+	moveq	#ERR.OK,d3
+DC_X1:
+	moveq	#1,d0		; drive 1
+	bsr	hw_GO_TK0
+	bsr	hw_MTR_OFF
+	bsr	DSKCNG
+DC_X0:
+	moveq	#0,d0		; drive 0
+	bsr	hw_GO_TK0
+	bsr	hw_MTR_OFF
+	bsr	DSKCNG
+
+	move.b	d7,FV.FLAGS(a3)
+
+	andi.w	#$D8FF,sr
+
+DC_EXIT:
+	move.l	d3,d0
+	movem.l	(a7)+,d1-d4/d7/a0/a3
+	rts
+
+; -------------------------------------------------------------
+;  Wait for d0 x 1000th of a second
+; -------------------------------------------------------------
+hw_TIMER:
+	movem.l	d0,-(a7)
+
+	bra.s	hw_TIMER3
+
+hw_TIMER1:
+	bsr	hw_BEG_TIMING
+
+hw_TIMER2:
+	bsr	hw_IS_TIMING
+	beq.s	hw_TIMER2
+
+hw_TIMER3:
+	dbra	d0,hw_TIMER1
+
+	movem.l	(a7)+,d0
+	rts
+
+; -------------------------------------------------------------
+;  Set timer A for one 1000th of a second
+; -------------------------------------------------------------
+hw_BEG_TIMING:
+	move.b	#$CC,CIAB_TALO	; and set counter to 716
+	move.b	#$02,CIAB_TAHI
+	move.b	#9,CIAB_CRA	; set timer to OneShot &
+	; set the start bit
+
+	rts
+
+; -------------------------------------------------------------
+;  Check if timer A is still going
+;  eq = still timing, ne = run down
+; -------------------------------------------------------------
+hw_IS_TIMING:
+	movem.l	d0-d1,-(a7)
+
+	move.b	CIAB_CRA,d0
+	eor.b	#1,d0
+	and.b	#1,d0
+
+	movem.l	(a7)+,d0-d1
+	rts
+
+; -------------------------------------------------------------
+;  Wait until an INDEX interrupt is requested, or for 2 seconds
+;  ne = INDEX found, eq = no INDEX found, d1 = num milliseconds
+; -------------------------------------------------------------
+hw_WTIDX:
+	movem.l	d0,-(a7)
+
+	move.b	CIAB_ICR,d0	; read & reset int flg
+	or.b	AV.CIAB_ICR,d0
+	bclr	#4,d0		; clear previous indx int
+	move.b	d0,AV.CIAB_ICR	; store for another program
+
+	move.l	#1999,d1 	; set count for 2000 ms
+
+hw_WTIDX_LUP1:
+	bsr	hw_BEG_TIMING
+
+hw_WTIDX_LUP2:
+	move.b	CIAB_ICR,d0	; read CIA-B ICR
+	or.b	AV.CIAB_ICR,d0
+	move.b	d0,AV.CIAB_ICR	; store for another program
+
+	bclr	#4,d0		; was it index ?
+	bne	hw_WTIDX_XIT	; ...yes
+
+hw_WTIDX_CONT:
+	bsr	hw_IS_TIMING
+	beq.s	hw_WTIDX_LUP2
+
+	dbra	d1,hw_WTIDX_LUP1
+
+	addq.w	#1,d1		; set flags
+	bra.s	hw_WTIDX_X
+
+hw_WTIDX_XIT:
+	move.w	#2000,d0
+	sub.w	d1,d0
+	move.w	d0,d1
+
+hw_WTIDX_X:
+	movem.l	(a7)+,d0
+	tst.w	d1
+
+	rts
+
+; -------------------------------------------------------------
+;  Wait from disk DMA finished signal or for 1 second
+;  ne = DMA finished, eq = DMA not complete
+; -------------------------------------------------------------
+hw_WTDSKDMA:
+	movem.l	d0-d1,-(a7)
+
+
+	move.l	#999,d1		; set count for 1000 ms
+
+hw_WTDMA_LUP1:
+	bsr	hw_BEG_TIMING
+
+hw_WTDMA_LUP2:
+	move.w	INTREQR,d0
+	btst	#1,d0		; is disk DMA finished?
+	bne.s	hw_WTDSKDMA_OK
+
+	bsr	hw_IS_TIMING
+	beq.s	hw_WTDMA_LUP2
+
+	dbra	d1,hw_WTDMA_LUP1
+
+	move.w	#$4000,DSKLEN	; stop disk DMA
+	move.w	#$8000,DSKLEN
+	move.w	#$8000,DSKLEN
+	bra.s	hw_WTDSKDMA_X
+
+hw_WTDSKDMA_OK:
+	move.w	#$4000,DSKLEN	; stop disk DMA
+
+hw_WTDSKDMA_X:
+	move.w	#%0000000000010000,DMACON ; disk DMA off
+	move.w	#$0002,INTREQ	; clear interrupt flag
+
+	addq.w	#1,d1		; set flags
+	tst.w	d1
+
+	movem.l	(a7)+,d0-d1
+
+	rts
+
+; --------------------------------------------------------------
+;  Read MFM track from disk to buffer at a0.l
+;  Pass drive number in d0.w, side in d1.w, track number in d2.w
+;  eq = Track read OK, ne = disk error
+; --------------------------------------------------------------
+hw_RD_DSK:
+	movem.l	d0-d3/a3,-(a7)
+
+	move.w	sr,-(a7)
+	ori.w	#$0700,sr
+
+ ;	 move.w	 INTENAR,-(a7)
+ ;	 move.w	 #$7FFF,INTENA
+	bsr	SCR_OFF
+
+	move.b	#%01111111,d3
+	move.b	d3,CIAB_PRB	; switch on motor
+
+	addq.b	#3,d0
+	bclr.b	d0,d3		; select drive
+
+	btst.b	#0,d1
+	beq.s	hw_RD_DSK0	; branch if side 0
+
+	bclr	#2,d3		; select side 1
+
+hw_RD_DSK0:
+	move.b	d3,CIAB_PRB	; set drive status
+	bset.b	d0,d3		; get ready to deselect drive
+	subq.b	#3,d0
+
+	move.l	AV.DSKV,a3
+	move.l	a0,DSKPTH	; start of buffer
+	move.w	#%0000010000000000,ADKCON ; WORDSYNC off
+	move.b	FV.FLAGS(a3),d1
+	btst	#0,d1		; branch if word SYNC disabled
+	beq.s	hw_RD_DSK1
+
+	move.w	#%1000010000000000,ADKCON ; WORDSYNC on
+
+hw_RD_DSK1:
+	move.w	#%0110001000000000,ADKCON ; PRECOMP=0, GCR SYNC off
+	move.w	#%1001000100000000,ADKCON ; MFMPREC for MFM, 2°s/bit
+
+	cmp.w	#40,d2		; if it is a high track,
+	blt.s	hw_RD_DSK2	; we need a
+	move.w	#%1010000000000000,ADKCON ; 140 ns precompensation
+
+hw_RD_DSK2:
+	move.w	#%1000001000010000,DMACON ; DMA master on, disk DMA on
+	move.w	#$4489,DSKSYNC	; sync word
+
+	btst	#1,d1		; branch if index enabled
+	beq.s	hw_RD_DSK4
+
+;  do disk read via index interrupt
+
+hw_RD_DSK3:
+	bsr	hw_WTIDX 	; wait for index
+	beq.s	hw_RD_DSK6	; branch on error
+
+;  do disk read
+
+hw_RD_DSK4:
+	move.w	#((RLEN>>1)&$1FFF),d1
+	cmp.l	#$AAAAAAAA,d4
+	bne.s	hw_RD_DSK5
+
+	lsl.w	#1,d1
+
+hw_RD_DSK5:
+	bset	#15,d1		; requests from disk DMA
+	move.w	#$0002,INTREQ	; clear previous interrupt
+	move.w	#$4000,DSKLEN	; stop disk DMA
+	move.w	d1,DSKLEN	; initiate disk operation
+	move.w	d1,DSKLEN
+
+;  wait for operation to finish, then exit
+
+	bsr	hw_WTDSKDMA	; wait, until disk read
+	bne.s	hw_RD_DSK7	; branch if no error
+
+hw_RD_DSK6:
+	moveq	#ERR.NF,d0
+	bra.s	hw_RD_DSKX
+
+hw_RD_DSK7:
+	moveq	#ERR.OK,d0	; signal read error
+
+hw_RD_DSKX:
+	move.b	d3,CIAB_PRB	; deselect drive without
+				; changing drive status
+	move.b	#%01111111,CIAB_PRB ; deselect all drives
+
+;	 move.w	 (a7)+,d1
+;	 ori.w	 #%1100000000000000,d1
+;	 move.w	 #$7FFF,INTREQ
+;	 move.w	 d1,INTENA
+
+	move.w	(a7)+,sr
+
+	tst.l	d0		; set flags
+
+	movem.l	(a7)+,d0-d3/a3
+	rts
+
+; -------------------------------------------------------------
+;  Write MFM track to disk from buffer at a0.l
+;  Pass drive number in d0.w, side in d1.w, track number in d2.w
+;  Requires you to have set up an interrupt server that acts
+;  on the index pulse and begins the actual disk write and DMA
+; -------------------------------------------------------------
+hw_WR_DSK:
+	movem.l	d0-d3/a3,-(a7)
+
+	move.w	sr,-(a7)
+	ori.w	#$0700,sr
+
+;	 move.w	 INTENAR,-(a7)
+;	 move.w	 #$7FFF,INTENA
+	bsr	SCR_OFF
+
+	move.b	#%01111111,d3
+	move.b	d3,CIAB_PRB	; switch on motor
+
+	addq.b	#3,d0
+	bclr.b	d0,d3		; select drive
+
+	btst.b	#0,d1
+	beq.s	hw_WR_DSK0	; branch if side 0
+
+	bclr	#2,d3		; select side 1
+
+hw_WR_DSK0:
+	move.b	d3,CIAB_PRB	; set drive status
+	bset.b	d0,d3		; get ready to deselect drive
+	subq.b	#3,d0
+
+	move.l	AV.DSKV,a3
+	move.l	a0,DSKPTH	; start of buffer
+	move.w	#$1234,DSKSYNC	; dummy sync word
+	move.w	#%0000010000000000,ADKCON ; WORDSYNC off
+	move.b	FV.FLAGS(a3),d1
+
+hw_WR_DSK1:
+	move.w	#%0110001000000000,ADKCON ; PRECOMP=0, GCR SYNC off
+	move.w	#%1001000100000000,ADKCON ; MFMPREC for MFM, 2°s/bit
+
+	cmp.w	#40,d2		; if it is a high track,
+	blt.s	hw_WR_DSK2	; we need a
+	move.w	#%1010000000000000,ADKCON ; 140 ns precompensation
+
+hw_WR_DSK2:
+	move.w	#%1000001000010000,DMACON ; DMA master on, disk DMA on
+
+	btst	#3,d1		; branch if index enabled
+	beq.s	hw_WR_DSK4
+
+;  do disk read via index interrupt
+
+hw_WR_DSK3:
+
+	bsr	hw_WTIDX 	; wait for index
+	beq.s	hw_WR_DSK6	; branch on error
+
+;  do disk read
+
+hw_WR_DSK4:
+	move.w	#((WLEN>>1)&$1FFF),d1
+	cmp.l	#$AAAAAAAA,d4
+	bne.s	hw_WR_DSK5
+
+	lsl.w	#1,d1
+
+hw_WR_DSK5:
+	bset	#15,d1		; requests from disk DMA
+	bset	#14,d1		; signal WRITE
+	move.w	#$0002,INTREQ	; clear previous interrupt
+	move.w	#$4000,DSKLEN	; stop disk DMA
+	move.w	d1,DSKLEN	; initiate disk operation
+	move.w	d1,DSKLEN
+
+;  wait for operation to finish, then exit
+
+	bsr	hw_WTDSKDMA	; wait, until disk read
+	bne.s	hw_WR_DSK7	; branch if no error
+
+hw_WR_DSK6:
+	moveq	#ERR.NF,d0
+	bra.s	hw_WR_DSKX
+
+hw_WR_DSK7:
+	moveq	#ERR.OK,d0	; signal read error
+
+hw_WR_DSKX:
+	move.b	d3,CIAB_PRB	; deselect drive without
+				; changing drive status
+	move.b	#%01111111,CIAB_PRB ; deselect all drives
+
+;	 move.w	 (a7)+,d1
+;	 ori.w	 #%1100000000000000,d1
+;	 move.w	 #$7FFF,INTREQ
+;	 move.w	 d1,INTENA
+
+	move.w	(a7)+,sr
+
+	tst.l	d0		; set flags
+
+	movem.l	(a7)+,d0-d3/a3
+	rts
+
+; -------------------------------------------------------------
+;  deselect all drives
+; -------------------------------------------------------------
+hw_DESEL_ALL:
+	move.b	#%01111111,CIAB_PRB ; deselect all drives
+
+	rts
+
+; -------------------------------------------------------------
+;  Select disk d0.b
+; -------------------------------------------------------------
+hw_SEL_DRV:
+	and.w	#$3,d0		; Only drives 0-3.
+
+	movem.l	d0/d1,-(a7)
+
+	move.b	#%01111111,CIAB_PRB ; deselect all drives
+	move.b	#%01111111,d1	; motor on (bit 7)
+	addq.b	#3,d0
+	bclr.b	d0,d1		; select (bits 3-6)
+	move.b	d1,CIAB_PRB	; select drive
+
+	movem.l	(a7)+,d0/d1
+	rts
+
+; -------------------------------------------------------------
+;  switch on motor for drive d0.w
+; -------------------------------------------------------------
+hw_MTR_ON:
+	and.w	#$3,d0		; Only drives 0-3.
+
+	movem.l	d0/d1,-(a7)
+
+	move.b	#%01111111,CIAB_PRB ; deselect all drives
+	move.b	#%01111111,d1	; motor on (bit 7)
+	addq.b	#3,d0
+	bclr.b	d0,d1		; select (bits 3-6)
+	move.b	d1,CIAB_PRB	; select drive
+	move.b	#%01111111,CIAB_PRB ; deselect all drives
+
+	movem.l	(a7)+,d0/d1
+
+	rts
+
+; -------------------------------------------------------------
+;  switch off motor for drive d0.w
+; -------------------------------------------------------------
+hw_MTR_OFF:
+	and.w	#$3,d0		; Only drives 0-3.
+
+	movem.l	d0/d1,-(a7)
+
+	move.b	#%11111111,CIAB_PRB ; deselect all drives
+	move.b	#%11111111,d1	; motor off (bit 7)
+	addq.b	#3,d0
+	bclr.b	d0,d1		; select (bits 3-6)
+	move.b	d1,CIAB_PRB	; select drive
+	move.b	#%11111111,CIAB_PRB ; deselect all drives
+
+	movem.l	(a7)+,d0/d1
+	rts
+; -------------------------------------------------------------
+;  select side d1.b for drive d0.w
+; -------------------------------------------------------------
+hw_SEL_SIDE:
+	and.w	#$3,d0		; Only drives 0-3.
+
+	movem.l	d0/d3,-(a7)
+
+	move.b	#%01111111,CIAB_PRB ; deselect all drives
+	move.b	#%01111111,d3	; motor on (bit 7)
+	addq.b	#3,d0
+	bclr.b	d0,d3		; select (bits 3-6)
+	btst.b	#0,d1
+	beq.s	hw_SEL_SID0	; branch if side 0
+
+	bclr	#2,d3		; select side 1
+
+hw_SEL_SID0:
+	move.b	d3,CIAB_PRB	; set drive status
+	bset.b	d0,d3		; get ready to deselect drive
+	move.b	d3,CIAB_PRB	; deselect drive without
+				; changing drive status
+	move.b	#%01111111,CIAB_PRB ; deselect all drives
+
+	movem.l	(a7)+,d0/d3
+	rts
+
+; -------------------------------------------------------------
+;  Step in one track (increase track number) on drive d0.w
+; -------------------------------------------------------------
+hw_STEP_IN:
+	movem.l	d1,-(a7)
+
+	ifd	debug
+
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'Si',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+	movem.l	d0/a0,-(a7)
+	move.l	#0,a0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+
+	endc
+
+	and.w	#$3,d0		; Only drives 0-3.
+
+	move.b	#%01111101,d1	; motor on (bit 7)
+				; reset direction (bit 1)
+				; set diskstep (bit 0)
+	move.b	d1,CIAB_PRB	; set-up bits to change
+	addq.b	#3,d0
+	bclr.b	d0,d1		; set drive to change
+	subq.b	#3,d0
+	move.b	d1,CIAB_PRB	; change bits on drive
+	bclr.b	#0,d1		; set diskstep (bit 0)
+	move.b	d1,CIAB_PRB	; change bits on drive
+	bset.b	#0,d1		; reset diskstep (bit 0)
+	move.b	d1,CIAB_PRB	; change bits on drive
+	move.b	#%11111111,CIAB_PRB ; deselect drive
+
+	moveq	#4,d1		; set count for 5ms
+
+hw_SI_LUP1:
+	bsr	hw_BEG_TIMING
+
+hw_SI_LUP2:
+	bsr	hw_IS_TIMING
+	beq.s	hw_SI_LUP2
+
+	dbra	d1,hw_SI_LUP1
+
+hw_SI_X:
+	movem.l	(a7)+,d1
+	rts
+
+; -------------------------------------------------------------
+;  Step out one track (decrease track number) on drive d0.w
+; -------------------------------------------------------------
+hw_STEP_OUT:
+	movem.l	d1,-(a7)
+
+	ifd	debug
+
+	movem.l	d0/a0,-(a7)	; temporary aberration
+	move.l	#0,a0
+	move.l	#$00020000+'So',d0
+	bsr	IOD0
+	movem.l	(a7)+,d0/a0
+	movem.l	d0/a0,-(a7)
+	move.l	#0,a0
+	bsr	HEX08
+	movem.l	(a7)+,d0/a0
+
+	endc
+
+	and.w	#$3,d0		; Only drives 0-3.
+
+	move.b	#%01111111,d1	; motor on (bit 7)
+				; set direction (bit 1)
+				; set diskstep (bit 0)
+	move.b	d1,CIAB_PRB	; set-up bits to change
+	addq.b	#3,d0
+	bclr.b	d0,d1		; set drive to change
+	subq.b	#3,d0
+	move.b	d1,CIAB_PRB	; change bits on drive
+	bclr.b	#0,d1		; set diskstep (bit 0)
+	move.b	d1,CIAB_PRB	; change bits on drive
+	bset.b	#0,d1		; reset diskstep (bit 0)
+	move.b	d1,CIAB_PRB	; change bits on drive
+	move.b	#%11111111,CIAB_PRB ; deselect drive
+
+	moveq	#4,d1		; set count for 5ms
+
+hw_SO_LUP1:
+	bsr	hw_BEG_TIMING
+
+hw_SO_LUP2:
+	bsr	hw_IS_TIMING
+	beq.s	hw_SO_LUP2
+
+	dbra	d1,hw_SO_LUP1
+
+hw_SO_X:
+	movem.l	(a7)+,d1
+	rts
+
+; -------------------------------------------------------------
+;  Find track zero on drive d0.w
+; -------------------------------------------------------------
+hw_GO_TK0:
+	movem.l	d1,-(a7)
+
+	moveq	#84,d1		; maximum 84 tracks to step
+hw_GT0_LUP:
+	bsr	hw_IS_TK0	; already track 0?
+	beq.s	hw_GT0_X
+	bsr	hw_STEP_OUT	; step a little closer
+	dbra	d1,hw_GT0_LUP
+
+hw_GT0_X:
+	movem.l	(a7)+,d1
+	rts
+
+; -------------------------------------------------------------
+;  return whether drive d0.w is at track zero
+;  eq = is at track zero, ne = is not at track zero
+; -------------------------------------------------------------
+hw_IS_TK0:
+	movem.l	d0-d1,-(a7)
+
+	and.w	#$3,d0		; Only drives 0-3.
+	bsr	hw_DESEL_ALL
+
+	bsr	hw_SEL_DRV
+	move.b	CIAA_PRA,d1
+	bsr	hw_DESEL_ALL
+
+	andi.b	#16,d1
+
+	movem.l	(a7)+,d0-d1
+	rts
+
+; -------------------------------------------------------------
+;  wait until drive has reached speed, or for a maximum of
+;  500 milliseconds.
+;  eq = drive has reached speed, ne = drive is duff
+; -------------------------------------------------------------
+hw_IS_DRVRDY:
+	movem.l	d0-d1,-(a7)
+	ifd	debug
+	move.w	#BLUE,COLOR00
+	endc
+
+; wait for motor to reach speed
+
+	move.w	#500,d1		; set counter for 500ms
+
+hw_IS_DRVRDY1:
+	bsr	hw_BEG_TIMING
+
+hw_IS_DRVRDY2:
+;	 bsr	 hw_IS_RDY
+;	 beq.s	 hw_IS_DRVRDY3
+
+	bsr	hw_IS_TIMING
+	beq.s	hw_IS_DRVRDY2
+
+	dbra	d1,hw_IS_DRVRDY1
+
+;	 bsr	 hw_MTR_OFF
+
+;	 moveq	 #-1,d0
+;	 bra.s	 hw_IS_DRVRDYX
+
+hw_IS_DRVRDY3:
+	moveq	#0,d0
+
+hw_IS_DRVRDYX:
+	ifd	debug
+	move.w	#BLACK,COLOR00
+	endc
+	movem.l	(a7)+,d0-d1
+	rts
+
+; -------------------------------------------------------------
+;  return motor ready signal for drive d0.w in zero flag
+;  eq = motor ready, ne = motor not ready
+; -------------------------------------------------------------
+hw_IS_RDY:
+	movem.l	d0-d1,-(a7)
+
+	and.w	#$3,d0		; Only drives 0-3.
+	bsr	hw_DESEL_ALL
+
+	bsr	hw_SEL_DRV
+	move.b	CIAA_PRA,d1
+	bsr	hw_DESEL_ALL
+
+	and.b	#32,d1
+
+	movem.l	(a7)+,d0-d1
+
+	rts
+
+; -------------------------------------------------------------
+;  return status of writeprotect signal for drive d0.w
+;  eq = protected, ne = not protected
+; -------------------------------------------------------------
+hw_IS_PRO:
+	movem.l	d0-d1,-(a7)
+
+	and.w	#$3,d0		; Only drives 0-3.
+	bsr	hw_DESEL_ALL
+
+	bsr	hw_SEL_DRV
+	move.b	CIAA_PRA,d1
+	bsr	hw_DESEL_ALL
+
+	and.b	#8,d1
+
+	movem.l	(a7)+,d0-d1
+	rts
+
+; -------------------------------------------------------------
+;  return status of diskchange signal for drive d0.w
+;  eq = changed, ne = not changed
+; -------------------------------------------------------------
+hw_IS_CHG:
+	movem.l	d0-d1,-(a7)
+
+	and.w	#$3,d0		; Only drives 0-3.
+	bsr	hw_DESEL_ALL
+
+	bsr	hw_SEL_DRV
+	move.b	CIAA_PRA,d1
+	bsr	hw_DESEL_ALL
+
+	andi.b	#4,d1
+	bne.s	hw_IS_CHGX
+
+	tst.b	d1
+
+hw_IS_CHGX:
+	movem.l	(a7)+,d0-d1
+	rts
+
+; -------------------------------------------------------------
+;  Return drive type for drive d0.w in d0.l
+; -------------------------------------------------------------
+hw_DRV_TYP:
+	movem.l	d1-d3/a0,-(a7)
+
+	addq.b	#3,d0
+	moveq	#1,d3
+	asl.b	d0,d3
+
+L0F8F616:
+	not.b	 d3
+	lea	 CIAB_PRB,a0
+	move.b	 #$7F,d0
+	move.b	 d0,(a0)
+	and.b	 d3,d0
+	move.b	 d0,(a0)
+	move.b	 #$FF,(a0)
+	move.b	 d3,(a0)
+	move.b	 #$FF,(a0)
+	moveq	 #$1F,d1
+	moveq	 #$0,d0
+L0F8F636:
+	lsl.l	 #1,d0
+	move.b	 d3,(a0)
+	btst	 #$5,CIAA_PRA
+	bne.s	 L0F8F648	;*/modify beq.s L0F8F648
+	bset	 #$0,d0
+L0F8F648:
+	move.b	 #$FF,(a0)
+	dbra	 d1,L0F8F636
+L0F8F650:
+
+	movem.l	(a7)+,d1-d3/a0
+	rts
+
+; -------------------------------------------------------------
+;  BASIC functions and procedures
+; -------------------------------------------------------------
+PROC_DEF:
+	ifnd	extras
+	ifnd	extras2
+	dc.w	4
+	endc
+	ifd	extras2
+	dc.w	20
+	endc
+	endc
+
+	ifd	extras
+	ifnd	extras2
+	dc.w	22
+	endc
+	ifd	extras2
+	dc.w	38
+	endc
+	endc
+
+	dc.w	B_DISKCOPY-*
+	dc.b	8,'DISKCOPY',0
+	dc.w	B_MOUNT-*
+	dc.b	5,'MOUNT'
+	dc.w	B_DSKCNG-*
+	dc.b	6,'DskCng',0
+
+	ifd	extras
+	dc.w	B_hw_SEL_SIDE-*
+	dc.b	11,'hw_SEL_SIDE'
+	dc.w	B_hw_STEP_OUT-*
+	dc.b	11,'hw_STEP_OUT'
+	dc.w	B_hw_STEP_IN-*
+	dc.b	10,'hw_STEP_IN',0
+	dc.w	B_hw_GO_TK0-*
+	dc.b	9,'hw_GO_TK0'
+	dc.w	B_hw_MTR_OFF-*
+	dc.b	10,'hw_MTR_OFF',0
+	dc.w	B_hw_MTR_ON-*
+	dc.b	9,'hw_MTR_ON'
+	dc.w	B_hw_WR_DSK-*
+	dc.b	9,'hw_WR_DSK'
+	dc.w	B_hw_RD_DSK-*
+	dc.b	9,'hw_RD_DSK'
+	dc.w	B_hw_TIMER-*
+	dc.b	8,'hw_TIMER'
+
+	ifd	extras2
+	dc.w	B_W_INDEX-*
+	dc.b	7,'W_INDEX'
+	dc.w	B_R_INDEX-*
+	dc.b	7,'R_INDEX'
+	dc.w	B_FLUSH_BUFF-*
+	dc.b	10,'Flush_BUFF',0
+	dc.w	B_FREE_BUFF-*
+	dc.b	9,'Free_BUFF'
+	dc.w	B_FTRACK-*
+	dc.b	6,'FTrack',0
+	dc.w	B_WQDISK-*
+	dc.b	6,'WQDisk',0
+	dc.w	B_RQDISK-*
+	dc.b	6,'RQDisk',0
+	dc.w	B_WQSEC-*
+	dc.b	5,'WQSec'
+	dc.w	B_RQSEC-*
+	dc.b	5,'RQSec'
+	dc.w	B_SEL_DRV-*
+	dc.b	7,'SEL_DRV'
+	dc.w	B_SEL_SIDE-*
+	dc.b	8,'SEL_SIDE',0
+	dc.w	B_GO_TRACK-*
+	dc.b	8,'GO_TRACK',0
+	endc
+	endc
+
+	dc.w	0
+
+	ifnd	extras
+	ifnd	extras2
+	dc.w	0
+	endc
+	ifd	extras2
+	dc.w	6
+	endc
+	endc
+
+	ifd	extras
+	ifnd	extras2
+	dc.w	10
+	endc
+	ifd	extras2
+	dc.w	16
+	endc
+	endc
+
+	ifd	extras
+	dc.w	B_hw_DRV_TYP-*
+	dc.b	10,'hw_DRV_TYP',0
+	dc.w	B_hw_IS_CHG-*
+	dc.b	9,'hw_IS_CHG'
+	dc.w	B_hw_IS_PRO-*
+	dc.b	9,'hw_IS_PRO'
+	dc.w	B_hw_IS_RDY-*
+	dc.b	9,'hw_IS_RDY'
+	dc.w	B_hw_IS_TK0-*
+	dc.b	9,'hw_IS_TK0'
+
+	ifd	extras2
+	dc.w	B_CRC-*
+	dc.b	3,'CRC'
+	dc.w	B_ASCMFM-*
+	dc.b	6,'ASCMFM',0
+	dc.w	B_MFMASC-*
+	dc.b	6,'MFMASC',0
+	dc.w	B_CHNG-*
+	dc.b	4,'Chng',0
+	dc.w	B_WPRO-*
+	dc.b	4,'WPro',0
+	dc.w	B_CKRDY-*
+	dc.b	5,'CkRdy'
+	endc
+	endc
+
+	dc.w	0
+
+; -------------------------------------------------------------
+;    BASIC adaptions to M-Code procs
+; -------------------------------------------------------------
+B_MOUNT:
+	bsr	FETCH_W		; get disk number
+	bne	B_MOUNTX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	MOUNT
+
+B_MOUNTX:
+	rts
+
+; -------------------------------------------------------------
+B_DSKCNG:
+	bsr	FETCH_W		; get drive number
+	bne	B_DSKCNGX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	DSKCNG
+
+	moveq	#0,d0		; no errors
+
+B_DSKCNGX:
+	rts
+
+	ifd	extras2
+; -------------------------------------------------------------
+B_W_INDEX
+	bsr	FETCH_W		; get flag word
+	bne	B_W_INDEXX
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	movem.l	a3,-(a7)
+	move.l	AV.DSKV,a3
+
+	tst.l	d1
+	bne.s	B_W_IDX1
+
+	move.b	FV.FLAGS(a3),d0
+	bclr	#3,d0
+
+	bra.s	B_W_IDX2
+
+B_W_IDX1:
+	move.b	FV.FLAGS(a3),d0
+	bset	#3,d0
+
+B_W_IDX2:
+	move.b	d0,FV.FLAGS(a3)
+
+	movem.l	(a7)+,a3
+	moveq	#0,d0
+
+B_W_INDEXX:
+	rts
+
+; -------------------------------------------------------------
+B_R_INDEX:
+	bsr	FETCH_W		; get flag word
+	bne	B_R_INDEXX
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	movem.l	a3,-(a7)
+	move.l	AV.DSKV,a3
+
+	tst.l	d1
+	bne.s	B_R_IDX1
+
+	move.b	FV.FLAGS(a3),d0
+	bclr	#1,d0
+
+	bra.s	B_R_IDX2
+
+B_R_IDX1:
+	move.b	FV.FLAGS(a3),d0
+	bset	#1,d0
+
+B_R_IDX2:
+	move.b	d0,FV.FLAGS(a3)
+
+	movem.l	(a7)+,a3
+	moveq	#0,d0
+
+B_R_INDEXX:
+	rts
+
+; -------------------------------------------------------------
+B_CRC:
+	bsr	FETCH_L		; get address of data
+	bne	B_FLUSH_BUFFX
+	move.l	d1,d3
+
+	bsr	FETCH_L		; get length of data
+	bne	B_FLUSH_BUFFX
+	move.l	d1,d2
+
+	bsr	FETCH_L		; get previous CRC
+	bne	B_FLUSH_BUFFX
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	move.l	d1,d0
+	move.l	d2,d1
+	move.l	d3,a0
+	bsr	CALCCRC
+	bra	RET_W
+
+; -------------------------------------------------------------
+B_ASCMFM:
+	bsr	FETCH_W		; get ASCII byte
+	bne	B_FLUSH_BUFFX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	ASCMFMD0
+	bra	RET_L
+
+; -------------------------------------------------------------
+B_MFMASC:
+	bsr	FETCH_L		; get MFM word
+	bne	B_FLUSH_BUFFX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	MFMASCD0
+	bra	RET_W
+
+; -------------------------------------------------------------
+B_FLUSH_BUFF:
+	bsr	FETCH_W		; get disk number
+	bne	B_FLUSH_BUFFX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	FLUSH_BUFF
+
+B_FLUSH_BUFFX:
+	rts
+
+; -------------------------------------------------------------
+B_FREE_BUFF:
+	bsr	FETCH_W		; get disk number
+	bne	B_FREE_BUFFX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	FREE_BUFF
+
+B_FREE_BUFFX:
+	rts
+
+; -------------------------------------------------------------
+B_FTRACK:
+	bsr	FETCH_W		; get disk number
+	bne	B_FTRACKX
+	move.l	d1,d4
+
+	bsr	FETCH_W		; get side
+	bne	B_FTRACKX
+	move.l	d1,d3
+
+	bsr	FETCH_W		; get track number
+	bne	B_FTRACKX
+	move.l	d1,d2
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	trap	#0
+
+	move.l	d4,d0
+	bsr	SEL_DRV
+
+	move.l	d3,d0
+	bsr	SEL_SIDE
+
+	move.l	d2,d0
+	bsr	GO_TRACK
+
+	bsr	FTRACK
+	andi.w	#$D8FF,sr
+
+B_FTRACKX:
+	rts
+
+; -------------------------------------------------------------
+B_WQDISK:
+	bsr	FETCH_W		; get disk number
+	bne	B_WQDISKX
+	move.l	d1,d4
+
+	bsr	FETCH_W		; get side
+	bne	B_WQDISKX
+	move.l	d1,d3
+
+	bsr	FETCH_W		; get track number
+	bne	B_WQDISKX
+	move.l	d1,d2
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	move.l	d4,d0
+	bsr	SEL_DRV
+
+	move.l	d3,d0
+	bsr	SEL_SIDE
+
+	move.l	d2,d0
+	bsr	GO_TRACK
+
+	bsr	WQDISK
+
+B_WQDISKX:
+	rts
+
+; -------------------------------------------------------------
+B_RQDISK:
+	bsr	FETCH_W		; get disk number
+	bne	B_RQDISKX
+	move.l	d1,d4
+
+	bsr	FETCH_W		; get side
+	bne	B_RQDISKX
+	move.l	d1,d3
+
+	bsr	FETCH_W		; get track number
+	bne	B_RQDISKX
+	move.l	d1,d2
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	move.l	d4,d0
+	bsr	SEL_DRV
+
+	move.l	d3,d0
+	bsr	SEL_SIDE
+
+	move.l	d2,d0
+	bsr	GO_TRACK
+
+	bsr	RQDISK
+
+B_RQDISKX:
+	rts
+
+; -------------------------------------------------------------
+B_WQSEC:
+	bsr	FETCH_L		; output buffer address
+	bne	B_WQSECX
+	move.l	d1,d5
+
+	bsr	FETCH_W		; get disk number
+	bne	B_WQSECX
+	move.l	d1,d4
+
+	bsr	FETCH_W		; get side
+	bne	B_WQSECX
+	move.l	d1,d3
+
+	bsr	FETCH_W		; get track number
+	bne	B_WQSECX
+	move.l	d1,d2
+
+	bsr	FETCH_W		; get sector number
+	bne	B_WQSECX
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	move.l	d4,d0
+	bsr	SEL_DRV
+
+	move.l	d3,d0
+	bsr	SEL_SIDE
+
+	move.l	d2,d0
+	bsr	GO_TRACK
+				; sector number in d1
+	move.l	d5,a1		; output buffer address
+	bsr	WQSEC
+
+B_WQSECX:
+	rts
+
+; -------------------------------------------------------------
+B_RQSEC:
+	bsr	FETCH_L		; output buffer address
+	bne	B_RQSECX
+
+	move.l	d1,d5
+
+	bsr	FETCH_W		; get disk number
+	bne	B_RQSECX
+	move.l	d1,d4
+
+	bsr	FETCH_W		; get side
+	bne	B_RQSECX
+	move.l	d1,d3
+
+	bsr	FETCH_W		; get track number
+	bne	B_RQSECX
+	move.l	d1,d2
+
+	bsr	FETCH_W		; get sector number
+	bne	B_RQSECX
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	move.l	d4,d0
+	bsr	SEL_DRV
+
+	move.l	d3,d0
+	bsr	SEL_SIDE
+
+	move.l	d2,d0
+	bsr	GO_TRACK
+				; sector number in d1
+	move.l	d5,a1		; output buffer address
+	moveq	#0,d3		; no bytes to skip
+	moveq	#0,d4		; no bytes to leave
+	bsr	RQSEC
+
+B_RQSECX:
+	rts
+
+; -------------------------------------------------------------
+B_SEL_DRV:
+	bsr	FETCH_W		; get drive number
+	bne	B_SEL_DRVX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	SEL_DRV
+
+B_SEL_DRVX:
+	rts
+
+; -------------------------------------------------------------
+B_SEL_SIDE:
+	bsr	FETCH_W		; get side number
+	bne	B_SEL_SIDEX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	SEL_SIDE
+
+B_SEL_SIDEX:
+	rts
+
+; -------------------------------------------------------------
+B_GO_TRACK:
+	bsr	FETCH_W		; get track number
+	bne	B_GO_TRACKX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	GO_TRACK
+
+B_GO_TRACKX:
+	rts
+
+; -------------------------------------------------------------
+B_CHNG:
+	bsr	CHNG		; test for Disk change
+	bra	RET_W
+
+; -------------------------------------------------------------
+B_WPRO:
+	bsr	WPRO		; test for write protect
+	bra	RET_W
+
+; -------------------------------------------------------------
+B_CKRDY:
+	bsr	CKRDY		; check readiness of drive
+	bra	RET_W
+
+	endc
+
+; -------------------------------------------------------------
+;    BASIC routines that hit hit the hardware directly
+; -------------------------------------------------------------
+B_DISKCOPY:
+	moveq	#0,d1		; default channel #
+	bsr	GET_CH		; get channel ID
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	move.l	AV.DSKV,a3
+
+B_DC2:
+	lea	CPYMSG(pc),a1
+	bsr	IOSTRG
+
+B_DCLUP:
+	moveq	#IO.FBYTE,d0
+	moveq	#-1,d3		; infinite timeout
+	trap	#3		; fetch a byte
+
+	tst.l	d0
+	bne.s	B_DCX		; exit on error
+
+	cmp.b	#$0A,d1
+	bne.s	B_DCLUP
+
+	bsr	DISKCOPY 	; copy disk
+	bne.s	B_DCX
+
+	lea	DONMSG(pc),a1
+	bsr	IOSTRG
+
+B_DCOK:
+	moveq	#0,d0
+
+B_DCX:
+	rts
+
+; -------------------------------------------------------------
+B_hw_DRV_TYP:
+	bsr	FETCH_W		; get drive number
+	bne	B_hw_DRV_TYPX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	hw_DRV_TYP	; test drive type
+	bra	RET_L
+
+B_hw_DRV_TYPX:
+
+	ifd	extras
+
+; -------------------------------------------------------------
+B_hw_IS_CHG:
+	bsr	FETCH_W		; get drive number
+	bne	B_hw_SEL_SIDX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	hw_IS_CHG	; test for Disk change
+	beq	RET_TRU
+	bra	RET_FLS
+
+; -------------------------------------------------------------
+B_hw_IS_PRO:
+	bsr	FETCH_W		; get drive number
+	bne	B_hw_SEL_SIDX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	hw_IS_PRO	; test for write protect
+	beq	RET_TRU
+	bra	RET_FLS
+
+; -------------------------------------------------------------
+B_hw_IS_RDY:
+	bsr	FETCH_W		; get drive number
+	bne	B_hw_SEL_SIDX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	hw_IS_RDY	; check readiness of drive
+	beq	RET_TRU
+	bra	RET_FLS
+
+; -------------------------------------------------------------
+B_hw_IS_TK0:
+	bsr	FETCH_W		; get drive number
+	bne	B_hw_SEL_SIDX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	hw_IS_TK0	; check if at track zero
+	beq	RET_TRU
+	bra	RET_FLS
+
+; -------------------------------------------------------------
+B_hw_SEL_SIDE:
+	bsr	FETCH_W		; get drive number
+	bne.s	B_hw_SEL_SIDX
+	move.l	d1,d2
+
+	bsr	FETCH_W		; get drive side
+	bne.s	B_hw_SEL_SIDX
+
+	move.l	d2,d0		; drive in d0, side in d1
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	hw_SEL_SIDE
+	moveq	#0,d0
+
+B_hw_SEL_SIDX:
+	rts
+
+; -------------------------------------------------------------
+B_hw_STEP_OUT:
+	bsr	FETCH_W		; get drive number
+	bne.s	B_hw_STEP_OX
+	move.l	d1,d0
+
+	bsr	hw_STEP_OUT	; increase track number
+	moveq	#0,d0
+
+B_hw_STEP_OX:
+	rts
+
+; -------------------------------------------------------------
+B_hw_STEP_IN:
+	bsr	FETCH_W		; get drive number
+	bne.s	B_hw_STEP_IX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	hw_STEP_IN	; decrease track number
+	moveq	#0,d0
+
+B_hw_STEP_IX:
+	rts
+
+; -------------------------------------------------------------
+B_hw_GO_TK0:
+	bsr	hw_GO_TK0
+	moveq	#0,d0
+	rts
+
+; -------------------------------------------------------------
+B_hw_MTR_OFF:
+	bsr	FETCH_W		; get drive number
+	bne.s	B_hw_MTR_OFX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	bsr	hw_MTR_OFF	; turn of drive motor
+	moveq	#0,d0
+
+B_hw_MTR_OFX:
+	rts
+
+; -------------------------------------------------------------
+B_hw_MTR_ON:
+	bsr	FETCH_W		; get drive number
+	bne.s	B_hw_MTR_ONX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne.s	RPRT_BP
+
+	bsr	hw_MTR_ON	; turn on drive motor
+	moveq	#0,d0
+
+B_hw_MTR_ONX:
+	rts
+
+; -------------------------------------------------------------
+B_hw_WR_DSK:
+	bsr	FETCH_L		; address of buffer in a0
+	bne.s	B_hw_WR_DSKX
+	move.l	d1,a0
+
+	bsr	FETCH_W		; get drive number
+	bne.s	B_hw_RD_DSKX
+	move.l	d1,d3
+
+	bsr	FETCH_W		; get track number
+	bne.s	B_hw_RD_DSKX
+	move.l	d1,d2
+
+	bsr	FETCH_W		; get side number
+	bne.s	B_hw_RD_DSKX
+
+	move.l	d3,d0		; drive in d0, side d1, track in d2
+
+	cmp.l	a3,a5
+	bne.s	RPRT_BP
+
+	bsr	hw_WR_DSK	; write buffer to drive
+	moveq	#0,d0
+
+B_hw_WR_DSKX:
+	rts
+
+; -------------------------------------------------------------
+B_hw_RD_DSK:
+	bsr	FETCH_L		; address of buffer in a0
+	bne.s	B_hw_RD_DSKX
+	move.l	d1,a0
+
+	bsr	FETCH_W		; get drive number
+	bne.s	B_hw_RD_DSKX
+	move.l	d1,d3
+
+	bsr	FETCH_W		; get track number
+	bne.s	B_hw_RD_DSKX
+	move.l	d1,d2
+
+	bsr	FETCH_W		; get side number
+	bne.s	B_hw_RD_DSKX
+
+	move.l	d3,d0		; drive in d0, side d1, track in d2
+
+	cmp.l	a3,a5
+	bne.s	RPRT_BP
+
+	bsr	hw_RD_DSK	; read to buffer from drive
+	moveq	#0,d0
+
+B_hw_RD_DSKX:
+	rts
+
+; -------------------------------------------------------------
+B_hw_TIMER:
+
+	bsr	FETCH_L		; get count in ms
+	bne.s	B_TIMERX
+	move.l	d1,d0
+
+	cmp.l	a3,a5
+	bne.s	RPRT_BP
+
+	bsr	hw_TIMER
+	moveq	#0,d0
+
+B_TIMERX:
+	rts
+
+	endc
+
+; -------------------------------------------------------------
+RPRT_BP:
+	moveq	#ERR.BP,d0
+	rts
+
+; -------------------------------------------------------------
+CPYMSG:
+	dc.w	57
+	dc.b	"Put SRC in flp1_ and DEST in flp2_"
+	dc.b	" then press <ENTER>... ",0
+
+DONMSG:
+	dc.w	6
+	dc.b	"done.",$0A
+
+DRVMSG:
+	dc.w	37
+	dc.b	"Sorry, you need at least two drives.",$0A,0
+
+; -------------------------------------------------------------
+;    print string at (a1) to channel with id a0
+
+IOSTRG:
+	movem.l	d1-d3/a1-a2,-(a7)
+
+	move.w	UT.MTEXT,a2
+	jsr	(a2)
+
+	movem.l	(a7)+,d1-d3/a1-a2
+	rts
+
+; -------------------------------------------------------------
+;    print byte d0.l as HEX to channel with id a0
+
+HEX20:
+	swap	d0
+	bsr	HEX10
+	swap	d0
+	bsr	HEX10
+	rts
+
+; -------------------------------------------------------------
+;    print byte d0.w as HEX to channel with id a0
+
+HEX10:
+	ror.w	#8,d0
+	bsr	HEX08
+	rol.w	#8,d0
+	bsr	HEX08
+	rts
+
+; -------------------------------------------------------------
+;    print byte d0.b as HEX to channel with id a0
+
+HEX08:
+	movem.l	d0-d1,-(a7)
+
+	moveq	#2,d1
+
+	lsl.l	#8,d1
+	move.b	d0,d1
+	lsr.b	#4,d1
+	and.b	#$F,d1
+	add.b	#'0',d1
+	cmp.b	#'9',d1
+	ble.s	HEX081
+	add.b	#7,d1
+
+HEX081:
+	lsl.l	#8,d1
+	move.b	d0,d1
+	and.b	#$F,d1
+	add.b	#'0',d1
+	cmp.b	#'9',d1
+	ble.s	HEX082
+	add.b	#7,d1
+
+HEX082:
+	move.l	d1,d0
+	bsr	IOD0
+
+	movem.l	(a7)+,d0-d1
+	rts
+
+IOD0:
+	movem.l	a1,-(a7)
+	move.l	d0,-(a7)
+	move.l	a7,a1		; address of string
+	bsr	IOSTRG
+	move.l	(a7)+,d0
+	movem.l	(a7)+,a1
+	rts
+
+; -------------------------------------------------------------
+; Entry: A3.L   pointer to first parameter
+;	A5.L   pointer to last parameter
+;
+; Exit:	A3.L   updated
+;	A5.L   updated
+;	D0.L...error code
+;	D1.W   result
+
+FETCH_W:
+	MOVEM.L	A1-A2,-(A7)
+
+	MOVE.W	CA.GTINT,A2
+	BSR.S	GET_ONE
+	BNE.S	FETCH_WX
+
+	MOVEQ	#0,D1
+	MOVE.W	0(A6,A1.L),D1
+	ADDQ.L	#2,A1
+	MOVE.L	A1,BV_RIP(A6)
+
+FETCH_WX:
+	MOVEM.L	(A7)+,A1-A2
+	TST.L	D0
+	RTS
+
+; --------------------------------------------------------------
+FETCH_L:
+	MOVEM.L	A1-A2,-(A7)
+
+	MOVE.W	CA.GTLIN,A2
+	BSR.S	GET_ONE
+	BNE.S	FETCH_LX
+
+	MOVE.L	0(A6,A1.L),D1
+	ADDQ.L	#4,A1
+	MOVE.L	A1,BV_RIP(A6)
+
+FETCH_LX:
+	MOVEM.L	(A7)+,A1-A2
+	TST.L	D0
+	RTS
+
+; --------------------------------------------------------------
+;  This routine gets one parameter and returns it on the maths
+;  stack, pointed to by (A1).
+;
+; Entry: A2.L   routine to call (i.e. CA.GTINT)
+;	A3.L   pointer to first parameter
+;	A5.L   pointer to last parameter
+;
+; Exit:	A3.L   updated
+;	A5.L   updated
+;	A1.L   updated pointer to top of maths stack
+;	D0.L   error code
+
+GET_ONE:
+	MOVEM.L	D1-D6/A0/A2,-(A7)
+
+	LEA	8(A3),A0
+	CMP.L	A0,A5
+	BLT.S	GET_ONEBp
+
+	MOVE.L	BV_RIP(A6),A1
+	MOVE.L	A5,-(A7)
+	MOVE.L	A0,A5
+	MOVE.L	A5,-(A7)
+	JSR	(A2)
+	MOVEM.L	(A7)+,A0/A5
+
+	TST.L	D0
+	BNE.S	GET_ONEX
+
+	MOVE.L	A0,A3
+	MOVE.L	A1,BV_RIP(A6)
+
+	BRA.S	GET_ONEX
+
+GET_ONEBp:
+	MOVEQ	#ERR.BP,D0
+
+GET_ONEX:
+	MOVEM.L	(A7)+,D1-D6/A0/A2
+	TST.L	D0
+	RTS
+
+; --------------------------------------------------------------
+;  get channel parameter
+
+; Entry: A3.L   pointer to first parameter
+;	A5.L   pointer to last parameter
+
+; Exit:	A0.L   CH.ID (default d1)
+;	A2.L   CH.BASE
+;	A3.L   updated
+;	A5.L   updated
+;	D0.L   error code
+;	D1.L   default channel #
+
+GET_CH:
+	MOVEM.L	D1/D3/A1,-(A7)
+
+	MOVE.L	BV_RIP(A6),A1
+	CMP.L	A3,A5
+	BEQ.S	GET_CH1
+
+	BTST	#7,1(A6,A3.L)
+	BEQ.S	GET_CH1
+
+	BSR	FETCH_W
+	BNE.S	GET_CHX
+
+GET_CH1:
+	MULU	#$28,D1
+	ADD.L	BV_CHBAS(A6),D1
+	CMP.L	BV_CHP(A6),D1
+	BGE.S	GET_CHNO
+
+	MOVE.L	D1,A2
+	MOVE.L	0(A6,A2.L),A0
+	MOVE.W	A0,D1
+	BMI.S	GET_CHNO
+
+	MOVEQ	#0,D0
+	BRA.S	GET_CHX
+
+GET_CHNO:
+	MOVEQ.L	#ERR.NO,D0
+
+GET_CHX:
+	MOVEM.L	(A7)+,D1/D3/A1
+	RTS
+
+; -------------------------------------------------------------
+;  return true or false back to BASIC
+
+RET_FLS:
+	moveq	#0,d0
+	bra.s	RET_W
+
+RET_TRU:
+	moveq	#1,d0
+
+; --------------------------------------------------------------
+;  return word value to BASIC
+
+RET_W:
+	move.l	d0,d4
+	moveq.l	#2,d1
+	move.w	BV.CHRIX,a2
+	jsr	(a2)
+	move.l	d4,d0
+
+	move.l	BV_RIP(a6),a1	; Get arith stack pointer
+	subq	#2,a1		; room for 2 bytes
+	move.l	a1,BV_RIP(a6)
+	move.w	d0,0(a6,a1.l)	; Put int number on stack
+	moveq.l	#3,d4		; set Integer type
+	moveq.l	#0,d0		; no errors
+	rts
+
+; -------------------------------------------------------------
+;    return long Integer to BASIC
+
+RET_L:
+	move.l	d0,d4
+	moveq.l	#6,d1
+	move.w	BV.CHRIX,a2
+	jsr	(a2)
+	move.l	d4,d1
+
+	BSR	CONV_L2F
+	SUBQ.L	#6,BV_RIP(A6)
+	MOVE.L	BV_RIP(A6),A1
+	MOVE.W	D0,0(A6,A1.L)
+	MOVE.L	D1,2(A6,A1.L)
+	MOVEQ.L	#2,D4
+	MOVEQ.L	#0,D0
+	RTS
+
+; -------------------------------------------------------------
+;  convert long Integer to floating point form.
+;  Entry: d1.l = long int
+;  Exit:  d0.w = exponent
+;	 d1.l = mantissa
+
+CONV_L2F:
+	MOVE.L	D1,D0
+	BEQ.S	CONV_L2FX
+
+	MOVE.W	#$81F,D0
+	MOVE.L	D1,-(A7)
+
+CONV_L2F1:
+	ADD.L	D1,D1
+	BVS.S	CONV_L2F2
+
+	SUBQ.W	#1,D0
+	MOVE.L	D1,(A7)
+	BRA	CONV_L2F1
+
+CONV_L2F2:
+	MOVE.L	(A7)+,D1
+
+CONV_L2FX:
+	RTS
+
+*******************************************************************
+NOPpadding:
+	DCB.w ((0-(NOPpadding-rom_base))&$7F)/2,$4E71
+
+	END

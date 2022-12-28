@@ -1,0 +1,372 @@
+	SECTION	MDV
+
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+
+mdd.name equ	'MDV0'
+mdd_end	equ	SV_LIO+CH_DRNAM+2+4
+mdv_end	equ	$20
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; MDV_asm - dummy microdrive device driver for QDOS
+;	 - last modified 11/08/99
+;
+HARDTAG	EQU	'NUL '
+VERSTAG	EQU	'1.03'
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+rom_base
+	dc.l	$4afb0001
+	dc.w	proc_tab-rom_base
+	dc.w	rom_init-rom_base
+
+	dc.b	0,27
+	dc.l	HARDTAG
+	dc.b	'MDV device driver '
+	dc.l	VERSTAG
+	dc.b	$A,0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+rom_init
+
+	bra.s	md_init
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+proc_tab
+	dc.w	8		; 4 procedures
+
+	dc.w	mdv_use-*
+	dc.b	7,'MDV_USE'
+	dc.w	prog_use-*
+	dc.b	8,'PROG_USE',0
+	dc.w	data_use-*
+	dc.b	8,'DATA_USE',0
+	dc.w	dest_use-*
+	dc.b	8,'DEST_USE',0
+	dc.w	spl_use-*
+	dc.b	7,'SPL_USE'
+	dc.w	0		; end of procedures
+
+	dc.w	3		; 3 functions
+	dc.w	prog_d$-*
+	dc.b	6,'PROGD$',0
+	dc.w	data_d$-*
+	dc.b	6,'DATAD$',0
+	dc.w	dest_d$-*
+	dc.b	6,'DESTD$',0
+	dc.w	0		; end of functions
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+md_init
+	movem.l	a0/a3,-(sp)
+
+	moveq	#mdd_end,d1
+	moveq	#MT.ALCHP,d0
+	moveq	#0,d2
+	trap	#1
+
+	lea	md_poll(pc),a2
+	move.l	a2,SV_APOLL(a0)	; !
+
+	lea	SV_AIO(a0),a3
+	lea	md_io(pc),a2
+	move.l	a2,(a3)+ 	; input/output... at $1c
+	lea	md_opn(pc),a2
+	move.l	a2,(a3)+ 	; open... at $20
+	lea	md_clos(pc),a2
+	move.l	a2,(a3)+ 	; close... at $24
+	lea	md_slave(pc),a2	; slave
+	move.l	a2,(a3)+
+	addq.l	#8,a3		; two spare
+	lea	md_format(pc),a2	; format
+	move.l	a2,(a3)+
+	move.l	#mdv_end,(a3)+	; length
+	move.w	#3,(a3)+
+	move.l	#mdd.name,(a3)+
+
+	move.l	a0,a3
+
+*	 lea	 SV_LPOLL(a3),a0	 ; link into
+*	 moveq	 #MT.LPOLL,d0	 ; polling list !
+*	 trap	 #1
+
+	lea	SV_LIO(a3),a0	; link into
+	moveq	#MT.LDD,d0	; dd driver list
+	trap	#1
+
+	moveq	#MT.INF,d0	; find the system variables
+	trap	#1
+	lea	SV_PROGD(a0),a4	; and set the pointers to
+				; the defaults
+
+	moveq	#MT.ALCHP,d0	; make space for defaults
+	moveq	#3*36,d1 	; ** 1.17 **
+	moveq	#0,d2
+	trap	#1
+
+md_dflts
+	move.l	#$00050000+(mdd.name>>16),d1
+	move.l	#((mdd.name+1)<<16)+'_ ',d2
+	move.l	a0,(a4)+ 	; program default MDV1_
+	move.l	d1,(a0)+
+	move.l	d2,(a0)
+	add.w	#32,a0
+	move.l	a0,(a4)+ 	; data default MDV1_
+	move.l	d1,(a0)+
+	move.l	d2,(a0)
+	add.w	#1,(a0)		; Data default now MDV2_
+	add.w	#32,a0
+	move.l	a0,(a4)+ 	; spool default PAR
+	move.l	#$00030000+'PA',(a0)+
+	move.b	#'R',(a0)+
+
+	movem.l	(sp)+,a0/a3
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+md_io:
+md_opn:
+md_clos:
+md_format:
+	moveq	#ERR.NF,d0	; return 'not found' error
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+md_slave:
+	moveq	#ERR.OK,d0	; return 'OK' error
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+md_poll:
+	rts			; return immediately
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;
+;      BASIC extensions start here
+;
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+prog_use
+	moveq	#$00,d5
+	bra.s	xxx_use
+
+data_use
+	moveq	#$04,d5
+	bra.s	xxx_use
+
+dest_use
+	moveq	#$08,d5
+	bra.s	xxx_use
+
+spl_use
+	move.w	#$88,d5
+
+xxx_use
+	bsr.l	ut_stos		; get a string
+	bne.s	xxx_rts		; ... oops
+	cmp.w	#30,0(a6,a1.l)	; <=30 characters long
+	bgt	mdv_bp		; ... oops
+
+	moveq	#MT.INF,d0	; find the system variables
+	trap	#1
+	lea	SV_PROGD(a0),a0	; and set the pointers to
+				; the defaults
+	move.w	d5,d0
+	andi.b	#$7F,d0
+	move.l	0(a0,d0.w),a4
+
+	move.w	0(a6,a1.l),d1
+	addq.l	#2,a1
+	move.w	d1,(a4)+
+
+	tst.b	d5
+	bmi.s	xxx_dec
+
+	lea	-1(a1,d1.w),a2
+	cmpi.b	#'_',0(a6,a2.l)
+
+	beq.s	xxx_dec
+
+	cmpi.w	#30,d1
+	beq	mdv_bp		; name too long
+
+	move.b	#'_',0(a4,d1.w)	; append underline
+
+	addq.w	#1,d1
+	move.w	d1,-2(a4)	; increment length
+	subq.w	#1,d1
+
+	bra.s	xxx_dec
+
+xxx_lup
+	move.b	0(a6,a1.l),d0
+	addq.l	#1,a1
+	move.b	d0,(a4)+
+
+xxx_dec
+	dbra	d1,xxx_lup
+
+	moveq	#0,d0
+
+xxx_rts
+	rts
+
+prog_d$
+	moveq	#0,d5
+	bra.s	xxx_d$
+
+data_d$
+	moveq	#4,d5
+	bra.s	xxx_d$
+
+dest_d$
+	moveq	#8,d5
+	bra.s	xxx_d$
+
+spl_d$
+	moveq	#8,d5
+
+xxx_d$
+	cmp.l	a3,a5
+	bne.s	mdv_bp		; ... oops
+
+	moveq	#MT.INF,d0	; find the system variables
+	trap	#1
+	lea	SV_PROGD(a0),a0	; and set the pointers to
+				; the defaults
+	move.l	0(a0,d5.w),a4
+
+	move.w	(a4)+,d4
+
+	move.l	d4,d1
+	addq.l	#1,d1
+	and.b	#$FE,d1
+	move.w	BV.CHRIX,a2
+	jsr	(a2)
+
+	sub.l	d1,BV_RIP(a6)
+	move.l	BV_RIP(a6),a1
+
+	move.w	d4,0(a6,a1.l)
+	addq.l	#2,a1
+	bra.s	xxx_dec$
+
+xxx_lup$
+	move.b	(a4)+,d0
+	move.b	d0,0(a6,a1.l)
+	addq.l	#1,a1
+
+xxx_dec$
+	dbra	d4,xxx_lup$
+
+	move.l	BV_RIP(a6),a1
+	moveq	#1,d4
+	moveq	#0,d0
+	rts
+
+; Set the name of the microdrive system
+
+mdv_use
+	lea	md_io(pc),a4	; Get entry point for io
+				; routines
+dev_use
+	bsr.s	ut_stos		; get a string
+	bne.s	mdv_rts		; ... oops
+	subq.w	#3,0(a6,a1.l)	; 3 characters long
+	bne.s	mdv_bp		; ... oops
+	move.l	2(a6,a1.l),d6	; get new name
+	and.l	#$5f5f5f00,d6	; in upper case
+	add.b	#'0',d6		; ending with '0'
+
+	moveq	#MT.INF,d0	; find system vars
+	trap	#1
+	move.l	SV_DDLST(a0),a0	; ... and linked list of
+				; directory drivers
+
+mdv_look
+	cmp.l	SV_AIO-SV_LIO(a0),a4 ; the right driver?
+	beq.s	mdv_set		; ... yes
+	move.l	(a0),a0		; ... no, try the next
+	move.l	a0,d1		; ... the last?
+	bne.s	mdv_look
+mdv_bp
+	moveq	#ERR.BP,d0
+mdv_rts
+	rts
+mdv_set
+	move.l	d6,CH_DRNAM(a0)	; set new name
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; Get a string on the stack V0.2  1985 Tony Tebby QJUMP
+; Modified to accept numbers and expressions
+; (C) 1986 David Oliver CST V 4.00
+
+ut_stos
+	tst.w	2(a6,a3.l)	; Get name of parameter. If
+				; none, it must be exprssn.
+	bmi.s	get_string	; ... so convert the value
+				; to a string.  ** 4.00 **
+	moveq	#$0f,d0		; extract type of parameter.
+	and.b	1(a6,a3.l),d0
+	subq.b	#1,d0		; is it a string?
+	bne.s	ut_gtnam 	; ... no, get the name
+				; instead
+get_string
+	move.l	a5,-(sp) 	; ... yes, save the top
+				; pointer
+	lea	8(a3),a5 	; get just one string
+	move.w	CA.GTSTR,a2
+	jsr	(a2)
+	move.l	(sp)+,a5 	; restore top pointer
+	bne.s	utils_rts
+	moveq	#3,d1		; get total length of string
+	add.w	0(a6,a1.l),d1
+	bclr	#0,d1
+	add.l	d1,BV_RIP(a6)	; and reset ri stack pointer
+	bra.s	utils_ok
+ut_gtnam
+	moveq	#ERR.BP,d0	; assume bad parameter
+	moveq	#0,d1
+	move.w	2(a6,a3.l),d1	; get the pointer to the
+				; real entry
+	bmi.s	utils_rts	; ... expression is no good
+	lsl.l	#3,d1		; in multiples of 8 bytes
+	add.l	BV_NTBAS(a6),d1
+ut_ntnam
+	moveq	#0,d6
+	move.w	2(a6,d1.l),d6	; thus the pointer to the
+				; name
+	add.l	BV_NLBAS(a6),d6
+	moveq	#0,d1		; get the length of the name
+				; as a long word
+	move.b	0(a6,d6.l),d1
+	addq.l	#1,d1		; rounded up
+	bclr	#0,d1
+	move.w	d1,d4		; and save it
+	addq.l	#2,d1		; space required is +2 bytes
+	move.w	BV.CHRIX,a2	; on ri stack
+	jsr	(a2)
+	move.l	BV_RIP(a6),a1
+
+	add.w	d4,d6		; move to end of string
+				; (ish)
+ut_nam_loop
+	subq.l	#1,a1		; and copy one byte at a
+				; time
+	move.b	0(a6,d6.l),0(a6,a1.l)
+	subq.l	#1,d6
+	dbra	d4,ut_nam_loop	; including the (byte) name
+				; length
+	subq.l	#1,a1		; put a zero on to make it a
+				; word
+	clr.b	0(a6,a1.l)
+utils_ok
+	moveq	#0,d0
+utils_rts
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+NOPpadding:
+	DCB.w ((0-(NOPpadding-rom_base))&$FF)/2,$4E71
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	END

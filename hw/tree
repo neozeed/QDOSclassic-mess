@@ -1,0 +1,7 @@
+A description of the directories here
+
+hw           Hardware
+hw/amg       Software for Amiga hardware
+hw/q40       Software for Q40 hardware
+hw/qub       QubIDE for various hardware
+

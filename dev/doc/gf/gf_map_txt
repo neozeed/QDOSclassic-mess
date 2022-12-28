@@ -1,0 +1,421 @@
+GOLDFIRE ADDRESS MAP SPECIFICATION
+---------------------------------
+
+Address areas
+
+The GoldFire address map considts of 4 main areas:
+1) The RAM area (RAM)
+2) The narrow IO area (aka the 8-bit IO area) (NIO)
+3) The cache inhibited RAM area (CIRAM)
+4) The wide IO area (aka the 32-bit IO area) (WIO)
+
+Each of the main areas is further divided into subareas, which are explained separately for each area.
+The main areas are each 128M bytes in size.
+
+The concept of a RAM and bus address
+
+Unlike normal QL systems (and similar to GC and SGC expanded systems), the CPU cycles on a GoldFire cannot appear outside of the card itself. In addition, the GoldFire's CPU addressing range is vastly greater than the one implemented on the external bus. Because of this, the GoldFire uses address remapping - addresses as they appear om the expansion bus, are re-mapped to a different address in the GoldFire address map, and vice versa.
+In addition, because of added capability such as the dual CPU mode and some special access modes for IO devices, addresses are also remapped for RAM accesses.
+The GoldFire uses address remapping in two general cases:
+1) IO accesses, meaning, accesses to the NIO or WIO areas - Every IO access uses some form of address remapping. In some cases simultaneous use of IO and RAM address remapping is possible as some IO accesses implicitly access RAM for purposes of shadowing.
+2) RAM accesses, meaning accesses visible to the RAM subsystem. In general the RAM controller does less address remapping compared to the IO controller. Accesses to the CIRAM area as well as shadowed IO accesses can generate address remapped RAM accesses.
+
+The addresses as used by the CPU differ from the ones seen by the IO and RAM controllers in most cases and where the difference is important, the address is given separately for all applicable subsystems: as it appears to the CPU (unprefixed), as it appears on the IO bus - hence a 'bus address' (prefixed with b) and as it appears to the RAM controller - hence a 'RAM address' (prefixed with r).
+
+Special considerations
+
+The address map can change under program control for two special conditions:
+1) 'Boot' condition. This condition occurs on power up or reset only, and is separately described under the heading 'booting'.
+2) Depending on RAM configuration the RAM controller can configure itself differently. In this case the address map itself does not change, but the physical devices that are mapped may change places. The implications are described in detail under the heading 'RAM area'.
+
+Address aliasing is possible on the GF because the addresses are not fully decoded. The topmost 3 address bits are ignored which results in 8 aliases of the entire address map. This is done for compatibility with some programs that store data in the 3 topmost address bits. Further aliasing is possible due to the nature of IO decoding, which is also dependent on the connected IO devices to some degree, and to the way memory configurations are handled. This is explained where appropriate, further in the text. On the GoldFire, aliasing is also used to the edvantage of the system programmer, to simplify communications in the dual processor configuration, or to handle hardware parameters such as caching and shadowing for add-on boards.
+
+Address decoding on the GoldFire is also connected with some aspects of cacheing control. In particular, any access outside the RAM area can result in the CPU receiving cache inhibit signals, which largely depends on address remapping. However, due to the cache protocol of the MCF5102, the signals are not the only means of cache control. The actual cache behaviour is decided based on the states of the cache inhibit lines as well as the programing of special registers in the CPU.
+
+The MCF5102 can generate burst cycles. Burst cycles are used on the GoldFire whenever RAM is accessed in any way without an IO cycle being generated at the same time. All accesses that cause IO cycles are automatically burst inhibited. Burst cycles are not supported even for wide IO.
+
+ADDRESS AREAS IN DETAIL
+
+General conventions:
+
+Description;
+AAAAAAAAh..AAAAAAAAh
+rRRRRRRRh..rRRRRRRRh [a,..,a]
+bBBBBBBh..bBBBBBBh [a,..,a]
+
+Description;    Descriptive name of the address area
+..              Range separator, ranges are ALWAYS boundary inclusive
+AAAAAAAAh       Address in hexadecimal, as referenced by the cpu.
+rRRRRRRRh       Address in hex, as it appears to the RAM controller (additional 
+                data under 'RAM configurations').
+[a,..,a]        Attributes:
+                B  = burst
+                RB = read burst
+                WI = write ignored
+                C  = caching enabled
+                CI = caching inhibited
+bBBBBBBh        Address in hexadecimal, as it appears on the IO bus
+[a,..,a]        Attributes:
+                N  = narrow (8 bit)
+                W  = wide (32 bit)
+                A  = -AUTO active
+                WO = Write only - IO cycle generated only on a write access
+                <number> = dead time index (see bus operation specs)
+
+If both the RAM and BUS addresses appear, then the system uses shadowing for that particular address area.
+
+The RAM area:
+-------------
+
+The RAM area is located in the first 128M bytes of address space. Depending on the amount of memory installed, address aliasing is possible, and is handled in software by initialising the memory and appropriately programming the relevant system variables. RAM address aliasing is used to an advantage with RAM shadowing of memory connected externally, via the IO bus.
+
+The RAM area is divided into three distinct parts:
+
+ROM emulation area;
+00000000h..0001FFFFh
+r0000000h..r001FFFFh [B, C, WI]
+
+The ROM emulation area, corresponds to the locations of the ROM and on-board IO on the QL. This area can only be read, writes to it are ignored. It is written with the copy of the relevant parts of the OS or bootstrap software contained in the on-board Flash memory as described under the heading 'booting' further in the text, using a special method of access (see under 'cache inhibited RAM').
+
+Screen compatibility area;
+00020000h..0002FFFFh
+r0020000h..r002FFFFh [RB, C]
+b0020000h..b002FFFFh [N, WO, 11]
+
+The screen compatibility area corresponds to the QL's SCR0 and SCR1. Unlike the SGC it is not possible to stop IO accesses for SCR1, this was deemed unimportant as there are other mechanisms that optimise the IO cycles. Shadowing is always enabled, and the bus dead time on write is optimised for a standard QL motherboard.
+
+RAM area:
+00030000h..07FFFFFFh
+r0030000h..r7FFFFFFh [B, C]
+
+The RAM area is a full speed access RAM only area. All cycles are burst and cache enabled. The actual configuration of RAM depends on the memory installed. See 'RAM configurations' below.
+
+The CIRAM area:
+---------------
+
+The CIRAM, or cache-inhibited RAM is an alias of the entire RAM area with three major differences:
+
+1) Caching in the CIRAM is completely inhibited (the appropriate special function registers in the CPU must be programmed correctly, see under 'cache control').
+2) The complete 128M byte area is writable (unlike the RAM area)
+3) There are no IO cycles generated for any access into the CIRAM area
+
+The primary use of this area is RAM testing at boot-up and multiprocessor communications in dual CPU GoldFire combinations. Any common data that has to be shared between CPUs MUST be accessed through the CIRAM for cache coherency, although both CPUs have complete access to the whole address map.
+
+CIRAM:
+10000000h..17FFFFFFh
+r0000000h..r7FFFFFFh [B, CI]
+
+Notes on CIRAM use:
+The only way to fully access r0000000h..r001FFFFh, both read and write, is through CIRAM. The CIRAM MUST be used when testing RAM. Before the actual integrity test, it is necessary to detect the RAM modules and select the correct RAM configuration, as explained below.
+
+RAM configurations:
+
+The GoldFire supports several memory configurations, based on the fact that there are two SIMM sockets on the board, which can be of various capacity.
+Basically, the GoldFire can reconfigure it's RAM decoder. There are four possible configurations, chosen by the status of the RCON [1,0] bits in the system control register, located in the UltraIO chip:
+
++---+-------+----------------+----------+-----------------------+
+| No|  RCON | Configuration  | Aliasing | Aliasing              |
+|   |[1] [0]|                | boundary | comments              |
++===+===+===+================+==========+=======================+
+| 0 | 0 | 0 | 1 x 128M decode| None     | Depends on RAM module |
+| 1 | 0 | 1 | 2 x 4M decode  | 16M      | 16 copies             |
+| 2 | 1 | 0 | 2 x 16M decode | 32M      | 4 copies              |
+| 3 | 1 | 1 | 2 x 64M decode | 128M     | no aliasing           |
++---+---+---+----------------+----------+-----------------------+
+
+The decoded size specifies the block size within which the RAM controller decodes weather SIMM0 or SIMM1 is used. SIMM0 is always used for the lower (lower addresses) half of the boundary, SIMM1 for the upper (higher addresses) half. For block sizes smaller than the RAM area, multiple aliases of the block appear. The GoldFire can also use double-sided SIMMs, in which case one side is used as SIMM0 and the other as SIMM1. Only one double sided SIMM can be used, fitted into either SIMM slot with same functionality. When configuration 0 is selected, ONLY SIMM0 is selected. SIMM1 is never selected therefore it is disabled. Configuration 0 should only be used for diagnostics.
+
+Depending on the configuration selected, more aliasing options are possible if the actual module used is smaller in capacity than the block size selected by the configration. This can be used advantageously for configurations with mixed size SIMMS as follows:
+
++-----+---------+-----------------------------------------------+
+|Conf.| SIMM0   | SIMM1                                         |
+|     |         +-------+-------+-------+-------+-------+-------+
+|     |         | NONE  | 4M SS | 8M SS*| 16M SS|32M SS*| 64M SS|
++=====+=========+=======+=======+=======+=======+=======+=======+
+|  0  | 4M   SS | ------------------- =4M   ------------------- | 
+|  0  | 8M   DS | ------------------- =4M** ------------------- |
+|  0  | 8M   SS*| ------------------- =8M   ------------------- |
+|  0  | 16M  SS | ------------------- =16M  ------------------- |
+|  0  | 32M  DS | ------------------- =16M**------------------- |
+|  0  | 32M  SS*| ------------------- =32M  ------------------- |
+|  0  | 64M  SS | ------------------- =64M  ------------------- |
+|  0  | 128M DS | ------------------- =64M**------------------- |
++-----+---------+-------+-------+-------+-------+-------+-------+
+|  1  | 4M   SS | =4M   | =8M   | \\\\\ | \\\\\ | \\\\\ | \\\\\ |
++-----+---------+-------+-------+-------+-------+-------+-------+
+|  2  | 16M  SS | =16M  | =20M  | =24M* | =32M  | \\\\\ | \\\\\ |
+|  2  | 32M  DS | =32M  | \\\\\ | \\\\\ | \\\\\ | \\\\\ | \\\\\ |
++-----+---------+-------+-------+-------+-------+-------+-------+
+|  3  | 64M  SS | =64M  | =68M  | =72M* | =80M  | =96M* | =128M |
+|  3  | 128M DS | =128M | \\\\\ | \\\\\ | \\\\\ | \\\\\ | \\\\\ |
++-----+---------+-------+-------+-------+-------+-------+-------+
+
+*  - Non-standard SIMM configuration, rare but they do exist.
+** - Non-optimal configuration used only for diagnostics, see below.
+SS - Single sided SIMM
+DS - Double sided SIMM
+
+There are other possible configurations but they are non-optimal and should be avoided using an intelligent memory set-up algorithm, described below. The system has to find the RAM in a contiguous block, possibly followed by alias copies of parts of itself, which are not used, except for memory shadowing (more under 'narrow IO area' and 'wide IO area').
+The minimum size SIMM used is 4M bytes, and this is also the minimum memory requirement for GoldFire.
+In order to secure contiguous RAM, the following algorithm can be used to resolve the memory configuration:
+
+SET RCON [3]
+IF there is RAM in the 256 byte block at 000FFF80h..0010007Fh THEN:
+   IF there is RAM in the 256 byte block at 040FFF80h..0410007Fh THEN:
+      REMARK: Two SIMMs present or one double sided SIMM is present
+      PROCEDURE: Test for aliases at 4M, 8M, 16M and 32M boundaries inside
+         00000000h..03FFFFFFh. If aliasing is found, then the size of the SIMM
+         in socket 0 is of the same size as the boundary, else the size is 64M.
+      PROCEDURE: Test for aliases at 4M, 8M, 16M and 32M boundaries inside
+         04000000h..07FFFFFFh. If aliasing is found, then the size of the SIMM
+         in socket 1 is of the same size as the boundary, else the size is 64M.
+      IF the size of SIMM0 < the size of SIMM1 THEN:
+         DISPLAY: 'SIMM in socket 0 must be larger than or equal in capacity to
+            SIMM in socket 1'
+         HALT.
+      ELSE
+         SELECT on size of SIMM 0:
+         = 4M
+            SET RCON [1]
+         = 16M
+            SET RCON [2]
+         = 64M
+            SET RCON [3]
+         = REMAINDER
+            REMARK: This will appear if the non-standard 8 or 32M single sided
+               SIMM is used in socket 0
+            DISPLAY 'GoldFire cannot use the SIMM in socket 1 in this 
+               configuration, power down and remove it'
+            HALT.
+         END SELECT
+         REMARK: Standard size SIMM in socket 0 and same or smaller in socket 1
+         SET max RAM = size of SIMM 0 + size of SIMM 1
+         EXIT detect routine.
+      ENDIF
+   ELSE
+      SET RCON [3]
+      SET max RAM = size of SIMM 0
+   END IF
+   EXIT detect routine.
+ELSE
+   REMARK: No (contiguous) memory found in socket 0
+   DISPLAY 'There must be at least 4M of RAM in SIMM socket 0'
+END IF
+HALT.
+
+The IO areas
+------------
+
+This area uses a special scheme of addressing. It is sub-divided into several sub-blocks according to the address encoding schemes as shown below:
+
++---------------+--------+----+----+----+----+----+----------+----------+
+| CPU ADDR. BIT | 31..29 | 28 | 27 | 26 | 25 | 24 |  23..20  |  19..0   |
++===============+========+====+====+====+====+====+==========+==========+
+|               |        |    |    |    | 1  |A24 |          |          |
+|               |        |    |    |    +----+----+ A23..A20 |          | 
+| FUNCTION:     |   X    | CD | 1  | SE |    | 0  |          |  A19..A0 |           
+|               |        |    |    |    | 0  +----+----------+          |
+|               |        |    |    |    |    | 1  |  C5..C2  |          |
++---------------+--------+----+----+----+----+----+----------+----------+
+                 \______/  |    |    |    |    |   \________/
+                     |     |    |    |    |    |       |
+        Don't care --+     |    |    |    |    |       +-- Bus timing
+1 = Cache disabled --------+    |    |    |    +---------- 1 = QL compatible
+       1 = IO area -------------+    |    +--------------- 1 = Wide IO
+1 = Shadow enabled ------------------+
+
+Because of the layout of the CD, SE and C5..C2 bits, several aliases of each IO area exist, which, when accessed, have different side effects, according to the function of the CD, SE, and C5..C2 bits.
+Each possibility is described with the relevant IO area.
+
+Address bit 25 regulates weather a narrow (0) or wide (1) IO cycle will be generated for a given IO access.
+Address bit 24 regulates QL compatible or Autotermination narrow IO cycle.
+address mapping.
+When A24=0, the -ATRQ will be used to qualify the narrow IO cycle, and the -TACK signal will be ignored. The cycle will terminate by shortening the bus timeout parameters.
+When A24=1, the -NTRQ (QL DSL) signal will be used to qualify the narrow IO cycle. -TACK will be ignored for a number of cycles defined by bits A23..A20 (labeled C5..C2). After 127 system clock periods the cycle will time out and terminate automatically, if -TACK isn't found to be low before that. Detailed description of the bus timeout mechanism is provided in the 'bus operation' document.
+The highest setting in C5..C2 (1111) will result in the shortest possible cycle, with no dead time - the -TACK signal will be sampled from the start of the cycle. The lowest setting in C5..C2 (0000) will generate a wait of at least 31 system clock cycle.
+When A24=1, the DDEC8 signal will be generated whenever A19..A18 are 01 or 10. This signal is intended for disabling the decoders on the QL motherboard. This, as well as selecting the appropriate setting for SE and CE bits (A26, A28) and the timing parameter bits C5..C2 (A23..A20) for QL bus compatible accesses, can be used to add new functionality to some QL peripherals, and optimize their operation. More about this in the 'Optimizing operation of QL motherboards and peripherals' document.
+IMPORTANT NOTE: the CD bit only works with appropriate programming of the special function registers in the CPU. See 'caching' further in this document.
+
+Shadowed areas have two important differences with respect to other types of access:
+
+1) Write cycles are similar to the standard write cycles generated for the appropriate IO area accesses, but they also generate writes into the topmost area of RAM - The topmost 1M byte is used for narrow, and the topmost 32M bytes for wide IO accesses that are shadowed.
+
+2) Read cycles are NOT PERFORMED on the external bus at all, instead the same addres translation used to write the RAM in write acesses is used to read the data from the RAM at that address.
+
+This has the consequence of shadowing anything written into the IO area in the topmost area of RAM. This is true for any RAM configuration because of RAM address aliasing (explained under 'RAM area'). If the actual RAM fitted is smaller than the shadowed IO area used, then it will also be aliased within the shadowed area.
+
+The RAM area used for shadowing can be determined using the following table:
+
++----+------------------------------------------------------------+
+|CPU | RAM                                                        |
+|ADDR| ADDRESS                                                    |
+|BIT | BIT                                                        |
++----+----+----+----+----+----+----+----+-------------------------+
+| 25 | 26 | 25 | 24 | 23 | 22 | 21 | 20 |         19..0           |
++====+====+====+====+====+====+====+====+=========================+
+| 0  | 1  | 1  | 1  | 1  | 1  | 1  | 1  | CPU address bits 19..0  |
++----+----+----+----+----+----+----+----+-------------------------+
+| 0  | 1  | 1  | - - - - - - CPU address bits 24..0 - - - - - - - |
++----+----+----+--------------------------------------------------+
+
+Not all combinations make sense - IO devices should be neither cached nor shadowed. Also, although shadowing is supported for autoterminated narrow IO, it does not make much sense as the entire 16M byte autoterminated area is shadowed into the topmost 1M byte of RAM - the shadowing area is aliased 16 times inside the autoterminated narrow IO area.
+Handling of caching and shadowing requires support in the OS memory handling routines.
+
+A detailed description of the IO areas follows (** prefix denotes alias addresses which should not be used due to unsensible settings of the SE and CE attributes):
+
+On-board flash ROM narrow IO area (F-NIO):
+08000000h..0807FFFFh [BI, C]
+ b000000h...b07FFFFh [N, A, 8]
+ 
+** 0C000000h..0C07FFFFh [RB, C]
+**  b000000h...b07FFFFh [N, A, WO, 8]
+** r7F00000h..r7F7FFFFh
+ 
+18000000h..1807FFFFh [BI, CI]
+ b000000h...b07FFFFh [N, A, 8]
+
+** 1C000000h..1C07FFFFh [RB, CI]
+**  b000000h...b07FFFFh [N, A, WO, 8]
+** r7F00000h..r7F7FFFFh
+
+These areas contain the 512k bytes of on-board flash ROM. Write is always enabled and the flash ROM can be programmed if unlocked and initialised correctly. Normally, writes will be ignored. More in the 'On-board peripherals' document.
+Since the area does not contain devices that are normally written, shadowing has no advantages. The flash ROM area is normally accessed only to copy it's contents or parts of them into RAM, or for programming. In either case, the lowest address should be used (08000000h..0807FFFFh).
+
+On-board Ultra IO chip register area (U-NIO):
+** 08080000h..08F7FFFFh [BI, C]
+**  b080000h...b0FFFFFh [N, A, 8]
+ 
+** 0C080000h..0C0FFFFFh [RB, C]
+**  b080000h...b0FFFFFh [N, A, WO, 8]
+** r7F80000h..r7FFFFFFh
+ 
+18800000h..180FFFFFh [BI, CI]
+ b080000h...b0FFFFFh [N, A, 8]
+
+** 1C800000h..1C0FFFFFh [RB, CI]
+**  b080000h...b0FFFFFh [N, A, WO, 8]
+** r7F80000h..r7FFFFFFh
+
+This area contains 4096 aliases of the 128 bytes of various control registers in the Ultra IO chip. ONLY ADDRESSES 18080000h..1808007Fh should be used to access the Ultra IO chip. For register assignments refer to the 'On-board peripherals' document. Other aliases have no sense as IO should not be cached or shadowed.
+
+Autoterminated narrow IO (A-NIO) area:
+08100000h..08FFFFFFh [BI, C]
+ b100000h...bFFFFFFh [N, A, 8]
+ 
+** 0C100000h..0CFFFFFFh [RB, C]
+**  b100000h...bFFFFFFh [N, A, WO, 8]
+** r7F00000h..r7FFFFFFh
+ 
+18100000h..18FFFFFFh [BI, CI]
+ b100000h...bFFFFFFh [N, A, 8]
+
+** 1C100000h..1CFFFFFFh [RB, CI]
+**  b100000h...bFFFFFFh [N, A, WO, 8]
+** r7F00000h..r7FFFFFFh
+
+In principle, the F-NIO and U-NIO areas behave logically as part of the A-NIO area. The difference is, the A-NIO is not populated on the GoldFire and can be used for expansion, in general this would be byte-wide EPROMs or Flash devices, for instance, as firmware for 32-bit boards. The A-NIO area uses the extended narrow cycle address lines A23..A20. when A23..A20 = 0000, the system is accessing on-board flash ROM or the Ultra IO chip, hence the peripherals using the A-NIO _MUST_ decode A23..A20 to prevent contention with the GoldFire itself.
+Shadowing of the A-NIO doesn't make any sense because it's intended primairly for nonvolatile storage, and it is shadowed modulo 1M byte into the same, top, 1M byte of RAM.
+
+QL compatible narrow IO (Q-NIO) area:
+09n00000h..09nFFFFFh [BI, C]
+ bn00000h...bnFFFFFh [N, n]
+
+0Dn00000h..0DnFFFFFh [RB, C]
+ bn00000h...bnFFFFFh [N, WO, n]
+r7F00000h..r7FFFFFFh
+
+19n00000h..19nFFFFFh [BI, CI]
+ bn00000h...bnFFFFFh [N, n]
+
+1Dn00000h..1DnFFFFFh [RB, CI]
+ bn00000h...bnFFFFFh [N, WO, n]
+r7F00000h..r7FFFFFFh
+
+n = timing parameter [0..F]
+
+This area is used to access the IO bus in a QL compatible manner. Choosing the proper alias as well as the timing parameter n can be used to optimize the operation of QL peripherals and the motherboard. More about this in the 'Optimizing operation of QL motherboards and peripherals' document.
+
+Wide IO area (WIO):
+0A000000h..0BFFFFFFh [BI, C]
+b0000000h..b1FFFFFFh [W]
+
+0E000000h..0FFFFFFFh [RB, C]
+b0000000h..b1FFFFFFh [W, WO]
+r6000000h..r7FFFFFFh
+
+1A000000h..1BFFFFFFh [BI, CI]
+b0000000h..b1FFFFFFh [W]
+
+1E000000h..1FFFFFFFh [RB, CI]
+b0000000h..b1FFFFFFh [W, WO]
+r6000000h..r7FFFFFFh
+
+This area is used to access wide peripherals. Care should be taken that the shadowing area may be larger than the installed RAM size. For the shadowing operation to remain consistent, wide peripherals that require shadowing should be located at the highest addresses in the wide IO area. When the installed RAM size is smaller than the shadowed area, the installed RAM is aliased several times (32M / RAM size) inside the shadowed area. If aliases occur, the setup utility should not enable shadowing of more than one wide peripheral into the same RAM area.
+
+Booting
+-------
+
+At startup, the ColdFire CPU will execute the standard start-up sequence accessing vectors 0 and 1, with the vector base register set to 00000000h. This means that the ColdFire expects the contents of exception vectors 0 and 1 to be at addresses 00000000h and 00000004h respectively. Both addresses reside in RAM which at this time will be un-initialised, and it's contents will be unknown.
+Because of this, after each hardware reset, the address map changes.
+In particular, ALL basic address areas (RAM, CIRAM and IO) map to the narrow IO area at 08000000h..0FFFFFFFh. As a consequence, addresses 00000000h and 00000004h will now contain the first two long words of the on-board flash ROM. The map will remain this way untill the first access is made for which the address line A27 is 1. When this condition is met, the address map becomes as described above. If the 'initial PC' is programmed to have bit 27=1, the standard address map will be established as soon as the CPU starts executing boot code from within the narrow IO area.
+The address map can revert to boot condition only by executing a hardware reset.
+
+Caching
+-------
+(Have the MCF5102 users manual handy)
+
+hardware wise, cache control on the GoldFire is set as follows:
+1) The -CDIS signal is not used, therefore caching control is done internally to the CPU.
+2) Cache snooping (modification by alternate bus masters) is disabled.
+For a detailed description of the signals and snooping control refer to the MCF5102 users manual, section 7.
+
+Cache control programming is handled as follows:
+1) Programming of the appropriate cache enable bits in the CACR. This is only used for global cache control, and dynamic cache disabling within the OS, for instance in interrupt routines.
+2) Aliased addressing in conjunction with propper programming of the access control unit registers (ACRs). This is used for by-address-area cache control.
+
+The ColdFire CPU comes out of reset with both caches and access control units disabled. The GoldFire hardware never uses the cache inhibit line of the CPU (-CDIS) - cache disabling for the apropriate address areas is handled by suitably programming the ACR registers. In addition, the setup of the ACRs as described is important for proper operation in a dual CPU setup.
+The ACRs are programmed as follows:
+
+ACR1:
+IACR1 = 10EF7040h
+DACR1 = 10EF7040h
+
+This sets up ACR1 to target any address between where A28 is 1. It ignores all the other address bits. The setting enables ACR1, makes no difference between user and supervisor mode operand fetches, makes the area read/write and sets caching mode to noncachable, serialised. For a detailed discussion on caching modes and serialisation (disabling out of order read/writes), refer to the MCF5102 users manual, sections 3 and 4. ACR1 should be static, and remain programmed as above for proper operation of the GoldFire.
+
+ACR0:
+IACR0 = 00E770m0h
+DACR0 = 00E770m0h
+m = caching mode, 0, 2, 4 or 6.
+
+The ACR0 is used for cache control of the RAM area. Depending on the setting of m in IACR0 or DACR0 several modes are possible:
+
+IACR0, m=0 or 2: enables instruction caching. There is no real difference between write-through and copyback caching for instruction caches as instruction cache contents are never written back to RAM as a result of normal instruction execution.
+
+IACR0, m=4 or 6: disables instruction caching. Again no difference between serialised or not as writes do not occur from the instruction cache.
+
+DACR0, m=0: This is the default caching mode, the data cache is in writethrough mode. Data written to memory will automatically be converted to a physical copy in RAM as soon as possible.
+
+DACR0, m=2: Copyback mode for data cache. Data in cache is converted to a memory copy only if necessary. This setting will provide the fastest program execution speed.
+
+DACR0, m=4: Cache is disabled and accesses are serialised, i.e. occur with the same order as the code is written.
+
+DACR0, m=6: Cache is disabled but accesses can still occur out of order.
+
+Note that self-modifying code can only be executed correctly with m=4 for both IACR0 and DACR0!
+
+For a detailed discussion of caching, refer to the MCF5102 user manual, section 4.
+
+Other diferences from standard QL address maps
+----------------------------------------------
+
+There are several outstanding differences between a QL motherboard equipped with a GoldFire, with respect to a QL motherboard equiped with no expansion, a GC or a SGC. These differences need to be taken into account when modifying the OS to work on a GoldFire system.
+These are the most important differences:
+
+1) The standard QL ROM contents are not available at their usual address.
+2) The standard ROM slot is not available at it's usual address.
+3) The standard QL IO is not available at it's standard address.
+
+Because of 1)..3):
+- A GoldFire system is always booted from it's on-board Flash ROM. With clever programming it would be possible to make the system offer alternative operating system start ups, depending on which code is loaded into the ROM emulation area at 00000000h..0001FFFFh.
+- ROM slot software must be able to work from the Q-NIO area. It is concievable that ROM slot contents can be copied to the ROM emulation area at start up. However, ROM slot devices that hold IO circuits, must be catered for in the device's software.
+- Direct references to the QL on-board IO at 00018000h will nort work. All references should be done to the Q-NIO area with appropriate cache and speed settings.

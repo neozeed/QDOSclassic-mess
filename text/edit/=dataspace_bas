@@ -1,0 +1,4 @@
+100 src$="WIN1_QZ_TEXT_EDIT_"
+110 :
+120 SET_FTYP\src$&"Xchange",1
+130 SET_FDAT\src$&"Xchange",12400

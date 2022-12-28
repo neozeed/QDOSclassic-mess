@@ -1,0 +1,70 @@
+A description of the directories here
+
+clsc         QDOS Classic software
+clsc/doc     documentation
+clsc/ma68    Tools to make QDOS Classic using a68 assembler (amiga)
+clsc/mgst    Tools to make QDOS Classic using GST assembler (ql)
+clsc/rom     ROM files
+clsc/run     Loaders
+clsc/src     Assembler sources
+clsc/ubik    Outdated files
+
+comm         Communications
+comm/misc    Misc communications
+comm/net     Networking
+comm/tcp     AmiTCP networking
+comm/term    Terminal programs
+comm/trsf    Transfer utilities
+comm/www     World Wide Web software
+
+dev          Development software
+dev/asm      Assembly language related
+dev/basic    BASIC language related
+dev/c        C language related
+dev/doc      Development documentation
+dev/misc     Misc development software
+
+disk         Disk/Harddisk tools
+disk/bakup   Backup software
+disk/img     Floppy Disk images
+disk/misc    Various disk related tools
+
+docs         Text documents
+docs/help    Help on various issues
+docs/mags    E-Magazines
+docs/misc    Various documents
+docs/rview   Product reviews
+
+hw           Hardware
+hw/amg       Software for Amiga hardware
+hw/q40       Software for Q40 hardware
+hw/qub       QubIDE for various hardware
+hw/misc      Misc hardware related files
+
+misc         Miscellaneous
+misc/emu     Emulations
+misc/math    Mathematics
+misc/misc    Uncategorizable
+
+sound        Sound related
+sound/beep   Software using QL standard beep
+sound/sss    Software requiring Sampled Sound System
+
+text         Text related
+text/edit    Editors
+text/font    Fonts of all formats and related tools
+text/misc    Misc text software
+text/pfont   Postscript font collection
+text/show    Text displayers
+
+util         Utilities
+util/arc     Archivers
+util/boot    Boot sequence software
+util/conv    File conversion
+util/crypt   Encryption tools
+util/dir     Directory utilities
+util/misc    Miscellaneous
+util/ptch    Patchers and fixers
+util/rext    Resident extensions & toolkits
+util/rom     ROM toolkits
+util/time    Clocks and timing

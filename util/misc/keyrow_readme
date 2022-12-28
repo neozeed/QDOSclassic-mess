@@ -1,0 +1,32 @@
+Short:    create a table to convert ASCII to KEYROW
+Author:   Mark J Swift
+Version:  1.00
+Uploader: msw@blackpool.ac.uk
+Type:     util/misc
+
+This program creates a conversion table for translating ASCII
+into KEYROW values.
+
+The organization is (in ASCII order):
+CTRL(bit7) SHFT(bit6) ROWnumber(bits5-3) COLnumber(bits2-0)
+
+
+ARCHIVE CONTENTS
+
+ KEYROW_bas     - create a table to convert ASCII to KEYROW
+ KEYROW_readme  - this file
+
+
+FEATURES
+
+* simple and small
+* FREEWARE
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

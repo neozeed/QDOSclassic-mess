@@ -1,0 +1,1015 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_BOOT_inc'
+
+	SECTION BOOT
+
+	XDEF	CACHOFF,SETCACH
+
+	XREF	HW_RESET,HW_ENABLE
+	XREF	HW_MEMCHEK
+	XREF	HW_SERIALIZED,HW_WRITETHROUGH,HW_COPYBACK
+	XREF	HW_SERINIT,HW_SERJUNK,HW_SER1GETC
+
+	XREF	HW_VCTR_BEG
+	XREF.S	HW_VCTR.LVL2_NEW,HW_VCTR.LVL2_OLD
+	XREF.S	HW_VCTR.ILLG_NEW,HW_VCTR.ILLG_OLD
+	XREF.S	HW_VCTR.LEN
+
+	XREF	HW_KICK_BEG
+	XREF.S	HW_KICK
+	XREF.S	HW_KICK.LEN
+
+	XREF.L	HARDTAG
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; BOOT_asm  - QDOS classic bootstrap routines
+;	   - originated July 98 - Mark Swift
+;	   - last modified 22/09/99 (MSW)
+
+;  RESPONSIBLE FOR CHECKING HOW MUCH MEMORY IS INSTALLED.
+;  If the calculated RAMTOP is greater than the value already
+;  stored in SV.RAMTOP then - store the new value into SV.RAMTOP
+;  and do a soft reset by following the vector at $4.
+;  (hence the double-boot when first switched on)
+
+;  RESPONSIBLE FOR SETTING THE TTR/ACU REGISTERS ON 040+
+;  Sets which areas are memory are cachable. Areas that map
+;  to hardware should be left as SERIALIZED NON-CACHABLE.
+
+;  RESPONSIBLE FOR DISTINGUISHING BETWEEN FRAME AND EXT INTS
+;  Patches in its own routine into the LEVEL 2 vector, sets the
+;  value of PC_INTR - which is a QL register that is used to
+;  distinguish between frame interrupts and external interrupts,
+;  and follows the old LEVEL 2 vector when it is done.
+
+;  INTERRUPTS SHOULD BE DISABLED UNTIL AFTER THIS ROM HAS INITIALISED
+;  Until this ROM is loaded, the system doesn't know how to deal
+;  with frame interrupts.
+
+VERSTAG	EQU	'1.59'
+THNGTAG	EQU	'aBOO'
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  ROM header
+
+BASE:
+	dc.l	$4AFB0001	; ROM recognition code
+	dc.w	PROC_DEF-BASE	; add BASIC procs here
+	dc.w	ROM_START-BASE
+
+	dc.b	0,29
+	dc.l	HARDTAG
+	dc.b	'BOOTSTRAP routines  '
+	dc.l	VERSTAG
+	dc.b	$A,0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  start of ROM code
+
+ROM_START:
+
+; --------------------------------------------------------------
+;  enter supervisor mode and disable interrupts
+
+	trap	#0
+	ori.w	#$0700,sr	; disable interrupts
+
+; --------------------------------------------------------------
+;  save register entry values
+
+	movem.l	d0-d3/d6-d7/a0-a4/a6,-(a7)
+
+; --------------------------------------------------------------
+;  initialise hardware
+
+	bsr	HW_RESET
+
+; --------------------------------------------------------------
+;  allocate a THING entry for local variables
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+	bsr	MAKE_THG 	; a3 now points to vars
+
+; --------------------------------------------------------------
+;  disable caches on '020 and above
+
+	bsr	CACHOFF		; disable caches
+	move.l	d0,d7		; save cacr value
+
+; --------------------------------------------------------------
+;  get address of system vectors
+
+	suba.l	a0,a0		; a handy reference point
+
+	tst.b	161(a6)
+	beq.s	NOVBR
+
+	dc.w	$4E7A,$8801	; movec vbr,a0 (010+)
+
+NOVBR:
+
+; --------------------------------------------------------------
+;  Check installed memory.
+
+	move.l	a3,d6		; save a3
+	bsr	HW_MEMCHEK
+
+; --------------------------------------------------------------
+;  Set up the TTR/ACU registers for 68040 or more
+
+	cmp.b	#$40,161(a6)
+	bcs.s	NOT040
+
+	bsr	HW_WRITETHROUGH
+
+NOT040:
+
+; --------------------------------------------------------------
+
+	move.l	d6,a3		; restore a3
+
+; --------------------------------------------------------------
+;  Copy custom vector routines into THING
+
+	move.l	#VCTR.LEN+HW_VCTR.LEN,d2	; will always be multiple of 4
+	lsr.w	#2,d2
+	subq.w	#1,d2
+	lea	VCTR_BEG(pc),a2
+	lea	THNG.VCTR(a3),a4
+
+CPY_VCTR:
+	move.l	(a2)+,(a4)+
+	dbra	d2,CPY_VCTR
+
+; --------------------------------------------------------------
+;  Redirect VECTORs
+
+	move.l	$64(a0),THNG.HW_VCTR+HW_VCTR.ILLG_OLD(a3) ; save old address
+	move.l	$68(a0),THNG.HW_VCTR+HW_VCTR.LVL2_OLD(a3) ; save old address
+
+	lea	THNG.HW_VCTR+HW_VCTR.LVL2_NEW(a3),a1
+	move.l	a1,$64(a0)	; redirect level 1
+	move.l	a1,$68(a0)	;       ...level 2
+	move.l	a1,$6C(a0)	;       ...level 3
+	move.l	a1,$70(a0)	;       ...level 4
+	move.l	a1,$74(a0)	;       ...level 5
+	move.l	a1,$78(a0)	;       ...level 6
+
+; --------------------------------------------------------------
+;  Redirect RESET routine
+
+	move.l	$04(a0),THNG.VCTR+VCTR.RSET_OLD(a3) ; save old address
+
+	lea	THNG.VCTR+VCTR.RSET_NEW(a3),a1
+	move.l	a1,$04(a0)			; redirect RESET
+
+; --------------------------------------------------------------
+;  dislocate original polled task list
+
+	move.l	#0,SV_PLIST(a6)	; pointer to list of polled
+				; tasks
+
+; --------------------------------------------------------------
+;  initialise relevant hardware
+
+	bsr	HW_ENABLE
+
+	move.l	#0,$1BF9C	; damn... PTR_GEN expects
+	move.l	#0,$1BFBC	; h/w at these addresses!
+	move.l	#0,$1BFBE	; make zero for compatibility
+
+; --------------------------------------------------------------
+;  restore caches
+
+	move.l	d7,d0
+	bsr	SETCACH
+
+; --------------------------------------------------------------
+;  restore register entry values
+
+ROM_EXIT:
+	movem.l	(a7)+,d0-d3/d6-d7/a0-a4/a6
+
+;  enable interrupts and re-enter user mode
+
+	andi.w	#$D8FF,sr
+
+; --------------------------------------------------------------
+;  take over the search for QDOS CLASSIC ROMs $10000-$18000
+
+	bra.s	ROM_NEXT1
+
+ROM_10000:
+	bsr.s	EPROM_LInk
+
+ROM_NEXT1:
+	adda.w	#$80,a3
+	cmpa.l	#$18000,a3
+	blt.s	ROM_10000
+
+; --------------------------------------------------------------
+;  QDOS CLASSIC may have ROMs above RAMTOP... check & initialise
+
+	movem.l	d0/a3,-(a7)
+
+	movem.l	d1/d2/a0,-(a7)
+	moveq	#0,d0
+	trap	#1
+	move.l	SV_RAMT(a0),a3
+	movem.l	(a7)+,d1/d2/a0
+
+	move.l	a3,d0
+	add.l	#$00040000-1,d0	; assume ROMs < 256K and
+	andi.l	#$FFFC0000,d0	; a 256K minimum mem chunk
+	move.l	d0,a2		; probable top of RAM
+	bra.s	ROM_CMP
+
+ROM_RAMT:
+	bsr.s	EPROM_LInk
+
+	adda.l	#$80,a3
+
+ROM_CMP:
+	cmp.l	a3,a2		; ..until end of memory
+	bgt.s	ROM_RAMT
+
+	movem.l	(a7)+,d0/a3
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  Subroutine to check for EPROMs and link them in.
+;  Enter in supervisor mode with interrupts disabled.
+;
+;  Entry:
+;	a0 channel ID for messages
+;	a3 start address to check
+
+EPROM_LInk:
+	movem.l	d0-d3/a0-a3,-(a7)
+
+	CMPI.W	#$4AFB,(A3)
+	BNE.S	EPROM_EXit
+
+	CMPI.W	#$0001,2(A3)
+	BNE.S	EPROM_EXit
+
+	LEA	8(A3),A1 	; Eprom copyright
+	MOVE.W	$D0,A2		; UT.MTEXT
+	JSR	(A2)
+
+	MOVE.W	4(A3),D0 	; any Basic extensions ?
+	BEQ.S	EPROM_INit
+
+	LEA	0(A3,D0.W),A1
+	MOVE.W	$110,A2		; BP.INIT
+	JSR	(A2)
+
+EPROM_INit:
+	MOVE.W	6(A3),D0 	; initialization procedure
+	BEQ.S	EPROM_EXit
+
+	JSR	0(A3,D0.W)	; routine must not corrupt
+				; output channel (a0) or start
+				; address (a3) and must return
+				; whilst in USER mode
+
+EPROM_EXit:
+	movem.l	(a7)+,d0-d3/a0-a3
+
+	rts
+
+*******************************************************************
+*
+*  make 'THING' for me
+*
+*  enter a6 = system variables
+*  exit	a3 = address of your private variables
+*
+*  corrupts = d0,d2,a1 - etc...
+*
+*  11/08/99 Make the THING but do not add it to the THING list.
+*	   We will thus keep it private.
+
+MAKE_THG:
+;	 lea	 SV_THINGL(a6),a3  ; start of THING list
+;
+;NEXT_THG:
+;	 move.l	 (a3),d0
+;	 beq.s	 ALOC_THG
+;
+;	 move.l	 d0,a3
+;
+;	 cmp.w	 #4,$2A(a3)
+;	 bne.s	 NEXT_THG
+;
+;	 cmp.l	 #THNGTAG,$2C(a3)
+;	 bne.s	 NEXT_THG
+;
+;	 bra.s	 OKAY_THG
+;
+ALOC_THG:
+	moveq	#0,d2		; owner is superBASIC
+	move.l	#$38+VAR.LEN+VCTR.LEN+HW_VCTR.LEN,d1  ; length
+	moveq	#MT.ALCHP,d0
+	trap	#1		; allocate space
+
+	tst.l	d0
+	bne.s	EXIT_THG 	; exit if error
+
+	move.l	a0,a3
+
+INIT_THG:
+	move.l	#VERSTAG,$26(a3)	; version number
+	move.w	#4,$2A(a3)	; name length
+	move.l	#THNGTAG,$2C(a3)	; name
+	move.l	#'THG%',$30(a3)	; thing variables follow
+	move.l	#2,$34(a3)	; freeform shared code
+
+	lea	$30(a3),a1	; ptr to thing data area
+	move.l	a1,$10(a3)	; store ptr to variables
+
+;	 lea	 SV_THINGL(a6),a1
+;	 move.l	 (a1),(a3)	 ; extend thing list
+;	 move.l	 a3,(a1) 	 ; put THIS thing at start
+
+OKAY_THG:
+	move.l	$10(a3),a3	; address of data area
+	addq.l	#8,a3		; return with a3 pointing
+				; to first variable
+
+EXIT_THG:
+	rts
+
+*******************************************************************
+*
+* routine to disable the instruction & data caches
+* Exit:	d0 = previous CACR value
+*
+CACHOFF:
+	move.l	d1,-(a7)
+
+	moveq	#0,d0
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to set the CACR
+* Entry: d0 = value to write to CACR
+* Exit:	d0 = previous CACR value
+*
+SETCACH:
+	move.l	d1,-(a7)
+
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to alter the state of the CACR
+* callable from user or supervisor modes
+* Entry: d0 = bits to set
+*	d1 = bits to clear/alter
+* Exit:	d0 = previous CACR value
+*
+DOCACH:
+	movem.l	d2/a0/a6,-(a7)
+	movea.l	a7,a0
+	trap	#0
+	move.w	sr,-(a7)
+	ori.w	#$0700,sr	interrupts off
+
+	subq.l	#2,a0
+	cmpa.l	a0,a7
+	beq.s	DOCACHSV 	entered routine as supervisor
+
+	bclr	#5,0(a7) 	otherwise sr on exit = user mode
+
+DOCACHSV:
+	move.l	a7,d2		Calculate start of
+	andi.w	#-$8000,d2	system variables
+	move.l	d2,a6
+
+	and.l	d1,d0
+	not.l	d1
+
+	cmpi.b	#$10,$A1(a6)
+	bls.s	DOCACHX		exit if 010 or less
+
+	dc.w	$4E7A,$2002	movec	cacr,d2
+	and.l	d2,d1		mask off changed bits
+	or.l	d0,d1		or in set bits
+
+	move.l	d2,d0		store old cacr value
+
+	ori.w	#$0808,d1	always clear caches on 020/030
+
+	cmpi.b	#$30,$A1(a6)
+	bls.s	DOCACHSET
+
+	tst.w	d0		check 040 bits
+	bpl.s	DOCACHDCHK	branch if instruction cache off
+	dc.w	$F4B8		cpusha	ic
+				; otherwise update memory from cache
+
+DOCACHDCHK:
+	tst.l	d0		check 040 bits
+	bpl.s	DOCACHDINV	branch if data cache off
+	dc.w	$F478		cpusha	dc
+				; otherwise update memory from cache
+
+	tst.l	d1		check 040 bits
+	bmi.s	DOCACHIINV	branch if leaving data cache on
+
+DOCACHDINV:
+	dc.w	$F458		cinva	dc
+				; invalidate cache
+
+DOCACHIINV:
+	dc.w	$F498		cinva	ic
+				; invalidate cache
+
+DOCACHSET:
+	dc.w	$4E7B,$1002	movec	d1,cacr
+				; set the cache
+
+DOCACHX:
+	move.w	(a7)+,sr
+	movem.l	(a7)+,d2/a0/a6
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  BASIC extensions specific to AMIGA QDOS
+
+PROC_DEF:
+	dc.w	15
+	dc.w	DCACHE_ON-*
+	dc.b	9,'DCACHE_ON'
+	dc.w	DCACHE_OFF-*
+	dc.b	10,'DCACHE_OFF',0
+	dc.w	ICACHE_ON-*
+	dc.b	9,'ICACHE_ON'
+	dc.w	ICACHE_OFF-*
+	dc.b	10,'ICACHE_OFF',0
+	dc.w	COPYBACK-*
+	dc.b	8,'COPYBACK',0
+	dc.w	WRITETHROUGH-*
+	dc.b	12,'WRITETHROUGH',0
+	dc.w	SERIALIZED-*
+	dc.b	10,'SERIALIZED',0
+	dc.w	SOFTROM-*
+	dc.b	7,'SOFTROM'
+
+	dc.w	0
+
+	dc.w	0
+
+	dc.w	0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+DCACHE_OFF:
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+*		  1=data cache enable (>=040)
+*		  |		    1=clear data cache (030)
+*		  |		    |  1=data cache enable (030)
+*		  |		    |  |
+	move.l	#%00000000000000000000100000000000,d0
+	move.l	#%10000000000000000000100100000000,d1
+	bsr	DOCACH
+	moveq	#0,d0		; no errors
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+DCACHE_ON:
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+*		  1=data cache enable (>=040)
+*		  |		    1=clear data cache (030)
+*		  |		    |  1=data cache enable (030)
+*		  |		    |  |
+	move.l	#%10000000000000000000100100000000,d0
+	move.l	d0,d1
+	bsr	DOCACH
+	moveq	#0,d0		; no errors
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ICACHE_OFF:
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+*				1=instr cache enable (>=040)
+*				|	   1=clear instr cache (020,030)
+*				|	   |  1=instr cache enable(020,030)
+*				|	   |  |
+	move.l	#%00000000000000000000000000001000,d0
+	move.l	#%00000000000000001000000000001001,d1
+	bsr	DOCACH
+	moveq	#0,d0		; no errors
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ICACHE_ON:
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+*				1=instr cache enable (>=040)
+*				|	   1=clear instr cache (020,030)
+*				|	   |  1=instr cache enable(020,030)
+*				|	   |  |
+	move.l	#%00000000000000001000000000001001,d0
+	move.l	d0,d1
+	bsr	DOCACH
+	moveq	#0,d0		; no errors
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; Copyback controls originally by SNG, June 1995
+
+COPYBACK:
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	moveq	#0,d0		; MT.INF
+	trap	#1
+
+	move.b	161(a0),d0
+	cmp.b	#$40,d0
+	bcs.s	RPRT_NI
+
+	trap	#0		; Supervisor mode
+	ori.w	#$700,sr
+
+	bsr	HW_COPYBACK
+	bra.s	B_TTRACUX
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+WRITETHROUGH:
+	cmp.l	a3,a5
+	bne	RPRT_BP
+
+	moveq	#0,d0		; MT.INF
+	trap	#1
+
+	move.b	161(a0),d0
+	cmp.b	#$40,d0
+	bcs.s	RPRT_NI
+
+	trap	#0		; Supervisor mode
+	ori.w	#$700,sr
+
+	bsr	HW_WRITETHROUGH
+	bra.s	B_TTRACUX
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SERIALIZED:
+	cmp.l	a3,a5
+	bne	RPRT_BP
+	moveq	#0,d0		; MT.INF
+	trap	#1
+	move.b	161(a0),d0
+	cmp.b	#$40,d0
+	bcc.s	ATLEAST040
+RPRT_NI:
+	moveq	#ERR.NI,d0
+	rts
+
+ATLEAST040:
+
+	trap	#0		; Supervisor mode
+	ori.w	#$700,sr
+
+	bsr	HW_SERIALIZED
+
+B_TTRACUX:
+	andi.w	#$D8FF,sr	; ints on & user mode
+	moveq	#0,d0
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SERLOAD:
+	sub.l	a0,a0
+	lea	SERMSG(pc),a1
+	move.w	UT.MTEXT,a2
+	jsr	(a2)
+
+	bsr	HW_SERINIT
+
+	bsr	HW_SERJUNK
+
+	bsr	HW_SER1GETC
+	move.b	d0,d1
+	lsl.l	#8,d1
+	bsr	HW_SER1GETC
+	move.b	d0,d1
+	lsl.l	#8,d1
+	bsr	HW_SER1GETC
+	move.b	d0,d1
+	lsl.l	#8,d1
+	bsr	HW_SER1GETC
+	move.b	d0,d1
+
+	move.l	d1,d5		; save length
+	add.l	#HW_KICK.LEN,d1	; room for kick code and
+
+	moveq	#-1,d2
+	moveq	#MT.ALCHP,d0
+	trap	#1		; allocate space
+
+	tst.l	d0
+	bne	FEXIT		; no room so quit
+
+	move.l	a0,d6		; save address
+
+	move.l	d5,d1
+	bra.s	SERLUPDEC
+
+SERLODLUP:
+	bsr	HW_SER1GETC
+	move.b	d0,(a0)+
+
+SERLUPDEC:
+	subq.l	#1,d1
+	bgt.s	SERLODLUP
+
+	bra.s	STOROM
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SERMSG:
+	dc.b	0,30,'Soft loading ROM over SER1...',10
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SOFTROM:
+	cmp.l	a3,a5		; if no params...
+	beq	SERLOAD		; load via serial port
+
+	moveq	#1,d7		; old shared device
+
+	bsr	FL_ID
+	bne.s	FEXIT
+
+	move.l	a4,d4		; channel ID to close
+
+	bsr	HEDR1		; read file header
+
+	moveq	#ERR.BP,d0
+	cmp.l	a3,a5
+	bne.s	SDONE1
+
+	move.l	0(a2),d1 ; get length of file
+
+	move.l	d1,d5		; save length
+	add.l	#HW_KICK.LEN,d1	; room for kick code and
+
+	move.l	a2,-(a7) 	; save addr header buffer
+
+	moveq	#-1,d2
+	moveq	#MT.ALCHP,d0
+	trap	#1		; allocate space
+
+	move.l	(a7)+,a2 	; restore addr header buffer
+
+	tst.l	d0
+	bne.s	SDONE1		; no room so quit
+
+	move.l	a0,d6		; save address
+
+	move.l	d5,d2		; length
+	move.l	d6,a1		; location
+	move.l	a4,a0		; File ID
+	moveq	#-1,d3		; infinite timeout
+	moveq	#FS.LOAD,d0
+	trap	#3		; load file
+
+	tst.l	d0
+	beq.s	STOROM		; no errors.
+
+	move.l	a2,-(a7) 	; save addr header buffer
+
+	move.l	d6,a0		; location
+	moveq	#MT.RECHP,d0
+	trap	#1		; release space
+
+	move.l	(a7)+,a2 	; restore addr header buffer
+
+	bra.s	SDONE1
+
+FEXIT:
+	rts
+
+; -------------------------------------------------------------
+STOROM:
+	move.l	d6,a0		; get buffer address
+
+	addq.l	#3,d5
+	andi.b	#%11111100,d5	; len = multiple of four bytes
+
+	add.l	d5,a0		; place to store kick code
+	move.l	d5,(a0)+ 	; store length
+
+	trap	#0		; supervisor mode
+	ori.w	#$0700,sr	; disable interrupts
+	andi.w	#$7FFF,sr	; clear trace
+	bsr	CACHOFF		; disable caches
+
+	pea	HW_KICK(a0)
+	lea	HW_KICK_BEG(pc),a1
+	move.l	#HW_KICK.LEN,d1
+	lsr.w	#2,d1
+	subq.w	#1,d1
+
+LUPKICK:
+	move.l	(a1)+,(a0)+	; store the kick code...
+	dbra	d1,LUPKICK
+
+	rts			; & call kick code
+
+; -------------------------------------------------------------
+SDONE1:
+	move.l	d0,d7		; save error code
+
+	move.l	a2,d0
+	beq.s	SDONE2
+
+	move.l	a2,a0
+	moveq	#MT.RECHP,d0
+	trap	#1		; release buffer
+
+SDONE2:
+	tst.l	d4
+	beq.s	SEXIT
+
+	move.l	d4,a0
+	moveq	#IO.CLOSE,d0	; close file
+	trap	#2
+
+SEXIT:
+	move.l	d7,d0		; restore error code
+
+	rts
+
+; -------------------------------------------------------------
+;   exit: a4 = channel ID of file
+
+FL_ID:
+	bsr.s	GET1_FNAMES
+	bne.s	FL_IDX
+
+FL_ID1:
+	moveq	#0,d1
+	move.w	0(a6,a1.l),d1	; length of filename
+
+	move.l	a1,a0		; address of filename
+	move.l	d7,d3		; shared or exclusive...
+	moveq	#-1,d1		; current job
+	trap	#4		; relative to a6
+	moveq	#IO.OPEN,d0	; try to open file
+	trap	#2
+
+	tst.l	d0
+	bne.s	FL_IDX		; error
+
+	move.l	a0,a4		; store channel ID
+
+FL_IDX:
+	rts
+
+; -------------------------------------------------------------
+;  enter: a4 = channel ID of file
+;   exit: a2 = pointer to file header
+
+HEDR1:
+	movem.l d2-d3/d7/a1/a3,-(a7)
+
+	moveq	#64,d1		; space required
+	moveq	#-1,d2		; owner job = me
+	moveq	#MT.ALCHP,d0
+	trap	#1
+
+	tst.l	d0
+	bne.s	HEDRX1
+
+	move.l	a0,a2		; address of buffer
+
+	move.l	a4,a0		; channel ID
+	move.l	a2,a1		; location for header
+	moveq	#64,d2
+	moveq	#-1,d3
+	moveq	#FS.HEADR,d0	; get 64 bytes of header
+	trap	#3
+
+	tst.l	d0
+	beq.s	HEDRX		; no errors... exit
+
+	move.l	d0,d7		; save error code
+
+	move.l	a2,a0
+	moveq	#MT.RECHP,d0
+	trap	#1		; release buffer
+
+	move.l	d7,d0		; restore error
+
+HEDRX1:
+	suba.l	a2,a2		; indicate no buffer
+
+HEDRX:
+	tst.l	d0
+	movem.l (a7)+,d2-d3/d7/a1/a3
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; Get a filename on the stack
+;
+; Entry: A3.L	pointer to first parameter
+;	A5.L   pointer to last parameter
+;
+; Exit:	A3.L   updated
+;	A5.L   updated
+;	D0.L...error code
+;	A1.L   pointer to string on math stack
+
+GET1_FNAMES:
+	movem.l	d1/d4/d6/a2,-(a7)
+
+	cmp.l	a3,a5
+	beq	GET1_BP
+
+	move.l	BV_RIP(a6),a1
+
+	tst.w	2(a6,a3.l)	; Test for parameter name
+	bmi.s	GET1_STR 	; none? ...must be exprssn.
+
+	moveq	#$0f,d0		; extract type of parameter.
+	and.b	1(a6,a3.l),d0
+	subq.b	#1,d0		; is it a string?
+	bne.s	GET1_NAM 	; no, use name instead
+
+GET1_STR:
+	move.l	a5,-(sp) 	; save the top pointer
+	lea	8(a3),a5 	; get just one string
+	move.w	CA.GTSTR,a2
+	jsr	(a2)
+	move.l	(sp)+,a5 	; restore top pointer
+	tst.l	d0
+	bne.s	GET1_RTS
+
+	move.l	a1,BV_RIP(a6)
+	moveq	#3,d1		; get total length of string
+	add.w	0(a6,a1.l),d1
+	bclr	#0,d1
+	add.l	d1,BV_RIP(a6)	; and reset ri stack pointer
+	bra.s	GET1_OK
+
+GET1_NAM:
+	moveq	#0,d1
+	move.w	2(a6,a3.l),d1	; pointer to real entry
+	bmi.s	GET1_BP		; ... expression is no good
+
+	lsl.l	#3,d1		; in multiples of 8 bytes
+	add.l	BV_NTBAS(a6),d1
+	moveq	#0,d6
+	move.w	2(a6,d1.l),d6	; pointer to the name
+	add.l	BV_NLBAS(a6),d6
+	moveq	#0,d1		; get the length of the name
+	move.b	0(a6,d6.l),d1	; as a long word.
+	addq.l	#1,d1		; rounded up
+	bclr	#0,d1
+	move.w	d1,d4		; and save it
+	addq.l	#2,d1		; space required is +2 bytes
+	move.w	BV.CHRIX,a2	; on ri stack
+	jsr	(a2)
+	move.l	BV_RIP(a6),a1
+	add.w	d4,d6		; move to end of string
+
+GET1_NMLUP:
+	subq.l	#1,a1		; copy one byte at a time
+	move.b	0(a6,d6.l),0(a6,a1.l)
+	subq.l	#1,d6
+	dbra	d4,GET1_NMLUP	; including the (byte) name
+*				  length
+	subq.l	#1,a1		; put a zero on to make it a
+	clr.b	0(a6,a1.l)	; word
+
+GET1_OK:
+	lea	8(a3),a3 	; update parameter pointer
+	moveq	#ERR.OK,d0
+	bra.s	GET1_RTS
+
+GET1_BP:
+	moveq	#ERR.BP,d0
+
+GET1_RTS:
+	tst.l	d0
+	movem.l	(a7)+,d1/d4/d6/a2
+	rts
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+RPRT_BP:
+	moveq	#ERR.BP,d0
+	rts
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad1:
+	DCB.w ((0-(NOPpad1-BASE))&$3)/2,$4E71
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+VCTR_BEG:
+
+*******************************************************************
+*
+*  Custom RESET routine to put vectors back as they were
+
+RSET:
+
+VCTR.RSET_NEW EQU RSET-VCTR_BEG
+
+	ori.w	#$0700,sr	; disable further interrupts
+
+	bsr	HW_RESET
+
+	movem.l	d0/a0/a3/a6,-(a7)
+
+	lea	VCTR_BEG-THNG.VCTR(pc),a3
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+;  Put back old vectors
+
+	suba.l	a0,a0		; a handy reference point
+
+	tst.b	161(a6)
+	beq.s	RSET68K
+
+	dc.w	$4E7A,$8801	; movec vbr,a0
+
+RSET68K:
+	move.l	THNG.VCTR+VCTR.RSET_OLD(a3),$04(a0) ; restore old RSET
+	move.l	THNG.HW_VCTR+HW_VCTR.ILLG_OLD(a3),$64(a0) ; restore old LVL1
+	move.l	THNG.HW_VCTR+HW_VCTR.LVL2_OLD(a3),$68(a0) ; restore old LVL2
+	move.l	THNG.HW_VCTR+HW_VCTR.ILLG_OLD(a3),$6C(a0) ; restore old LVL3
+	move.l	THNG.HW_VCTR+HW_VCTR.ILLG_OLD(a3),$70(a0) ; restore old LVL4
+	move.l	THNG.HW_VCTR+HW_VCTR.ILLG_OLD(a3),$74(a0) ; restore old LVL5
+	move.l	THNG.HW_VCTR+HW_VCTR.ILLG_OLD(a3),$78(a0) ; restore old LVL6
+
+RSETX:
+	movem.l	(a7)+,d0/a0/a3/a6
+
+;  Call old RESET routine
+
+RSETJMP:
+
+VCTR.RSET_OLD EQU (RSETJMP-VCTR_BEG)+2
+
+	DC.W	$4EF9,$0000,$0000  ; filled in later
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad2:
+	DCB.w ((0-(NOPpad2-BASE))&$3)/2,$4E71
+
+*******************************************************************
+*
+* End custom vector routines
+
+VCTR_END:
+
+VCTR.LEN EQU VCTR_END-VCTR_BEG
+
+*******************************************************************
+
+; offset into thing for local variables
+
+THNG.VAR 	EQU	$0
+
+; offset into thing for custom vector routines
+
+THNG.VCTR	EQU	THNG.VAR+VAR.LEN
+THNG.HW_VCTR	EQU	THNG.VCTR+VCTR.LEN
+
+*******************************************************************
+
+	END

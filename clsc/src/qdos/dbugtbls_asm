@@ -1,0 +1,371 @@
+*/beginfile DBUGTBLS_asm
+; --------------------------------------------------------------
+; DBUGTBLS_asm - QDOS debugging messages
+;	      - last modified 02/06/99
+; QDOS-Amiga sources by Rainer Kowallik
+;    ...latest changes by Mark J Swift
+; --------------------------------------------------------------
+;*/beginoverlay
+
+; -------------------------------------------------------------
+;    print long word d0.l as HEX to channel with id a0
+
+HEX20:
+	swap	d0
+	bsr.s	HEX10
+	swap	d0
+	bsr.s	HEX10
+	rts
+
+; -------------------------------------------------------------
+;    print word d0.w as HEX to channel with id a0
+
+HEX10:
+	ror.w	#8,d0
+	bsr.s	HEX08
+	rol.w	#8,d0
+	bsr.s	HEX08
+	rts
+
+; -------------------------------------------------------------
+;    print byte d0.b as HEX to channel with id a0
+
+HEX08:
+	ror.b	#4,d0
+	bsr.s	HEX04
+
+	rol.b	#4,d0
+	bsr.s	HEX04
+
+	rts
+
+; -------------------------------------------------------------
+;    print nibble d0.b as HEX to channel with id a0
+
+HEX04:
+	movem.l	d0/a1,-(a7)
+
+	and.b	#$F,d0
+	add.b	#'0',d0
+	cmp.b	#'9',d0
+	ble.s	HEX04a
+	add.b	#7,d0
+
+HEX04a:
+	asl.w	#8,d0
+	move.w	d0,-(a7)
+	move.w	#1,-(a7)
+	move.l	a7,a1
+	bsr.s	IOSTRG
+	addq	#4,a7
+
+	movem.l	(a7)+,d0/a1
+	rts
+
+; -------------------------------------------------------------
+;    print string at (a1) to channel with id a0
+
+IOSTRG:
+	movem.l	d0-d3/a1-a2,-(a7)
+
+	ifnd	 serdbg
+
+	moveq	#-1,d3		; time-out
+	move.w	(a1)+,d2 	; get length
+	moveq	#IO.SSTRG,d0
+	andi	#$F8FF,sr	; enable interrupts
+	trap	#3		; send string
+
+	tst.l	d0
+	beq.s	IOSTRGX
+
+	move.l	BV_CHBAS(a6),d1	; get ptr to BASICs # table
+	move.l	#-1,0(a6,d1.l)	; otherwise close BASICs' #0
+	moveq	#IO.CLOSE,d0
+	trap	#2		; close channel
+	bsr.s	CH_ZERO
+
+	endif
+
+	ifd	serdbg
+
+SER_S:
+	ifd	serq40
+	tst.b	$FF400FF1	; DTR & RTS already enabled?
+	bne.s	SER_S0		; yup, skip initialisation
+
+	move.b	#$00,$FF400FE5	; no interrupts
+	move.b	#$83,$FF400FED	; set DLAB on
+	move.b	#$02,$FF400FE1	; baud rate divisor low (57600)
+	move.b	#$00,$FF400FE5	; baud rate divisor high
+	move.b	#%00000111,$FF400FED ; 8 bits NO parity 2 stop
+	move.b	#$C7,$FF400FE9	; FIFO enable & reset
+	move.b	#%00000011,$FF400FF1 ; enable OUT2,DTR, RTS
+	endif
+
+	ifd	seramg
+	move.w	#62,$DFF032	; baud 57600 (amiga)
+	MOVE.B	#%10000000,$BFD000  ; DTR low (1) not ready to receive
+				  ; RTS high (0) ready to send (amiga)
+	endif
+
+SER_S0:
+	move.w	(a1)+,d2
+	bra.s	SER_NEXT
+
+SER_LOOP:
+	ifd	serq40
+	btst	#4,$FF400FF9	; test CTS bit (Q40)
+	beq.s	SER_LOOP 	; loop if not ready
+
+SER_S1:
+	btst	#5,$FF400FF5	; transmit reg empty? (Q40)
+	beq.s	SER_S1		; nope, loop until empty
+
+	move.b	(a1)+,$FF400FE1	; write data (Q40)
+	endif
+
+	ifd	seramg
+	btst	#4,$BFD000	; test CTS bit in CIAB_PRA (amiga)
+	bne.s	SER_LOOP 	; loop if not ready
+
+	moveq	#0,d1
+	move.b	(a1)+,d1
+	or.w	#$300,d1 	; set two stop bits
+	move.w	D1,$DFF030	; write data to SERDAT (amiga)
+
+SER_S1:
+	move.w	$DFF01E,d3	; read INTREQR (amiga)
+	btst	#0,d3		; interrupt from buff empty?
+	beq	SER_S1		; nope, try again
+
+	move.w	#%0000000000000001,$DFF09C ; reset TBE int in INTREQ (amiga)
+	endif
+
+SER_NEXT:
+	dbra	d2,SER_LOOP
+
+	endif
+
+IOSTRGX:
+	movem.l	(a7)+,d0-d3/a1-a2
+	rts
+
+NOP02AC0:
+	DCB.w ($2AC0-(NOP02AC0-ORGN))/2,$4E71
+
+; --------------------------------------------------------------
+;  Find channel ID of BASICs #0 - open a CON if #0 is closed
+;
+;  return A6 = BASICs A6
+;	 A5 = Address of system variables
+;	 A4 = JCB of JOB
+;	 D6 = JOBs RELA6 flag
+
+CH_ZERO:
+	move.l	a7,d0		; Calculate start of
+	andi.w	#-$8000,d0	; system variables
+	move.l	d0,a5
+
+	move.l	SV_JBBAS(a5),a4	; Pointer to base of job table
+	move.l	(a4),a4		; JCB of BASIC
+	lea	JB_END(a4),a6	; get BASICs A6
+
+	move.l	SV_JBPNT(a5),a4	; Ptr to entry in JOB table
+	move.l	(a4),a4		; JCB of current JOB
+
+	move.b	JB_RELA6(a4),d6	; save JB_RELA6
+
+	ifnd	serdbg
+
+	bclr	#7,JB_RELA6(a4)	; addresses not a6 relative
+
+CH_ZERLUP:
+	move.l	BV_CHBAS(a6),d0	; get ptr to BASICs # table
+	move.l	0(a6,d0.l),d0	; get ID for #0
+
+	bge.s	NO_PANIK 	; branch if #0 open
+
+	lea	WIN_MON0(pc),a1	; otherwise open #0 afresh
+	moveq	#0,d4
+	bsr	OPEN_CON_asd4
+
+	bra.s	CH_ZERLUP	; ...try again
+
+NO_PANIK:
+	move.l	d0,a0		; return with ID in a0
+
+	rts
+	endif
+
+	ifd	serdbg
+	movea.l	#0,a0
+	rts
+	endif
+
+; -------------------------------------------------------------
+;    find keyboard queue for channel a0
+
+;    entry: a0 = channel
+;	   a5 = sys vars
+;    exit:  a2 = Q for channel or zero.
+
+CH_KEYQ:
+
+	ifnd	serdbg
+
+	sub.l	a2,a2		; assume no Q
+
+	movea.l	SV_CHBAS(a5),a3	; Ptr to base of chan tabl
+	move.l	a0,d0
+	asl.w	#2,d0
+	move.l	0(a3,d0.w),d0	; pointer to chan def block
+
+	blt.s	CH_KQX		; exit if #0 is closed
+
+	movea.l	d0,a3
+	move.l	(a3),a1		; length of chan
+	add.l	a3,a1		; addr of end of chan def
+
+	move.l	SV_KEYQ(a5),d0
+	beq.s	CH_KQX		; exit if no Q's
+
+	move.l	d0,a2		; current Q to d1
+
+CH_KQLUP:
+	cmp.l	a3,a2		; check if Q is within
+	blt.s	CH_KQNXT 	; current chan def block
+
+	cmp.l	a2,a1
+	bgt.s	CH_KQX		; ...and exit if so
+
+CH_KQNXT:
+	movea.l	(a2),a2		; next queue
+
+	cmpa.l	SV_KEYQ(a5),a2	; Current key Q
+	bne.s	CH_KQLUP 	; next Q <> this Q
+
+	sub.l	a2,a2		; ...eek, not in list
+
+CH_KQX:
+	move.l	a2,d0		; set flags
+	rts
+
+	endif
+
+	ifd	serdbg
+	moveq	#-1,d0
+	rts
+	endif
+
+; --------------------------------------------------------------
+TXTC	DC.B	0,9,'CODE err ',0
+
+TXTR	DC.B	0,9,'READ err ',0
+TXTW	DC.B	0,10,'WRITE err '
+
+TXTI	DC.B	0,26,'processing INSTRUCTION in '
+TXTX	DC.B	0,24,'processing EXCEPTION in '
+
+TXTTBL	DC.W	TXTUNK-TXTUDS,TXTUDS-TXTUDS,TXTUPS-TXTUDS,TXTUNK-TXTUDS
+	DC.W	TXTUNK-TXTUDS,TXTSDS-TXTUDS,TXTSPS-TXTUDS,TXTACK-TXTUDS
+
+TXTUDS	DC.B	0,10,'USER DATA '
+TXTUPS	DC.B	0,10,'USER PROG '
+TXTSDS	DC.B	0,16,'SUPERVISOR DATA '
+TXTSPS	DC.B	0,16,'SUPERVISOR PROG '
+TXTACK	DC.B	0,14,'INTERRUPT ACK '
+TXTUNK	DC.B	0,8,'UNKNOWN '
+
+TXTG	DC.B	0,9,'at ADDRS ',0
+TXTH	DC.B	0,13,' after INSTR ',0
+
+TXTSR:
+	DC.B	0,3,'SR=',0
+TXTPC:
+	DC.B	0,4,' PC='
+
+TXTREG1:
+	DC.B	0,6,10,'d0-d7'
+TXTREG2:
+	DC.B	0,6,10,'a0-a7'
+
+TXTREGD:
+	DC.B	0,1,'d',0
+TXTREGA:
+	DC.B	0,1,'a',0
+TXTEQU:
+	DC.B	0,1,'=',0
+TXTSPC:
+	DC.B	0,1,' ',0
+TXTRTN:
+	DC.B	0,2,13,10
+
+TXTTMSG:
+	DC.B	0,8,'VECTOR: '
+
+TXTTTBL:
+	DC.W	TXT00-TXT00,TXT04-TXT00,TXT08-TXT00,TXT0C-TXT00
+	DC.W	TXT10-TXT00,TXT14-TXT00,TXT18-TXT00,TXT1C-TXT00
+	DC.W	TXT20-TXT00,TXT24-TXT00,TXT28-TXT00,TXT2C-TXT00
+
+TXT00:
+	DC.B	0,4,'(??)'
+TXT04:
+	DC.B	0,7,'(RESET)',0
+TXT08:
+	DC.B	0,9,'(BUS ERR)',0
+TXT0C:
+	DC.B	0,11,'(ADDRS ERR)',0
+TXT10:
+	DC.B	0,13,'(ILLEG INSTR)',0
+TXT14:
+	DC.B	0,13,'(ZERO DIVIDE)',0
+TXT18:
+	DC.B	0,11,'(UNDEF CHK)',0
+TXT1C:
+	DC.B	0,25,'(TRAPV, TRAPcc, cpTRAPcc)',0
+TXT20:
+	DC.B	0,15,'(PRIVILEGE ERR)',0
+TXT24:
+	DC.B	0,7,'(TRACE)',0
+TXT28:
+	DC.B	0,8,'(LINE-A)'
+TXT2C:
+	DC.B	0,8,'(LINE-F)'
+
+TXTFMSG:
+	DC.B	0,13,'FORMAT CODE: ',0
+
+TXTFTBL:
+	DC.W	TXT0000-TXT0000,TXT0001-TXT0000,TXT0010-TXT0000,TXTUNKN-TXT0000
+	DC.W	TXTUNKN-TXT0000,TXTUNKN-TXT0000,TXTUNKN-TXT0000,TXTUNKN-TXT0000
+	DC.W	TXTUNKN-TXT0000,TXT1001-TXT0000,TXT1010-TXT0000,TXT1011-TXT0000
+	DC.W	TXTUNKN-TXT0000,TXTUNKN-TXT0000,TXTUNKN-TXT0000,TXTUNKN-TXT0000
+
+TXT0000:
+	DC.B	0,9,' (4-WORD)',0
+TXT0001:
+	DC.B	0,12,' (THROWAWAY)'
+TXT0010:
+	DC.B	0,9,' (6-WORD)',0
+TXT1001:
+	DC.B	0,16,' (C/P MID-INSTR)'
+TXT1010:
+	DC.B	0,18,' (SHORT BUS CYCLE)'
+TXT1011:
+	DC.B	0,17,' (LONG BUS CYCLE)',0
+TXTUNKN:
+	DC.B	0,10,' (UNKNOWN)'
+
+; --------------------------------------------------------------
+IPC9:
+	DC.B	$09
+	DC.B	$01
+	DC.L	$00000000
+	DC.B	$01
+	DC.B	$02
+
+;*/endoverlay
+; --------------------------------------------------------------
+;*/endfile

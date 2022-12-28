@@ -1,0 +1,30 @@
+Short:    simple demo of Q40s hi-res screen modes
+Author:   Mark J Swift
+Version:  1.00
+Uploader: msw@blackpool.ac.uk
+Type:     hw/q40
+
+This program sets the Q40s screen mode to 512x256 pixels
+x 16k colours, and plots a colourful function.
+
+Pressing a key exits the program.
+
+
+ARCHIVE CONTENTS
+
+ MODEDEMO_bas     - simple demo of Q40s hi-res screen modes
+ MODEDEMO_readme  - this file
+
+
+FEATURES
+
+* FREEWARE
+
+
+CONTACT
+
+  post: MARK J SWIFT          e-mail: msw@blackpool.ac.uk
+        175 CHURCH STREET
+        BLACKPOOL
+        LANCS
+        FY1 3NX

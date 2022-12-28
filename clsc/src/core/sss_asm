@@ -1,0 +1,530 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_SSS_inc'
+
+	SECTION	SSS
+
+	XREF	HW_RESET,HW_DISABLE,HW_ENABLE
+
+	XREF	HW_VCTR_BEG
+	XREF.S	HW_VCTR.SSSS_HED
+	XREF.S	HW_VCTR.LVL4_NEW,HW_VCTR.LVL4_OLD
+	XREF.S	HW_VCTR.LVL6_NEW,HW_VCTR.LVL6_OLD
+	XREF.S	HW_VCTR.LEN
+
+	XREF.L	HARDTAG
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; SSS_asm - Sampled Sound System routines
+;	 - originated July 99 - Mark Swift
+;	 - last modified 16/09/99 (MSW)
+
+; The necessary sound related sources, required to
+; implement the SMSQ Sampled Sound System functions
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+VERSTAG	EQU	'1.06'
+THNGTAG	EQU	'aSSS'
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  ROM header
+
+BASE:
+	dc.l	$4AFB0001	; ROM recognition code
+	dc.w	0
+	dc.w	ROM_START-BASE
+
+	dc.b	0,31
+	dc.l	HARDTAG
+	dc.b	'Sampled Sound System  '
+	dc.l	VERSTAG
+	dc.b	$A,0
+
+; ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;  start of ROM code
+
+ROM_START:
+
+; --------------------------------------------------------------
+;  enter supervisor mode and disable interrupts
+
+	trap	#0
+	ori.w	#$0700,sr	; disable interrupts
+
+; --------------------------------------------------------------
+;  save register entry values
+
+	movem.l	d0-d3/d6-d7/a0-a4/a6,-(a7)
+
+; --------------------------------------------------------------
+;  initialise hardware
+
+	bsr	HW_RESET
+
+; --------------------------------------------------------------
+;  allocate a THING entry for local variables
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+	bsr.s	MAKE_THG 	; a3 now points to vars
+	bne.s	ROM_EXIT
+
+; --------------------------------------------------------------
+;  initialise local variables
+
+	lea	VCTR.LEN(a3),a3	; vars are accessed relative to SSSS tag
+	bsr	SSS_INIT
+	lea	-VCTR.LEN(a3),a3
+
+; --------------------------------------------------------------
+;  disable caches on '020 and above
+
+	bsr	CACHOFF		; disable caches
+	move.l	d0,d7		; save cacr value
+
+; --------------------------------------------------------------
+;  get address of system vectors
+
+	suba.l	a0,a0		; a handy reference point
+
+	tst.b	161(a6)
+	beq.s	NOVBR
+
+	dc.w	$4E7A,$8801	; movec vbr,a0 (010+)
+
+NOVBR:
+
+; --------------------------------------------------------------
+;  Copy custom vector routines into THING
+
+	move.l	#VCTR.LEN+HW_VCTR.LEN,d2	; will always be multiple of 4
+	lsr.w	#2,d2
+	subq.w	#1,d2
+	lea	VCTR_BEG(pc),a2
+	lea	THNG.VCTR(a3),a4
+
+CPY_VCTR:
+	move.l	(a2)+,(a4)+
+	dbra	d2,CPY_VCTR
+
+; --------------------------------------------------------------
+;  set up pointer to SSS functions
+
+	lea	SSSfuncs(pc),a2
+	move.l	a2,THNG.HW_VCTR+HW_VCTR.SSSS_HED+4(a3)
+
+; --------------------------------------------------------------
+;  Redirect RESET routine
+
+	move.l	$04(a0),THNG.VCTR+VCTR.RSET_OLD(a3) ; save old address
+
+	lea	THNG.VCTR+VCTR.RSET_NEW(a3),a1
+	move.l	a1,$04(a0)			; redirect RESET
+
+; --------------------------------------------------------------
+;  Redirect INTERRUPTS
+
+	move.l	$70(a0),THNG.HW_VCTR+HW_VCTR.LVL4_OLD(a3) ; save old address
+	lea	THNG.HW_VCTR+HW_VCTR.LVL4_NEW(a3),a1
+	move.l	a1,$70(a0)			      ; redirect Level 4
+
+	move.l	$78(a0),THNG.HW_VCTR+HW_VCTR.LVL6_OLD(a3) ; save old address
+	lea	THNG.HW_VCTR+HW_VCTR.LVL6_NEW(a3),a1
+	move.l	a1,$78(a0)			      ; redirect Level 6
+
+; --------------------------------------------------------------
+;  initialise relevant hardware
+
+; --------------------------------------------------------------
+;  restore caches
+
+	move.l	d7,d0
+	bsr.s	SETCACH
+
+; --------------------------------------------------------------
+;  restore register entry values
+
+ROM_EXIT:
+	movem.l	(a7)+,d0-d3/d6-d7/a0-a4/a6
+
+;  enable interrupts and re-enter user mode
+
+	andi.w	#$D8FF,sr
+	rts
+
+*******************************************************************
+*
+*  make 'THING' for me
+*
+*  enter a6 = system variables
+*  exit	a3 = address of your private variables
+*
+*  corrupts = d0,d2,a1 - etc...
+*
+*  11/08/99 Make the THING but do not add it to the THING list.
+*	   We will thus keep it private.
+
+MAKE_THG:
+;	 lea	 SV_THINGL(a6),a3  ; start of THING list
+;
+;NEXT_THG:
+;	 move.l	 (a3),d0
+;	 beq.s	 ALOC_THG
+;
+;	 move.l	 d0,a3
+;
+;	 cmp.w	 #4,$2A(a3)
+;	 bne.s	 NEXT_THG
+;
+;	 cmp.l	 #THNGTAG,$2C(a3)
+;	 bne.s	 NEXT_THG
+;
+;	 bra.s	 OKAY_THG
+;
+ALOC_THG:
+	moveq	#0,d2		; owner is superBASIC
+	move.l	#$38+VAR.LEN+VCTR.LEN+HW_VCTR.LEN,d1  ; length
+	moveq	#MT.ALCHP,d0
+	trap	#1		; allocate space
+
+	tst.l	d0
+	bne.s	EXIT_THG 	; exit if error
+
+	move.l	a0,a3
+
+INIT_THG:
+	move.l	#VERSTAG,$26(a3)	; version number
+	move.w	#4,$2A(a3)	; name length
+	move.l	#THNGTAG,$2C(a3)	; name
+	move.l	#'THG%',$30(a3)	; thing variables follow
+	move.l	#2,$34(a3)	; freeform shared code
+
+	lea	$30(a3),a1	; ptr to thing data area
+	move.l	a1,$10(a3)	; store ptr to variables
+
+;	 lea	 SV_THINGL(a6),a1
+;	 move.l	 (a1),(a3)	 ; extend thing list
+;	 move.l	 a3,(a1) 	 ; put THIS thing at start
+
+OKAY_THG:
+	move.l	$10(a3),a3	; address of data area
+	addq.l	#8,a3		; return with a3 pointing
+				; to first variable
+
+EXIT_THG:
+	tst.l	d0
+	rts
+
+*******************************************************************
+*
+* routine to disable the instruction & data caches
+* Exit:	d0 = previous CACR value
+*
+CACHOFF:
+	move.l	d1,-(a7)
+
+	moveq	#0,d0
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to set the CACR
+* Entry: d0 = value to write to CACR
+* Exit:	d0 = previous CACR value
+*
+SETCACH:
+	move.l	d1,-(a7)
+
+	moveq	#-1,d1
+	bsr.s	DOCACH
+
+	move.l	(a7)+,d1
+	rts
+
+*******************************************************************
+*
+* routine to alter the state of the CACR
+* callable from user or supervisor modes
+* Entry: d0 = bits to set
+*	d1 = bits to clear/alter
+* Exit:	d0 = previous CACR value
+*
+DOCACH:
+	movem.l	d2/a0/a6,-(a7)
+	movea.l	a7,a0
+	trap	#0
+	move.w	sr,-(a7)
+	ori.w	#$0700,sr	interrupts off
+
+	subq.l	#2,a0
+	cmpa.l	a0,a7
+	beq.s	DOCACHSV 	entered routine as supervisor
+
+	bclr	#5,(a7)		otherwise sr on exit = user mode
+
+DOCACHSV:
+	move.l	a7,d2		Calculate start of
+	andi.w	#-$8000,d2	system variables
+	move.l	d2,a6
+
+	and.l	d1,d0
+	not.l	d1
+
+	cmpi.b	#$10,$A1(a6)
+	bls.s	DOCACHX		exit if 010 or less
+
+	dc.w	$4E7A,$2002	movec	cacr,d2
+	and.l	d2,d1		mask off changed bits
+	or.l	d0,d1		or in set bits
+
+	move.l	d2,d0		store old cacr value
+
+	ori.w	#$0808,d1	always clear caches on 020/030
+
+	cmpi.b	#$30,$A1(a6)
+	bls.s	DOCACHSET
+
+	tst.w	d0		check 040 bits
+	bpl.s	DOCACHDCHK	branch if instruction cache off
+	dc.w	$F4B8		cpusha	ic
+				; otherwise update memory from cache
+
+DOCACHDCHK:
+	tst.l	d0		check 040 bits
+	bpl.s	DOCACHDINV	branch if data cache off
+	dc.w	$F478		cpusha	dc
+				; otherwise update memory from cache
+
+	tst.l	d1		check 040 bits
+	bmi.s	DOCACHIINV	branch if leaving data cache on
+
+DOCACHDINV:
+	dc.w	$F458		cinva	dc
+				; invalidate cache
+
+DOCACHIINV:
+	dc.w	$F498		cinva	ic
+				; invalidate cache
+
+DOCACHSET:
+	dc.w	$4E7B,$1002	movec	d1,cacr
+				; set the cache
+
+DOCACHX:
+	move.w	(a7)+,sr
+	movem.l	(a7)+,d2/a0/a6
+	rts
+
+*******************************************************************
+*
+*  Sampled Sound System bits...
+
+SSSfuncs:
+	bra.l	SSS_SAMPLEX
+	bra.l	SSS_ADDI
+	bra.l	SSS_SETM
+	bra.l	SSS_ADDM
+	bra.l	SSS_KILL
+	bra.l	SSS_SAMPLE
+
+*******************************************************************
+*
+* Return info about sound queue.
+* Used prior to adding multiple samples to the sound queue
+*
+* exit:	a1 = pointer to next free byte pair in queue
+*	a2 = pointer past the last free byte pair in queue
+
+SSS_SETM:
+	move.l	a0,-(a7)
+	move.l	HW_VCTR.LEN+VAR.SMPIN(a3),a1
+	move.l	HW_VCTR.LEN+VAR.SMPOUT(a3),a2
+
+	cmp.l	a1,a2
+	bgt.s	SSS_SETM1
+
+	move.l	HW_VCTR.LEN+VAR.SMPEND(a3),a2
+
+	lea	HW_VCTR.LEN+VAR.SMPQ(a3),a0
+	cmpa.l	a0,a1
+	bne.s	SSS_SETMX
+
+SSS_SETM1:
+	subq.l	#2,a2
+
+SSS_SETMX:
+	move.l	(a7)+,a0
+
+	rts
+
+*******************************************************************
+*
+* Estimate number of samples left in sound queue
+*
+* exit:	d0 = number of samples left in queue
+
+SSS_SAMPLE:
+	move.l	HW_VCTR.LEN+VAR.SMPIN(a3),d0
+	sub.l	HW_VCTR.LEN+VAR.SMPOUT(a3),d0
+	bge.s	SSS_SAMPLEX
+
+	add.l	#VAR_SMPLEN,d0
+
+SSS_SAMPLEX:
+	rts
+
+*******************************************************************
+*
+* Add one sample to the sound queue
+*
+* entry: d1 = left hand sound byte
+*	d2 = right hand sound byte
+*
+* exit:	a1 = smashed
+*	status = Z if sample not added to queue due to queue full
+
+SSS_ADDI:
+	move.l	HW_VCTR.LEN+VAR.SMPIN(a3),a1
+	move.b	d1,(a1)+
+	move.b	d2,(a1)+
+
+*******************************************************************
+*
+* Notify that samples have been added to the sound queue
+*
+* entry: a1 = updated pointer to next free byte pair
+
+SSS_ADDM:
+	cmpa.l	HW_VCTR.LEN+VAR.SMPEND(a3),a1
+	blt.s	SSS_ADDI1
+
+	lea	HW_VCTR.LEN+VAR.SMPQ(a3),a1
+
+SSS_ADDI1:
+	cmpa.l	HW_VCTR.LEN+VAR.SMPOUT(a3),a1
+	beq.s	SSS_ADDI3
+
+SSS_ADDI2:
+	move.l	a1,HW_VCTR.LEN+VAR.SMPIN(a3)
+	bsr.l	HW_ENABLE
+
+SSS_ADDI3:
+	rts
+
+*******************************************************************
+*
+* Initialise the sound system queue
+
+SSS_INIT:
+	lea	HW_VCTR.LEN+VAR.SMPQ(a3),a1
+	adda.l	#VAR_SMPLEN,a1
+	move.l	a1,HW_VCTR.LEN+VAR.SMPEND(a3)
+
+*******************************************************************
+*
+* Stop the sound system and throw away the queue
+
+SSS_KILL:
+	move.l	a1,-(a7)
+
+	bsr.l	HW_DISABLE
+	lea	HW_VCTR.LEN+VAR.SMPQ(a3),a1
+	move.l	a1,HW_VCTR.LEN+VAR.SMPIN(a3)
+	move.l	a1,HW_VCTR.LEN+VAR.SMPOUT(a3)
+
+	move.l	(a7)+,a1
+	rts
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad1:
+	DCB.w ((0-(NOPpad1-BASE))&$3)/2,$4E71
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+VCTR_BEG:
+
+*******************************************************************
+*
+*  Custom RESET routine to put vectors back as they were
+
+RSET:
+
+VCTR.RSET_NEW EQU RSET-VCTR_BEG
+
+	ori.w	#$0700,sr	; disable further interrupts
+
+	bsr	HW_RESET
+
+	movem.l	d0/a0/a3/a6,-(a7)
+
+	lea	VCTR_BEG-THNG.VCTR(pc),a3
+
+	move.l	a7,d0
+	andi.l	#$FFFF8000,d0
+	move.l	d0,a6		; address of system vars
+
+;  Put back old vectors
+
+	suba.l	a0,a0		; a handy reference point
+
+	tst.b	161(a6)
+	beq.s	RSET68K
+
+	dc.w	$4E7A,$8801	; movec vbr,a0
+
+RSET68K:
+	move.l	THNG.VCTR+VCTR.RSET_OLD(a3),$04(a0) ; restore old RSET
+	move.l	THNG.HW_VCTR+HW_VCTR.LVL4_OLD(a3),$70(a0) ; restore old LVL4
+	move.l	THNG.HW_VCTR+HW_VCTR.LVL6_OLD(a3),$78(a0) ; restore old LVL6
+
+RSETX:
+	movem.l	(a7)+,d0/a0/a3/a6
+
+;  Call old RESET routine
+
+RSETJMP:
+
+VCTR.RSET_OLD EQU (RSETJMP-VCTR_BEG)+2
+
+	DC.W	$4EF9,$0000,$0000  ; filled in later
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad2:
+	DCB.w ((0-(NOPpad2-BASE))&$3)/2,$4E71
+
+*******************************************************************
+*
+* End custom vector routines
+
+VCTR_END:
+
+VCTR.LEN EQU VCTR_END-VCTR_BEG
+
+*******************************************************************
+
+; offset into thing for custom vector routines
+
+THNG.VCTR	EQU	$0
+THNG.HW_VCTR	EQU	THNG.VCTR+VCTR.LEN
+
+; offset into thing for local variables
+
+THNG.VAR 	EQU	THNG.HW_VCTR+HW_VCTR.LEN
+
+*******************************************************************
+
+	END

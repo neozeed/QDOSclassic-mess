@@ -1,0 +1,197 @@
+	INCLUDE	'DEV_ASM_QDOS_DEFINES_inc'
+	INCLUDE	'CLSC_SRC_CORE_KBD_inc'
+	INCLUDE	'DEV_ASM_Q40_HW_inc'
+
+	SECTION	KBD
+
+	XDEF	HW_RESET,HW_ENABLE
+	XDEF	HW_DO_LEDS,HW_KEY_read
+	XDEF	XINT_SERver
+
+	XDEF	LNG_KTAB
+	XDEF	KTB_OFFS_CT,KTB_OFFS_SH,KTB_OFFS_GR
+	XDEF	AWKCOD,AWKASC
+
+	XDEF	HW_VCTR_BEG
+	XDEF	HW_VCTR.LEN
+
+	XDEF	HARDTAG
+
+	XREF	RDKEYB,DO_CAPS
+
+*******************************************************************
+*
+* KBD_asm - Q40 Keyboard routines
+*	 - originated July 98 - Mark Swift
+*	 - last modified 22/09/99 (MSW)
+
+BASE:
+
+*******************************************************************
+*
+* Begin custom vector routines
+
+HW_VCTR_BEG:
+
+*******************************************************************
+*
+*  HARDWARE RESET : initialise keyboard for use
+
+HW_RESET:
+	movem.l	d0/d1,-(a7)
+
+	move.b	#0,MASTER_CHIP+KEY_INT_ENABLE
+	move.b	#0,MASTER_CHIP+KEY_UNLOCK
+	move.b	#0,MASTER_CHIP+ISARESET
+
+	move.w	#25,d1 ; throw all keys received within next 1/2 sec
+	bra.s	HW_RESET1
+
+HW_RESET0:
+	btst	#1,MASTER_CHIP+INT_REG ; keyboard irq?
+	bne.s	HW_RESET2	     ; nope, continue
+
+	move.b	MASTER_CHIP+KEY_CODE,d0
+
+HW_RESET1:
+	move.b	#1,MASTER_CHIP+KEY_UNLOCK
+
+HW_RESET2:
+	btst	#3,MASTER_CHIP+INT_REG ; frame int?
+	beq.s	HW_RESET0	     ; no
+
+	move.b	#1,MASTER_CHIP+FRAME_INT_CLEAR ; clear frame int
+	dbra	d1,HW_RESET0
+
+	move.b	#0,MASTER_CHIP+KEY_UNLOCK
+
+	movem.l	(a7)+,d0/d1
+	rts
+
+*******************************************************************
+*
+* End custom vector routines
+
+NOPpad3:
+	DCB.w ((0-(NOPpad3-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+HW_VCTR_END:
+
+HW_VCTR.LEN	EQU	(HW_VCTR_END-HW_VCTR_BEG)
+
+*******************************************************************
+*
+*  HARDWARE ENABLE : enable hardware
+
+HW_ENABLE:
+	move.b	#1,MASTER_CHIP+KEY_UNLOCK
+	move.b	#1,MASTER_CHIP+KEY_INT_ENABLE
+	clr.w	SV_ARDEL(A6)	; Disable key repeat delay
+	clr.w	SV_ARFRQ(A6)	; Disable software autorepeat
+
+	rts
+
+*******************************************************************
+*
+*  HARDWARE DISABLE : disable hardware
+
+HW_DISABLE:
+	move.b	#0,MASTER_CHIP+KEY_INT_ENABLE
+	move.b	#0,MASTER_CHIP+KEY_UNLOCK
+
+	rts
+
+*******************************************************************
+*
+*  Set the keyboard LEDs
+*
+*  Should be able to send command $ED to keyboard, followed by
+*  a byte with bit0 = scroll lock, bit1 = num lock, bit2 = caps
+*  Can't get it to work though - any suggestions?
+
+HW_DO_LEDS:
+	move.l	d0,-(a7)
+
+; first send the byte $ED to the keyboard
+;
+; HOW?...
+
+; now calculate the LED status byte
+
+	moveq	#0,d0
+	tst.b	SV_CAPS(a6)	; CAPS on or off ?
+	beq.s	DO_LEDS2
+
+	bset	#2,d0
+
+DO_LEDS2:
+	tst.b	VAR.NLKflg(a3)	; NUMLOCK on or off ?
+	beq.s	DO_LEDS3
+
+	bset	#1,d0
+
+DO_LEDS3:
+	tst.b	$33(A6)		; Screen status
+	beq.s	DO_LEDS4
+
+	bset	#0,d0
+
+DO_LEDS4:
+
+; finally, send the led status byte
+;
+; HOW?...
+
+	move.l	(a7)+,d0
+	rts
+
+*******************************************************************
+*
+*  external interrupt server
+*  enters with a6=sys vars, a3=our (keyboard) vars
+
+XINT_SERver:
+	movem.l	d7/a0,-(a7)
+
+XINT_TST:
+	move.b	MASTER_CHIP+INT_REG,d0
+	btst	#1,d0		; Keyboard interrupt?
+	beq.s	XINT_OTHer	; nope...
+
+	bsr	RDKEYB
+
+; --------------------------------------------------------------
+;  otherwise let another external interrupt server handle it
+
+XINT_OTHer:
+	movem.l	(a7)+,d7/a0
+	rts
+
+*******************************************************************
+*
+*  Subroutine to read keyboard value from hardware
+
+HW_KEY_read:
+	movem.l	d0/a0,-(a7)
+
+	move.b	MASTER_CHIP+KEY_CODE,d0
+	move.b	#1,MASTER_CHIP+KEY_UNLOCK
+
+	bsr.s	KEY_decode
+
+	movem.l	(a7)+,d0/a0
+	rts
+
+	INCLUDE	'CLSC_SRC_ISA_804Xa_asm'  ; Q40 uses 808X equiv h/w
+	INCLUDE	'CLSC_SRC_ISA_804Xd_asm'  ; german is default keyboard
+
+*******************************************************************
+*
+* Pad out to long words
+
+NOPpad5:
+	DCB.w ((0-(NOPpad5-BASE))&$3)/2,$4E71 ; pad to long word boundary
+
+*******************************************************************
+
+	END
