@@ -7,9 +7,10 @@
 
 	XDEF.L	HARDTAG
 	XDEF	user_ini
-	XDEF	fd_hwselect,fd_hwckrdy,fd_hwrestore,fd_hwraddr
-	XDEF	fd_hwside,fd_hwseek,fd_hwmtrsoff,fd_hwwpro
-	XDEF	fd_hwchng,fd_hwread,fd_hwwrite,fd_hwftrack
+	XREF	fd_hwselect
+*	XDEF	fd_hwselect,fd_hwckrdy,fd_hwrestore,fd_hwraddr
+*	XDEF	fd_hwside,fd_hwseek,fd_hwmtrsoff,fd_hwwpro
+*	XDEF	fd_hwchng,fd_hwread,fd_hwwrite,fd_hwftrack
 
 	XREF	noints
 
@@ -4332,6 +4333,8 @@ CONV_L2FX:
 
 *******************************************************************
 NOPpadding:
-	DCB.w ((0-(NOPpadding-rom_base))&$7F)/2,$4E71
+*	DCB.w ((0-(NOPpadding-rom_base))&$7F)/2,$4E71
+* rom_base is undeclared... something is wrong
 
 	END
+
